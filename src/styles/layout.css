@@ -1,0 +1,84 @@
+/**
+ * Hub Layout
+ * ----------
+ * Desktop 3-column grid, centered launchpad, and mobile breakpoints
+ * (PRD §6.2). Drawer columns are declared here and activated in Phase 3 via
+ * the `.app-shell--*` modifier classes.
+ */
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr;
+  background-color: var(--bg-primary);
+}
+
+/* Desktop: pinned drawers expand the shell into 2- or 3-column layouts. */
+@media (min-width: 1024px) {
+  .app-shell--tasks-pinned {
+    grid-template-columns: var(--drawer-width) 1fr;
+  }
+
+  .app-shell--notes-pinned {
+    grid-template-columns: 1fr var(--drawer-width);
+  }
+
+  .app-shell--both-pinned {
+    grid-template-columns: var(--drawer-width) 1fr var(--drawer-width);
+  }
+}
+
+.launchpad {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: var(--space-4);
+}
+
+.launchpad__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.brand {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.launchpad__center {
+  flex: 1;
+  width: 100%;
+  max-width: var(--omnibar-max-width);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding-top: var(--space-6);
+}
+
+.launchpad__omnibar {
+  position: sticky;
+  top: var(--space-4);
+  z-index: var(--z-omnibar);
+}
+
+/* Mobile / PWA viewport (PRD §6.2). */
+@media (max-width: 768px) {
+  .launchpad {
+    padding: var(--space-3);
+  }
+
+  .launchpad__center {
+    padding-top: var(--space-4);
+    gap: var(--space-5);
+  }
+
+  .launchpad__omnibar {
+    top: var(--space-2);
+  }
+}

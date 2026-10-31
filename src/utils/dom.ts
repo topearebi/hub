@@ -69,3 +69,42 @@ export function clearChildren(node: Node): void {
     node.removeChild(node.firstChild);
   }
 }
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+export interface SvgOptions {
+  /** Optional class applied to the root `<svg>`. */
+  className?: string;
+  /** Rendered width/height in px (default 20). */
+  size?: number;
+}
+
+/**
+ * Build a local, inline SVG icon from a single path `d` string.
+ *
+ * AGENTS.md forbids external icon CDNs, so every icon in Hub is an inline SVG
+ * created here. The stroke inherits `currentColor` for theme compatibility.
+ */
+export function svg(pathData: string, options: SvgOptions = {}): SVGSVGElement {
+  const size = options.size ?? 20;
+  const node = document.createElementNS(SVG_NS, 'svg');
+  node.setAttribute('viewBox', '0 0 24 24');
+  node.setAttribute('width', String(size));
+  node.setAttribute('height', String(size));
+  node.setAttribute('fill', 'none');
+  node.setAttribute('stroke', 'currentColor');
+  node.setAttribute('stroke-width', '2');
+  node.setAttribute('stroke-linecap', 'round');
+  node.setAttribute('stroke-linejoin', 'round');
+  node.setAttribute('aria-hidden', 'true');
+  node.setAttribute('focusable', 'false');
+  if (options.className !== undefined) {
+    node.setAttribute('class', options.className);
+  }
+
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', pathData);
+  node.appendChild(path);
+
+  return node;
+}
