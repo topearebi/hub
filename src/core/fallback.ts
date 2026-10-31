@@ -36,6 +36,13 @@ export function hostnameOf(url: string): string {
  * promise means the host answered, a rejection (network error / timeout) means
  * it did not. When `fetch` is unavailable the URL is assumed reachable so the
  * app never blocks navigation on a missing API.
+ *
+ * Limitation (by design): a `no-cors` response is opaque, so its HTTP status is
+ * not observable. Reachability therefore means "the host responded", not "the
+ * page loaded successfully" — a server that is up but returns a 4xx/5xx status
+ * is still treated as reachable. This is intentional: the fallback engine
+ * targets genuinely unreachable hosts (DNS/TCP failures, timeouts), which
+ * reject the request and correctly trigger mirror routing.
  */
 export async function probeUrl(url: string, timeoutMs = 2500): Promise<boolean> {
   if (typeof fetch !== 'function') {

@@ -69,6 +69,16 @@ describe('fuzzyScore', () => {
     expect(scattered).not.toBeNull();
     expect(contiguous ?? 0).toBeGreaterThan(scattered ?? 0);
   });
+
+  it('does not award the contiguity bonus to the first matched character', () => {
+    // Regression: the first match previously compared `lastMatch (-1)` against
+    // `ti - 1 (-1)` and wrongly earned the +3 contiguity bonus.
+    // 'a' at index 0 => base(1) + start-of-string(2) = 3.
+    expect(fuzzyScore('a', 'apple')).toBe(3);
+    expect(fuzzyScore('a', 'banana')).toBe(1);
+    // 'ab' contiguous from the start => (1 + 2) + (1 + 3) = 6.
+    expect(fuzzyScore('ab', 'abzzz')).toBe(6);
+  });
 });
 
 describe('filterBookmarks', () => {

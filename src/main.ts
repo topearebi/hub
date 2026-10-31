@@ -17,6 +17,7 @@ import {
   SyncEngine,
   cullPayloadTombstones,
   fetchRemoteFile,
+  hasGitHubConfig,
   parsePayload,
   putRemoteFile,
   serializePayload,
@@ -27,6 +28,7 @@ import { Omnibar } from './components/omnibar';
 import { BookmarksView } from './components/bookmarks';
 import { TasksDrawer } from './components/tasks';
 import { NotesDrawer } from './components/notes';
+import { resolveDrawerOpen } from './components/drawer';
 import { SettingsModal } from './components/settings';
 import { showToast } from './components/toast';
 import { el, svg } from './utils/dom';
@@ -234,6 +236,12 @@ async function bootstrap(): Promise<void> {
     },
   });
 
+  // Pull remote data on boot when sync is enabled, so a normal load shows the
+  // latest data without requiring a manual refresh.
+  if (store.appConfig.sync_enabled && hasGitHubConfig(store.appConfig)) {
+    void syncEngine.pullNow();
+  }
+
   /* ---- Settings modal ---- */
   const settings = new SettingsModal(store, {
     onClose: () => undefined,
@@ -247,6 +255,12 @@ async function bootstrap(): Promise<void> {
       const content = serializePayload(cullPayloadTombstones(store.getPayload()));
       const sha = await putRemoteFile(config, content, undefined, 'chore(hub): initialize data');
       await store.updateConfig({ github_last_sha: sha });
+    },
+    onSaved: () => {
+      void syncEngine.pullNow();
+    },
+    onSyncNow: () => {
+      void syncEngine.pullNow();
     },
   });
   document.body.appendChild(settings.element);
@@ -278,15 +292,18 @@ async function bootstrap(): Promise<void> {
       shell.classList.add('app-shell--notes-pinned');
     }
 
+    // Capture the previous pin flags before overwriting the drawer attributes
+    // so the pinned -> unpinned transition can be detected. Without this, an
+    // unpinned drawer would remain `data-open="true"` and linger as a fixed
+    // off-canvas overlay instead of collapsing to the minimal layout.
+    const wasTasksPinned = tasksDrawer.element.getAttribute('data-pinned') === 'true';
+    const wasNotesPinned = notesDrawer.element.getAttribute('data-pinned') === 'true';
+
     tasksDrawer.setPinned(tasks);
     notesDrawer.setPinned(notes);
 
-    if (tasks) {
-      setOpen('tasks', true);
-    }
-    if (notes) {
-      setOpen('notes', true);
-    }
+    setOpen('tasks', resolveDrawerOpen(tasks, wasTasksPinned, openState.tasks));
+    setOpen('notes', resolveDrawerOpen(notes, wasNotesPinned, openState.notes));
   }
 
   async function togglePin(key: DrawerKey): Promise<void> {
@@ -350,7 +367,9 @@ async function bootstrap(): Promise<void> {
  * a progressive enhancement: failures are swallowed so the app still runs.
  */
 function registerServiceWorker(): void {
-  if (!('serviceWorker' in navigator)) {
+  // Only register in production: a dev-time service worker can serve stale
+  // cached modules and mask live changes.
+  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) {
     return;
   }
   window.addEventListener('load', () => {

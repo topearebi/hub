@@ -35,6 +35,28 @@ export interface DrawerShell {
   closeButton: HTMLButtonElement;
 }
 
+/**
+ * Compute a drawer's open state after a pin-state change.
+ *
+ * Pinned drawers are always open (they live in the grid flow). A drawer that
+ * was *just* unpinned must be closed, otherwise it lingers as a fixed
+ * off-canvas overlay over the launchpad. A drawer that was already unpinned
+ * keeps whatever open/closed state the user manually toggled.
+ *
+ * @param pinned     The drawer's new persisted pin flag.
+ * @param wasPinned  The drawer's previous pin flag.
+ * @param wasOpen    The drawer's current open state.
+ */
+export function resolveDrawerOpen(pinned: boolean, wasPinned: boolean, wasOpen: boolean): boolean {
+  if (pinned) {
+    return true;
+  }
+  if (wasPinned) {
+    return false;
+  }
+  return wasOpen;
+}
+
 /** Build the shared drawer chrome. */
 export function buildDrawerShell(options: DrawerShellOptions): DrawerShell {
   const pinButton = el('button', {

@@ -95,7 +95,7 @@ export function openDatabase(): Promise<IDBDatabase> {
     return dbPromise;
   }
 
-  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+  const attempt = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
@@ -105,6 +105,14 @@ export function openDatabase(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error ?? new Error('Failed to open IndexedDB'));
     request.onblocked = () =>
       reject(new Error('IndexedDB upgrade blocked by another open connection'));
+  });
+
+  // Do not cache a rejected promise: if the first open is blocked (e.g. another
+  // tab mid-upgrade), later calls would otherwise be stuck with that failure
+  // forever. Clearing the cache lets a subsequent call retry cleanly.
+  dbPromise = attempt.catch((error: unknown) => {
+    dbPromise = null;
+    throw error;
   });
 
   return dbPromise;

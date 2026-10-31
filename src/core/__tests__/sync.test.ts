@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  SyncEngine,
   TOMBSTONE_GRACE_MS,
   cullPayloadTombstones,
   cullTombstones,
@@ -298,5 +299,64 @@ describe('GitHub client', () => {
     const fetchMock = vi.fn(async () => jsonResponse({}, 401));
     const result = await testConnection(CONFIG, fetchMock as unknown as typeof fetch);
     expect(result).toEqual({ ok: false, canWrite: false, message: 'Invalid or expired token.' });
+  });
+});
+
+describe('SyncEngine.pushNow', () => {
+  const enabledConfig = (): typeof DEFAULT_APP_CONFIG => ({
+    ...DEFAULT_APP_CONFIG,
+    sync_enabled: true,
+    github_pat: 't',
+    github_owner: 'o',
+    github_repo: 'r',
+  });
+
+  it('reconciles remote-only changes into local state after a successful push', async () => {
+    const remotePayload = payload({
+      bookmarks: [
+        bookmark({ id: 'remote', title: 'Remote', url: 'https://remote.test', updated_at: 5 }),
+      ],
+    });
+    const encoded = btoa(JSON.stringify(remotePayload));
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ content: encoded, sha: 'abc', encoding: 'base64' }))
+      .mockResolvedValueOnce(jsonResponse({ content: { sha: 'def' } }));
+
+    const applyRemote = vi.fn<(p: HubStoragePayload) => Promise<void>>(async () => undefined);
+
+    const engine = new SyncEngine({
+      getConfig: enabledConfig,
+      getPayload: () => payload(),
+      applyRemote,
+      fetchImpl: fetchMock,
+    });
+
+    await engine.pushNow();
+
+    expect(applyRemote).toHaveBeenCalledTimes(1);
+    const applied = applyRemote.mock.calls[0]?.[0];
+    expect(applied?.bookmarks.map((b) => b.id)).toContain('remote');
+  });
+
+  it('does not reconcile when the remote file does not exist yet', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({}, 404))
+      .mockResolvedValueOnce(jsonResponse({ content: { sha: 'def' } }));
+
+    const applyRemote = vi.fn<(p: HubStoragePayload) => Promise<void>>(async () => undefined);
+
+    const engine = new SyncEngine({
+      getConfig: enabledConfig,
+      getPayload: () => payload(),
+      applyRemote,
+      fetchImpl: fetchMock,
+    });
+
+    await engine.pushNow();
+
+    expect(applyRemote).not.toHaveBeenCalled();
   });
 });

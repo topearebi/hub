@@ -348,6 +348,12 @@ export class SyncEngine {
       if (sha) {
         this.options.onSha?.(sha);
       }
+      // A push merges remote into `merged` before writing, but the local store
+      // still holds the pre-merge snapshot. Reconcile remote-only changes back
+      // into local state so the UI reflects what was actually committed.
+      if (remote) {
+        await this.options.applyRemote(merged);
+      }
       this.options.onStatus?.('synced');
     } catch {
       this.options.onStatus?.('error');

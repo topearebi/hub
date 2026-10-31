@@ -64,7 +64,12 @@ export function fuzzyScore(query: string, text: string): number | null {
 
   for (let ti = 0; ti < t.length && qi < q.length; ti += 1) {
     if (t.charAt(ti) === q.charAt(qi)) {
-      score += lastMatch === ti - 1 ? 3 : 1; // contiguity bonus
+      // Contiguity bonus only applies when a *previous* character matched at
+      // the immediately preceding index. Guarding on `lastMatch !== -1` avoids
+      // awarding the bonus to the very first matched character (where
+      // `lastMatch` is still the -1 sentinel and `ti - 1 === -1`).
+      const isContiguous = lastMatch !== -1 && lastMatch === ti - 1;
+      score += isContiguous ? 3 : 1;
       if (ti === 0) {
         score += 2; // start-of-string bonus
       }
@@ -167,9 +172,14 @@ export class Omnibar {
       },
     });
 
-    const icon = svg(ICON_SEARCH, { className: 'omnibar__icon' });
+    // Presentational only: the search glyph sits in a circular badge to match
+    // the target card aesthetic. No behaviour is attached to this wrapper.
+    const iconBadge = el('span', {
+      className: 'omnibar__icon-badge',
+      children: [svg(ICON_SEARCH, { className: 'omnibar__icon' })],
+    });
     const hint = el('kbd', { className: 'omnibar__hint', text: 'Enter' });
-    const bar = el('div', { className: 'omnibar', children: [icon, this.input, hint] });
+    const bar = el('div', { className: 'omnibar', children: [iconBadge, this.input, hint] });
 
     this.resultsEl = el('ul', {
       className: 'omnibar__results',
