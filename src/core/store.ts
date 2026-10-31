@@ -14,6 +14,7 @@
 
 import {
   STORE,
+  bulkPut,
   getAll,
   getAppConfig,
   getMetrics,
@@ -27,6 +28,7 @@ import type {
   BookmarkItem,
   CategoryItem,
   DeviceMetrics,
+  HubStoragePayload,
   NoteItem,
   TaskItem,
 } from '../types/schemas';
@@ -261,6 +263,48 @@ class HubStore implements LaunchpadStore {
     await setAppConfig(this.config);
     this.emit('config');
     return this.config;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Sync payload snapshot / apply                                    */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Snapshot the four syncable collections into a `HubStoragePayload`.
+   * Tombstones are included so deletions propagate across devices.
+   */
+  getPayload(now: number = Date.now()): HubStoragePayload {
+    return {
+      version: 1,
+      last_synced_at: now,
+      bookmarks: [...this.bookmarks],
+      categories: [...this.categories],
+      tasks: [...this.tasks],
+      notes: [...this.notes],
+    };
+  }
+
+  /**
+   * Replace all syncable collections from a payload, persist them in a single
+   * transaction per store, and notify subscribers.
+   */
+  async applyPayload(payload: HubStoragePayload): Promise<void> {
+    this.bookmarks = [...payload.bookmarks];
+    this.categories = [...payload.categories];
+    this.tasks = [...payload.tasks];
+    this.notes = [...payload.notes];
+
+    await Promise.all([
+      bulkPut(STORE.bookmarks, this.bookmarks),
+      bulkPut(STORE.categories, this.categories),
+      bulkPut(STORE.tasks, this.tasks),
+      bulkPut(STORE.notes, this.notes),
+    ]);
+
+    this.emit('bookmarks');
+    this.emit('categories');
+    this.emit('tasks');
+    this.emit('notes');
   }
 }
 

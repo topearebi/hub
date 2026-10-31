@@ -2,9 +2,9 @@
  * Hub application entrypoint.
  *
  * Boots the reactive store, builds the tri-pane shell (Tasks drawer, launchpad,
- * Scratchpad drawer), and wires desktop pinning plus the mobile tab bar. All
- * bookmark activations flow through the fallback engine so mirrors are used
- * automatically when a primary URL is unreachable.
+ * Scratchpad drawer), wires desktop pinning plus the mobile tab bar, and starts
+ * the BYOS sync engine. All bookmark activations flow through the fallback
+ * engine so mirrors are used automatically when a primary URL is unreachable.
  */
 
 import './styles/tokens.css';
@@ -13,10 +13,21 @@ import './styles/components.css';
 
 import { store } from './core/store';
 import { resolveBookmarkUrl } from './core/fallback';
+import {
+  SyncEngine,
+  cullPayloadTombstones,
+  fetchRemoteFile,
+  parsePayload,
+  putRemoteFile,
+  serializePayload,
+  testConnection,
+} from './core/sync';
+import type { SyncStatus } from './core/sync';
 import { Omnibar } from './components/omnibar';
 import { BookmarksView } from './components/bookmarks';
 import { TasksDrawer } from './components/tasks';
 import { NotesDrawer } from './components/notes';
+import { SettingsModal } from './components/settings';
 import { showToast } from './components/toast';
 import { el, svg } from './utils/dom';
 import type { BookmarkItem } from './types/schemas';
@@ -54,6 +65,33 @@ function navigate(url: string): void {
   window.location.href = url;
 }
 
+/** Download the current local data as a JSON file (air-gapped backup). */
+function exportJson(): void {
+  const payload = store.getPayload();
+  const blob = new Blob([serializePayload(payload)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const anchor = el('a', { attrs: { href: url, download: 'hub-data.json' } });
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+
+  showToast('Exported hub-data.json.', { variant: 'success' });
+}
+
+/** Import a JSON backup, replacing local collections. */
+async function importJson(file: File): Promise<void> {
+  try {
+    const text = await file.text();
+    const payload = parsePayload(text);
+    await store.applyPayload(payload);
+    showToast('Import complete.', { variant: 'success' });
+  } catch {
+    showToast('Import failed: invalid file.', { variant: 'error' });
+  }
+}
+
 async function bootstrap(): Promise<void> {
   const root = document.getElementById('app');
   if (!root) {
@@ -68,6 +106,11 @@ async function bootstrap(): Promise<void> {
 
   /* ---- Launchpad ---- */
   const brand = el('span', { className: 'brand', text: 'Hub' });
+
+  const syncStatus = el('span', {
+    className: 'sync-status',
+    attrs: { 'data-status': 'idle', title: 'Sync: idle', 'aria-label': 'Sync status' },
+  });
 
   const tasksToggle = el('button', {
     className: 'icon-button drawer-toggle',
@@ -86,13 +129,10 @@ async function bootstrap(): Promise<void> {
     attrs: { type: 'button', 'aria-label': 'Settings' },
   });
   settingsButton.appendChild(svg(ICON_SETTINGS));
-  settingsButton.addEventListener('click', () => {
-    showToast('Settings arrive in a later phase.', { variant: 'info' });
-  });
 
   const actions = el('div', {
     className: 'launchpad__actions',
-    children: [tasksToggle, notesToggle, settingsButton],
+    children: [syncStatus, tasksToggle, notesToggle, settingsButton],
   });
   const topbar = el('header', { className: 'launchpad__topbar', children: [brand, actions] });
 
@@ -164,6 +204,54 @@ async function bootstrap(): Promise<void> {
   });
   bookmarksHost.appendChild(bookmarksView.element);
 
+  /* ---- Sync engine ---- */
+  let suppressSync = false;
+
+  function updateSyncStatus(status: SyncStatus): void {
+    syncStatus.setAttribute('data-status', status);
+    syncStatus.setAttribute('title', `Sync: ${status}`);
+    if (status === 'error') {
+      showToast('Sync failed. Check your GitHub settings.', { variant: 'error' });
+    }
+  }
+
+  const syncEngine = new SyncEngine({
+    getConfig: () => store.appConfig,
+    getPayload: () => store.getPayload(),
+    applyRemote: async (payload) => {
+      // Applying remote data emits collection events; suppress the resulting
+      // debounced push to avoid a redundant commit loop.
+      suppressSync = true;
+      try {
+        await store.applyPayload(payload);
+      } finally {
+        suppressSync = false;
+      }
+    },
+    onStatus: updateSyncStatus,
+    onSha: (sha) => {
+      void store.updateConfig({ github_last_sha: sha });
+    },
+  });
+
+  /* ---- Settings modal ---- */
+  const settings = new SettingsModal(store, {
+    onClose: () => undefined,
+    onExport: exportJson,
+    onImport: (file) => {
+      void importJson(file);
+    },
+    onTestConnection: (config) => testConnection(config),
+    onCheckFile: async (config) => (await fetchRemoteFile(config)) !== null,
+    onInitialize: async (config) => {
+      const content = serializePayload(cullPayloadTombstones(store.getPayload()));
+      const sha = await putRemoteFile(config, content, undefined, 'chore(hub): initialize data');
+      await store.updateConfig({ github_last_sha: sha });
+    },
+  });
+  document.body.appendChild(settings.element);
+  settingsButton.addEventListener('click', () => settings.open());
+
   /* ---- Drawer state helpers ---- */
   const openState: Record<DrawerKey, boolean> = { tasks: false, notes: false };
 
@@ -193,7 +281,6 @@ async function bootstrap(): Promise<void> {
     tasksDrawer.setPinned(tasks);
     notesDrawer.setPinned(notes);
 
-    // A pinned drawer is always visible.
     if (tasks) {
       setOpen('tasks', true);
     }
@@ -234,6 +321,25 @@ async function bootstrap(): Promise<void> {
   store.subscribe('metrics', () => bookmarksView.render());
   store.subscribe('tasks', () => tasksDrawer.render());
   store.subscribe('notes', () => notesDrawer.render());
+
+  // Debounced sync on any syncable mutation (event-driven, never polled).
+  for (const event of ['bookmarks', 'categories', 'tasks', 'notes'] as const) {
+    store.subscribe(event, () => {
+      if (!suppressSync) {
+        syncEngine.schedule();
+      }
+    });
+  }
+
+  // Reconcile remote changes on focus / visibility (PRD §3.2 lifecycle hooks).
+  window.addEventListener('focus', () => {
+    void syncEngine.pullNow();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      void syncEngine.pullNow();
+    }
+  });
 
   // Instant typing: focus the omnibar on boot.
   omnibar.focus();
