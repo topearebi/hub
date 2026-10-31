@@ -1,7 +1,11 @@
 /**
  * Hub Design Tokens
  * -----------------
- * Warm, low-strain palette (PRD §6.1) exposed as CSS custom properties.
+ * Warm, low-strain palette exposed as CSS custom properties.
+ *
+ * Source of truth: `DESIGN.md` §2. The canonical token names below match that
+ * spec exactly. Legacy aliases (kept for `layout.css` compatibility) map the
+ * older names onto the canonical ones, so both resolve to the same values.
  *
  * Layering strategy:
  *   1. `:root`            -> warm light defaults
@@ -12,18 +16,48 @@
  */
 
 :root {
-  /* ---- Warm Light Mode Defaults ---- */
-  --bg-primary: #faf7f2;
-  --bg-surface: #ffffff;
-  --bg-surface-elevated: #f2ede4;
-  --border-subtle: #e8e2d8;
+  /* ---- Canvas & Surfaces (DESIGN.md §2) ---- */
+  --bg-app: #faf7f2; /* Warm off-white page background */
+  --bg-card: #ffffff; /* Pure card surface */
+  --bg-subtle: #f2ede4; /* Inputs, active hovers, drawer backs */
+
+  /* ---- Borders & Dividers ---- */
+  --border-light: #e8e2d8;
+  --border-focus: #c86d51; /* Accent glow */
+
+  /* ---- Text & Contrast ---- */
+  --text-main: #2c2825; /* Primary readability */
+  --text-sub: #706b65; /* Labels, metadata */
+  --text-faint: #a09890; /* Hotkey hints, empty states */
+
+  /* ---- Accents ---- */
+  --accent-terracotta: #c86d51;
+  --accent-sage: #6b8e7d;
+  --accent-amber: #d99b43;
+
+  /* ---- Spacing Scale ---- */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  /* ---- Radii & Shadows ---- */
+  --radius-card: 10px;
+  --radius-input: 8px;
+  --shadow-subtle: 0 1px 3px rgba(44, 40, 37, 0.05);
+  --shadow-elevated: 0 4px 12px rgba(44, 40, 37, 0.08);
+
+  /* ---- Legacy aliases (layout.css compatibility) ---- */
+  --bg-primary: var(--bg-app);
+  --bg-surface: var(--bg-card);
+  --bg-surface-elevated: var(--bg-subtle);
+  --border-subtle: var(--border-light);
   --border-active: #d4cabe;
-  --text-primary: #2c2825;
-  --text-secondary: #706b65;
-  --text-muted: #a09890;
-  --accent-warm: #c86d51; /* Warm Terracotta */
-  --accent-sage: #6b8e7d; /* Subdued Sage */
-  --accent-amber: #d99b43; /* Ochre */
+  --text-primary: var(--text-main);
+  --text-secondary: var(--text-sub);
+  --text-muted: var(--text-faint);
+  --accent-warm: var(--accent-terracotta);
 
   /* ---- Typography ---- */
   --font-family:
@@ -37,29 +71,29 @@
   --line-height-tight: 1.25;
   --line-height-normal: 1.5;
 
-  /* ---- Radii ---- */
+  /* ---- Radii (legacy names) ---- */
   --radius-sm: 6px;
-  --radius-md: 10px;
+  --radius-md: var(--radius-card);
   --radius-lg: 16px;
   --radius-pill: 999px;
 
-  /* ---- Spacing scale (4px base) ---- */
-  --space-1: 4px;
-  --space-2: 8px;
+  /* ---- Spacing (legacy names) ---- */
+  --space-1: var(--space-xs);
+  --space-2: var(--space-sm);
   --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
+  --space-4: var(--space-md);
+  --space-5: var(--space-lg);
+  --space-6: var(--space-xl);
   --space-7: 48px;
 
   /* ---- Layout ---- */
   --drawer-width: 340px;
-  --omnibar-max-width: 680px;
+  --omnibar-max-width: 640px; /* DESIGN.md §3.1 */
   --transition-speed: 200ms;
 
-  /* ---- Elevation ---- */
-  --shadow-sm: 0 1px 2px rgba(44, 40, 37, 0.06);
-  --shadow-md: 0 4px 12px rgba(44, 40, 37, 0.1);
+  /* ---- Elevation (legacy names) ---- */
+  --shadow-sm: var(--shadow-subtle);
+  --shadow-md: var(--shadow-elevated);
   --shadow-lg: 0 12px 32px rgba(44, 40, 37, 0.16);
 
   /* ---- Focus ring (accessibility) ---- */
@@ -75,21 +109,23 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* ---- Warm Charcoal / Low-Strain Dark Mode ---- */
-    --bg-primary: #181716;
-    --bg-surface: #22201e;
-    --bg-surface-elevated: #2b2825;
-    --border-subtle: #36322e;
-    --border-active: #4a453f;
-    --text-primary: #ede8e1;
-    --text-secondary: #ada59b;
-    --text-muted: #736d66;
-    --accent-warm: #e07a5f;
+    /* ---- Warm Charcoal / Low-Strain Dark Mode (DESIGN.md §2) ---- */
+    --bg-app: #181716;
+    --bg-card: #22201e;
+    --bg-subtle: #2b2825;
+    --border-light: #36322e;
+    --text-main: #ede8e1;
+    --text-sub: #ada59b;
+    --text-faint: #736d66;
+    --accent-terracotta: #e07a5f;
+
+    /* Completions for tokens DESIGN.md leaves unspecified in dark mode. */
     --accent-sage: #81a492;
     --accent-amber: #e5a955;
-
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --border-focus: #e07a5f;
+    --border-active: #4a453f;
+    --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.5);
     --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
     --focus-ring: 0 0 0 3px rgba(224, 122, 95, 0.4);
   }
@@ -97,31 +133,33 @@
 
 /* Explicit user overrides take precedence over the media query. */
 [data-theme='light'] {
-  --bg-primary: #faf7f2;
-  --bg-surface: #ffffff;
-  --bg-surface-elevated: #f2ede4;
-  --border-subtle: #e8e2d8;
-  --border-active: #d4cabe;
-  --text-primary: #2c2825;
-  --text-secondary: #706b65;
-  --text-muted: #a09890;
-  --accent-warm: #c86d51;
+  --bg-app: #faf7f2;
+  --bg-card: #ffffff;
+  --bg-subtle: #f2ede4;
+  --border-light: #e8e2d8;
+  --border-focus: #c86d51;
+  --text-main: #2c2825;
+  --text-sub: #706b65;
+  --text-faint: #a09890;
+  --accent-terracotta: #c86d51;
   --accent-sage: #6b8e7d;
   --accent-amber: #d99b43;
+  --border-active: #d4cabe;
 }
 
 [data-theme='dark'] {
-  --bg-primary: #181716;
-  --bg-surface: #22201e;
-  --bg-surface-elevated: #2b2825;
-  --border-subtle: #36322e;
-  --border-active: #4a453f;
-  --text-primary: #ede8e1;
-  --text-secondary: #ada59b;
-  --text-muted: #736d66;
-  --accent-warm: #e07a5f;
+  --bg-app: #181716;
+  --bg-card: #22201e;
+  --bg-subtle: #2b2825;
+  --border-light: #36322e;
+  --border-focus: #e07a5f;
+  --text-main: #ede8e1;
+  --text-sub: #ada59b;
+  --text-faint: #736d66;
+  --accent-terracotta: #e07a5f;
   --accent-sage: #81a492;
   --accent-amber: #e5a955;
+  --border-active: #4a453f;
 }
 
 /* ---- Base reset (minimal, framework-free) ---- */
@@ -138,8 +176,8 @@ body {
 }
 
 body {
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
+  background-color: var(--bg-app);
+  color: var(--text-main);
   font-family: var(--font-family);
   font-size: var(--font-size-md);
   line-height: var(--line-height-normal);

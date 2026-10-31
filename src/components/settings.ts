@@ -24,6 +24,10 @@ export interface SettingsCallbacks {
   onTestConnection: (config: GitHubConfig) => Promise<ConnectionResult>;
   onCheckFile: (config: GitHubConfig) => Promise<boolean>;
   onInitialize: (config: GitHubConfig) => Promise<void>;
+  /** Invoked after settings are persisted (used to trigger a sync pull). */
+  onSaved: () => void;
+  /** Invoked by the "Sync now" control to pull remote changes on demand. */
+  onSyncNow: () => void;
 }
 
 /** Wrap an input in a labelled field. */
@@ -113,9 +117,16 @@ export class SettingsModal {
       void this.handleSave();
     });
 
+    const syncNowButton = el('button', {
+      className: 'button',
+      text: 'Sync now',
+      attrs: { type: 'button' },
+    });
+    syncNowButton.addEventListener('click', () => this.callbacks.onSyncNow());
+
     const syncActions = el('div', {
       className: 'settings-actions',
-      children: [testButton, saveButton],
+      children: [testButton, saveButton, syncNowButton],
     });
 
     const syncSection = el('section', {
@@ -225,6 +236,8 @@ export class SettingsModal {
       github_branch: gh.branch,
       github_file_path: gh.filePath,
     });
+    // Let the host pull remote data immediately after enabling sync.
+    this.callbacks.onSaved();
     this.setStatus('Settings saved.', 'ok');
   }
 
