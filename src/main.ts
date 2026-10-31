@@ -345,4 +345,20 @@ async function bootstrap(): Promise<void> {
   omnibar.focus();
 }
 
+/**
+ * Register the service worker for offline asset caching (PWA). Registration is
+ * a progressive enhancement: failures are swallowed so the app still runs.
+ */
+function registerServiceWorker(): void {
+  if (!('serviceWorker' in navigator)) {
+    return;
+  }
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
+      // Offline caching is optional; ignore registration failures.
+    });
+  });
+}
+
 void bootstrap();
+registerServiceWorker();

@@ -43,5 +43,17 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Service worker runs in a worker global scope, not the DOM.
+    files: ['public/sw.js'],
+    languageOptions: {
+      globals: {
+        self: 'readonly',
+        caches: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+      },
+    },
+  },
   prettier,
 );
