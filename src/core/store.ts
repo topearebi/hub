@@ -325,6 +325,18 @@ class HubStore implements LaunchpadStore {
     this.emit('tasks');
   }
 
+  /** Insert or update many tasks in a single transaction (drag reordering). */
+  async upsertTasks(items: readonly TaskItem[]): Promise<void> {
+    if (items.length === 0) {
+      return;
+    }
+    for (const item of items) {
+      replaceIn(this.tasks, item);
+    }
+    await bulkPut(STORE.tasks, items);
+    this.emit('tasks');
+  }
+
   /**
    * Soft-delete a task and cascade the tombstone to all of its descendants so
    * subtasks never orphan. Completing a parent does NOT cascade (handled in the

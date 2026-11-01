@@ -597,6 +597,48 @@
   height: 14px;
 }
 
+/* ---- Drag & drop ---- */
+.task__drag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 22px;
+  margin-top: 1px;
+  color: var(--text-faint);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--transition-speed);
+}
+
+.task:hover .task__drag,
+.task__drag:focus-visible {
+  opacity: 1;
+}
+
+.task__drag:active {
+  cursor: grabbing;
+}
+
+.task.is-dragging {
+  opacity: 0.5;
+}
+
+.task.drop-before {
+  box-shadow: inset 0 2px 0 0 var(--accent-terracotta);
+}
+
+.task.drop-after {
+  box-shadow: inset 0 -2px 0 0 var(--accent-terracotta);
+}
+
+.task.drop-child {
+  background-color: var(--bg-subtle);
+  outline: 1px dashed var(--accent-terracotta);
+  outline-offset: -1px;
+}
+
 .task__body {
   flex: 1;
   min-width: 0;
@@ -699,8 +741,15 @@
 
 .task__date-editor {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-xl);
+  padding-top: var(--space-sm);
+}
+
+.task__date-editor .task-creator__date,
+.task__date-editor .task-creator__time {
+  flex: 1 1 120px;
+  min-width: 0;
 }
 
 .task-completed {

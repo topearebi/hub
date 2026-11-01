@@ -23,6 +23,7 @@ const ICON_CHECK = 'M20 6 9 17l-5-5';
 const ICON_CALENDAR =
   'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z';
 const ICON_SUBTASK = 'M6 3v12a3 3 0 0 0 3 3h9M15 15l3 3-3 3';
+const ICON_GRIP = 'M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01';
 
 type Recurrence = 'daily' | 'weekly' | 'monthly' | 'yearly' | null;
 
@@ -75,6 +76,105 @@ export function completedTasks(tasks: readonly TaskItem[]): TaskItem[] {
     .sort((a, b) => (b.completed_at ?? b.updated_at) - (a.completed_at ?? a.updated_at));
 }
 
+/** Where a dragged task should land relative to a drop target. */
+export type DropPosition = 'before' | 'after' | 'child';
+
+/**
+ * True when `candidateId` is a descendant of `ancestorId` in the task tree.
+ * Used to prevent dropping a task into its own subtree (which would create a
+ * cycle and orphan the subtree).
+ */
+export function isDescendantOf(
+  tasks: readonly TaskItem[],
+  candidateId: string,
+  ancestorId: string,
+): boolean {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const seen = new Set<string>();
+  let current = byId.get(candidateId);
+
+  while (current) {
+    const parentId = current.parent_id ?? null;
+    if (!parentId) {
+      return false;
+    }
+    if (parentId === ancestorId) {
+      return true;
+    }
+    if (seen.has(parentId)) {
+      return false; // Defensive: malformed cyclic data.
+    }
+    seen.add(parentId);
+    current = byId.get(parentId);
+  }
+
+  return false;
+}
+
+/**
+ * Compute the updated task list after dragging `draggedId` onto `targetId`.
+ *
+ * - `before`/`after` reorder the dragged task as a sibling of the target.
+ * - `child` reparents the dragged task under the target (appended last).
+ *
+ * Sibling `order` values are renumbered 0..n so the visual order is stable.
+ * Returns `null` for invalid moves (same task, or dropping into a descendant).
+ */
+export function computeTaskMove(
+  tasks: readonly TaskItem[],
+  draggedId: string,
+  targetId: string,
+  position: DropPosition,
+  now: number = Date.now(),
+): TaskItem[] | null {
+  const dragged = tasks.find((task) => task.id === draggedId);
+  const target = tasks.find((task) => task.id === targetId);
+  if (!dragged || !target || draggedId === targetId) {
+    return null;
+  }
+  // Never move a task relative to one of its own descendants.
+  if (isDescendantOf(tasks, targetId, draggedId)) {
+    return null;
+  }
+
+  const parentId = position === 'child' ? targetId : (target.parent_id ?? null);
+
+  // Siblings under the destination parent, excluding the dragged task.
+  const siblings = sortTasks(
+    tasks.filter((task) => task.id !== draggedId && (task.parent_id ?? null) === parentId),
+  );
+
+  let insertIndex: number;
+  if (position === 'child') {
+    insertIndex = siblings.length;
+  } else {
+    const targetIndex = siblings.findIndex((task) => task.id === targetId);
+    if (targetIndex < 0) {
+      insertIndex = siblings.length;
+    } else {
+      insertIndex = position === 'before' ? targetIndex : targetIndex + 1;
+    }
+  }
+
+  const ordered = [...siblings];
+  ordered.splice(insertIndex, 0, dragged);
+
+  const orderById = new Map<string, number>();
+  ordered.forEach((task, index) => orderById.set(task.id, index));
+
+  return tasks.map((task) => {
+    const newOrder = orderById.get(task.id);
+    if (newOrder === undefined) {
+      return task;
+    }
+    const newParent = task.id === draggedId ? parentId : (task.parent_id ?? null);
+    if (task.order === newOrder && (task.parent_id ?? null) === newParent) {
+      return task;
+    }
+    return { ...task, parent_id: newParent, order: newOrder, updated_at: now };
+  });
+}
+
 /** Format a due date/time for display. */
 export function formatDue(task: TaskItem): string {
   if (!task.due_date) {
@@ -109,6 +209,8 @@ export interface TasksStore {
   readonly activeProfileId: string | null;
   upsertTask(item: TaskItem): Promise<void>;
   softDeleteTask(id: string): Promise<void>;
+  /** Optional batched write used by drag-and-drop reordering. */
+  upsertTasks?(items: readonly TaskItem[]): Promise<void>;
 }
 
 export interface TasksCallbacks {
@@ -131,6 +233,8 @@ export class TasksDrawer {
   private creatorParentId: string | null = null;
   private creatorRecurrence: Recurrence = null;
   private completedOpen = false;
+  /** Id of the task currently being dragged, or `null`. */
+  private draggedTaskId: string | null = null;
 
   /**
    * Dismiss any open three-dot menu when the user clicks outside it. Registered
@@ -445,16 +549,35 @@ export class TasksDrawer {
     menu.hidden = true;
     menu.appendChild(this.menuItem('Add subtask', ICON_SUBTASK, () => this.openCreator(task.id)));
     menu.appendChild(
-      this.menuItem('Set date/time', ICON_CALENDAR, () => this.toggleDateEditor(item, task)),
+      this.menuItem('Set date/time', ICON_CALENDAR, () => this.toggleDateEditor(body, task)),
     );
     menu.appendChild(
       this.menuItem('Delete', ICON_TRASH, () => void this.store.softDeleteTask(task.id)),
     );
     menuButton.addEventListener('click', (event) => {
       event.stopPropagation();
-      menu.hidden = !menu.hidden;
+      // Close any other open menu first so only one is ever visible, then
+      // toggle this one. Clicking the same button again closes it.
+      const willOpen = menu.hidden;
+      this.closeAllMenus();
+      menu.hidden = !willOpen;
     });
 
+    // Drag handle: only the grip initiates a drag, so the checkbox, menu and
+    // inline date inputs keep their normal click behaviour.
+    const dragHandle = el('span', {
+      className: 'task__drag',
+      attrs: { draggable: 'true', 'aria-label': 'Drag to reorder', title: 'Drag to reorder' },
+    });
+    dragHandle.appendChild(svg(ICON_GRIP, { size: 16 }));
+    dragHandle.addEventListener('dragstart', (event) => this.handleDragStart(event, task, item));
+    dragHandle.addEventListener('dragend', () => this.handleDragEnd(item));
+
+    item.addEventListener('dragover', (event) => this.handleDragOver(event, task, item));
+    item.addEventListener('dragleave', (event) => this.handleDragLeave(event, item));
+    item.addEventListener('drop', (event) => void this.handleDrop(event, task, item));
+
+    item.appendChild(dragHandle);
     item.appendChild(check);
     item.appendChild(body);
     item.appendChild(menuButton);
@@ -477,8 +600,8 @@ export class TasksDrawer {
     return button;
   }
 
-  private toggleDateEditor(item: HTMLElement, task: TaskItem): void {
-    const existing = item.querySelector('.task__date-editor');
+  private toggleDateEditor(body: HTMLElement, task: TaskItem): void {
+    const existing = body.querySelector('.task__date-editor');
     if (existing) {
       existing.remove();
       return;
@@ -510,7 +633,111 @@ export class TasksDrawer {
       className: 'task__date-editor',
       children: [date, time],
     });
-    item.appendChild(editor);
+    // Append inside the task body so the editor stacks below the title instead
+    // of becoming a flex sibling that squeezes the text to one character wide.
+    body.appendChild(editor);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Drag & drop                                                      */
+  /* ---------------------------------------------------------------- */
+
+  private handleDragStart(event: DragEvent, task: TaskItem, item: HTMLElement): void {
+    this.draggedTaskId = task.id;
+    item.classList.add('is-dragging');
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', task.id);
+      event.dataTransfer.setDragImage(item, 12, 12);
+    }
+  }
+
+  private handleDragEnd(item: HTMLElement): void {
+    this.draggedTaskId = null;
+    item.classList.remove('is-dragging');
+    this.clearDropIndicators();
+  }
+
+  private handleDragOver(event: DragEvent, target: TaskItem, item: HTMLElement): void {
+    if (!this.draggedTaskId || this.draggedTaskId === target.id) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+    this.setDropIndicator(item, this.dropPositionFor(event, item));
+  }
+
+  private handleDragLeave(event: DragEvent, item: HTMLElement): void {
+    const related = event.relatedTarget as Node | null;
+    if (related && item.contains(related)) {
+      return;
+    }
+    item.classList.remove('drop-before', 'drop-after', 'drop-child');
+  }
+
+  private async handleDrop(event: DragEvent, target: TaskItem, item: HTMLElement): Promise<void> {
+    event.preventDefault();
+    const draggedId = this.draggedTaskId;
+    this.draggedTaskId = null;
+    this.clearDropIndicators();
+    if (!draggedId || draggedId === target.id) {
+      return;
+    }
+    const position = this.dropPositionFor(event, item);
+    const updated = computeTaskMove(this.store.activeTasks, draggedId, target.id, position);
+    if (!updated) {
+      return;
+    }
+    await this.persistMove(updated);
+  }
+
+  /** Map the pointer's vertical position within a row to a drop position. */
+  private dropPositionFor(event: DragEvent, item: HTMLElement): DropPosition {
+    const rect = item.getBoundingClientRect();
+    const ratio = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5;
+    if (ratio < 0.25) {
+      return 'before';
+    }
+    if (ratio > 0.75) {
+      return 'after';
+    }
+    return 'child';
+  }
+
+  private setDropIndicator(item: HTMLElement, position: DropPosition): void {
+    this.clearDropIndicators();
+    item.classList.add(`drop-${position}`);
+  }
+
+  private clearDropIndicators(): void {
+    for (const node of this.listEl.querySelectorAll<HTMLElement>(
+      '.drop-before, .drop-after, .drop-child',
+    )) {
+      node.classList.remove('drop-before', 'drop-after', 'drop-child');
+    }
+  }
+
+  /** Persist only the tasks whose parent or order actually changed. */
+  private async persistMove(updated: readonly TaskItem[]): Promise<void> {
+    const changed = updated.filter((task) => {
+      const original = this.store.activeTasks.find((entry) => entry.id === task.id);
+      return (
+        original !== undefined &&
+        (original.parent_id !== task.parent_id || original.order !== task.order)
+      );
+    });
+    if (changed.length === 0) {
+      return;
+    }
+    if (this.store.upsertTasks) {
+      await this.store.upsertTasks(changed);
+      return;
+    }
+    for (const task of changed) {
+      await this.store.upsertTask(task);
+    }
   }
 
   private renderCompleted(tasks: readonly TaskItem[]): HTMLElement {
