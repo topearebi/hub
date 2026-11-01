@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { sortTasks } from '../tasks';
+import { buildTaskTree, completedTasks, sortTasks } from '../tasks';
 import type { TaskItem } from '../../types/schemas';
 
 /** Build a fully-formed task from minimal overrides. */
@@ -44,6 +44,15 @@ describe('sortTasks', () => {
     expect(sortTasks(tasks).map((t) => t.id)).toEqual(['c2', 'c1']);
   });
 
+  it('orders by manual `order` before recency', () => {
+    const tasks: TaskItem[] = [
+      makeTask({ id: 'a', title: 'A', created_at: 3, order: 2 }),
+      makeTask({ id: 'b', title: 'B', created_at: 1, order: 1 }),
+    ];
+
+    expect(sortTasks(tasks).map((t) => t.id)).toEqual(['b', 'a']);
+  });
+
   it('does not mutate the input array', () => {
     const tasks: TaskItem[] = [
       makeTask({ id: 'a', title: 'A', created_at: 1 }),
@@ -54,5 +63,38 @@ describe('sortTasks', () => {
     sortTasks(tasks);
 
     expect(tasks.map((t) => t.id)).toEqual(snapshot);
+  });
+});
+
+describe('buildTaskTree', () => {
+  it('nests subtasks under their parent', () => {
+    const tasks: TaskItem[] = [
+      makeTask({ id: 'p', title: 'Parent', created_at: 2 }),
+      makeTask({ id: 'c', title: 'Child', created_at: 1, parent_id: 'p' }),
+    ];
+
+    const tree = buildTaskTree(tasks);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]?.task.id).toBe('p');
+    expect(tree[0]?.children.map((node) => node.task.id)).toEqual(['c']);
+  });
+
+  it('excludes completed tasks from the tree', () => {
+    const tasks: TaskItem[] = [
+      makeTask({ id: 'done', title: 'Done', created_at: 1, completed: true }),
+    ];
+    expect(buildTaskTree(tasks)).toEqual([]);
+  });
+});
+
+describe('completedTasks', () => {
+  it('returns completed tasks most-recently-completed first', () => {
+    const tasks: TaskItem[] = [
+      makeTask({ id: 'c1', title: 'C1', created_at: 1, completed: true, completed_at: 5 }),
+      makeTask({ id: 'c2', title: 'C2', created_at: 2, completed: true, completed_at: 9 }),
+      makeTask({ id: 'p', title: 'P', created_at: 3 }),
+    ];
+
+    expect(completedTasks(tasks).map((t) => t.id)).toEqual(['c2', 'c1']);
   });
 });
