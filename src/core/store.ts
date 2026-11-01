@@ -321,12 +321,44 @@ class HubStore implements LaunchpadStore {
     this.emit('tasks');
   }
 
+  /**
+   * Soft-delete a task and cascade the tombstone to all of its descendants so
+   * subtasks never orphan. Completing a parent does NOT cascade (handled in the
+   * UI); only deletion does.
+   */
   async softDeleteTask(id: string, now: number = Date.now()): Promise<void> {
     const existing = this.tasks.find((t) => t.id === id);
     if (!existing) {
       return;
     }
-    await this.upsertTask({ ...existing, is_deleted: true, updated_at: now });
+
+    const ids = this.collectDescendantTaskIds(id);
+    ids.add(id);
+
+    for (const taskId of ids) {
+      const task = this.tasks.find((t) => t.id === taskId);
+      if (task && task.is_deleted !== true) {
+        await this.upsertTask({ ...task, is_deleted: true, updated_at: now });
+      }
+    }
+  }
+
+  /** Collect the ids of every task nested beneath `rootId` (breadth-first). */
+  private collectDescendantTaskIds(rootId: string): Set<string> {
+    const descendants = new Set<string>();
+    const queue: string[] = [rootId];
+
+    while (queue.length > 0) {
+      const current = queue.shift() as string;
+      for (const task of this.tasks) {
+        if (task.parent_id === current && !descendants.has(task.id)) {
+          descendants.add(task.id);
+          queue.push(task.id);
+        }
+      }
+    }
+
+    return descendants;
   }
 
   async upsertNote(item: NoteItem): Promise<void> {

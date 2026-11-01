@@ -130,6 +130,21 @@ export interface TaskItem extends SyncableEntity {
    * (authorized extension to `SCHEMAS.md`).
    */
   remind_at?: number | null;
+
+  /** Parent task id for nested subtasks (`null`/absent = top level). */
+  parent_id?: string | null;
+
+  /** Optional due date as an ISO calendar date (`YYYY-MM-DD`). */
+  due_date?: string | null;
+
+  /** Optional due time as `HH:mm` (24-hour). */
+  due_time?: string | null;
+
+  /** Optional recurrence cadence (metadata only; no auto-spawn). */
+  recurrence?: 'daily' | 'weekly' | 'monthly' | 'yearly' | null;
+
+  /** Manual sort index within a list (ascending; defaults to 0). */
+  order?: number;
 }
 
 export interface NoteItem extends SyncableEntity {
@@ -145,8 +160,17 @@ export interface NoteItem extends SyncableEntity {
    */
   content: string;
 
-  /** Visual badge color identifier (theme token or warm hex value). */
-  color_tag?: 'terracotta' | 'sage' | 'amber' | 'neutral' | string;
+  /** Whether the note is pinned to the top of the list. */
+  is_pinned?: boolean;
+
+  /**
+   * Warm pastel background token. Legacy `'neutral'` is treated as
+   * `'default'` at read time.
+   */
+  color_tag?: 'default' | 'burgundy' | 'amber' | 'sage' | 'terracotta' | 'slate' | string;
+
+  /** Manual sort index within a list (ascending; defaults to 0). */
+  order?: number;
 }
 
 /**

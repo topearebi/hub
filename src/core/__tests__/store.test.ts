@@ -70,3 +70,35 @@ describe('profile partitioning', () => {
     expect(store.activeBookmarks.map((b) => b.id)).toEqual(['b1']);
   });
 });
+
+describe('task cascade delete', () => {
+  it('soft-deletes subtasks when a parent is deleted', async () => {
+    await store.init();
+    const now = Date.now();
+
+    await store.upsertTask({
+      id: 'p',
+      created_at: now,
+      updated_at: now,
+      profile_id: DEFAULT_PROFILE_ID,
+      title: 'Parent',
+      completed: false,
+      completed_at: null,
+    });
+    await store.upsertTask({
+      id: 'c',
+      created_at: now,
+      updated_at: now,
+      profile_id: DEFAULT_PROFILE_ID,
+      title: 'Child',
+      completed: false,
+      completed_at: null,
+      parent_id: 'p',
+    });
+
+    await store.softDeleteTask('p');
+
+    // Both the parent and its subtask are removed from the active list.
+    expect(store.activeTasks.map((t) => t.id)).toEqual([]);
+  });
+});
