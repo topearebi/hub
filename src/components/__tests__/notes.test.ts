@@ -26,6 +26,24 @@ describe('sortNotes', () => {
     expect(sortNotes(notes).map((n) => n.id)).toEqual(['new', 'mid', 'old']);
   });
 
+  it('places pinned notes before unpinned ones', () => {
+    const notes: NoteItem[] = [
+      makeNote({ id: 'a', title: 'A', updated_at: 3 }),
+      makeNote({ id: 'b', title: 'B', updated_at: 1, is_pinned: true }),
+    ];
+
+    expect(sortNotes(notes).map((n) => n.id)).toEqual(['b', 'a']);
+  });
+
+  it('orders by manual `order` before recency', () => {
+    const notes: NoteItem[] = [
+      makeNote({ id: 'a', title: 'A', updated_at: 3, order: 2 }),
+      makeNote({ id: 'b', title: 'B', updated_at: 1, order: 1 }),
+    ];
+
+    expect(sortNotes(notes).map((n) => n.id)).toEqual(['b', 'a']);
+  });
+
   it('does not mutate the input array', () => {
     const notes: NoteItem[] = [
       makeNote({ id: 'a', title: 'A', updated_at: 1 }),
@@ -44,11 +62,12 @@ describe('noteColorClass', () => {
     expect(noteColorClass('terracotta')).toBe('note--terracotta');
     expect(noteColorClass('sage')).toBe('note--sage');
     expect(noteColorClass('amber')).toBe('note--amber');
-    expect(noteColorClass('neutral')).toBe('note--neutral');
+    expect(noteColorClass('burgundy')).toBe('note--burgundy');
   });
 
-  it('defaults unknown or missing tags to neutral', () => {
-    expect(noteColorClass(undefined)).toBe('note--neutral');
-    expect(noteColorClass('chartreuse')).toBe('note--neutral');
+  it('maps the legacy neutral tag and unknown tags to default', () => {
+    expect(noteColorClass('neutral')).toBe('note--default');
+    expect(noteColorClass(undefined)).toBe('note--default');
+    expect(noteColorClass('chartreuse')).toBe('note--default');
   });
 });

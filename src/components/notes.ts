@@ -1,37 +1,51 @@
 /**
- * Hub Scratchpad Drawer
- * ---------------------
- * Right productivity pane (PRD §5.3). A zero-friction plain-text pastebin:
- * cards render raw text inside `<pre>` (never parsed as Markdown/HTML), carry a
- * color badge, and offer one-click clipboard copy.
+ * Hub Scratchpad Drawer (Google Keep pattern)
+ * -------------------------------------------
+ * Right productivity pane. A "Take a note…" quick-capture box, PINNED/OTHERS
+ * sections, warm pastel cards with a hover toolbar (color, pin, copy, delete),
+ * and a click-to-edit modal. Content renders as raw text (never HTML).
  */
 
 import { buildDrawerShell } from './drawer';
 import { clearChildren, el, svg } from '../utils/dom';
 import { newId } from '../utils/crypto';
 import { showToast } from './toast';
+import { NOTE_COLORS, NoteEditor, normalizeNoteColor } from './note-editor';
+import type { NoteColor } from './note-editor';
 import type { NoteItem } from '../types/schemas';
 
-const ICON_PLUS = 'M12 5v14M5 12h14';
 const ICON_TRASH =
   'M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6';
 const ICON_COPY =
   'M9 9h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V11a2 2 0 0 1 2-2zM5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1';
+const ICON_PIN =
+  'M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z';
+const ICON_PALETTE =
+  'M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1.1.9-2 2-2h2.5A4.5 4.5 0 0 0 22 11 9 9 0 0 0 12 2zM6.5 13a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z';
 
-/** Allowed color tags (SCHEMAS.md §2.3C). */
-export const NOTE_COLORS = ['terracotta', 'sage', 'amber', 'neutral'] as const;
-export type NoteColor = (typeof NOTE_COLORS)[number];
+/* ------------------------------------------------------------------ */
+/* Pure helpers                                                        */
+/* ------------------------------------------------------------------ */
 
-/** Order notes by most recently updated first. Pure and unit-tested. */
+/** Order notes: pinned first, then by `order` ascending, then newest first. */
 export function sortNotes(notes: readonly NoteItem[]): NoteItem[] {
-  return [...notes].sort((a, b) => b.updated_at - a.updated_at);
+  return [...notes].sort((a, b) => {
+    const pinned = Number(b.is_pinned === true) - Number(a.is_pinned === true);
+    if (pinned !== 0) {
+      return pinned;
+    }
+    return (a.order ?? 0) - (b.order ?? 0) || b.updated_at - a.updated_at;
+  });
 }
 
-/** Map a color tag to a safe CSS class, defaulting to neutral. */
+/** Map a color tag to a safe CSS class (legacy `'neutral'` -> `'default'`). */
 export function noteColorClass(tag: string | undefined): string {
-  const value = tag && (NOTE_COLORS as readonly string[]).includes(tag) ? tag : 'neutral';
-  return `note--${value}`;
+  return `note--${normalizeNoteColor(tag)}`;
 }
+
+/* ------------------------------------------------------------------ */
+/* Component                                                           */
+/* ------------------------------------------------------------------ */
 
 export interface NotesStore {
   readonly activeNotes: NoteItem[];
@@ -49,9 +63,15 @@ export class NotesDrawer {
   readonly element: HTMLElement;
 
   private readonly listEl: HTMLElement;
-  private readonly titleInput: HTMLInputElement;
-  private readonly contentInput: HTMLTextAreaElement;
-  private readonly colorSelect: HTMLSelectElement;
+  private readonly captureEl: HTMLElement;
+  private readonly captureTitle: HTMLInputElement;
+  private readonly captureContent: HTMLTextAreaElement;
+  private readonly captureColors: HTMLElement;
+  private readonly capturePin: HTMLButtonElement;
+  private readonly editor: NoteEditor;
+
+  private captureColor: NoteColor = 'default';
+  private capturePinned = false;
 
   constructor(
     private readonly store: NotesStore,
@@ -65,47 +85,78 @@ export class NotesDrawer {
     });
     this.element = shell.element;
 
-    this.titleInput = el('input', {
-      className: 'drawer__input',
-      attrs: { type: 'text', placeholder: 'Note title…', 'aria-label': 'Note title' },
+    /* ---- Quick capture ---- */
+    this.captureTitle = el('input', {
+      className: 'note-capture__title',
+      attrs: { type: 'text', placeholder: 'Title', 'aria-label': 'Note title' },
+    });
+    this.captureContent = el('textarea', {
+      className: 'note-capture__content',
+      attrs: { placeholder: 'Take a note…', 'aria-label': 'Note content', rows: '3' },
+    });
+    this.captureColors = el('div', {
+      className: 'note-capture__colors',
+      attrs: { role: 'radiogroup', 'aria-label': 'Note color' },
+    });
+    this.capturePin = el('button', {
+      className: 'icon-button note-capture__pin',
+      attrs: { type: 'button', 'aria-label': 'Pin note', 'aria-pressed': 'false' },
+    });
+    this.capturePin.appendChild(svg(ICON_PIN));
+    this.capturePin.addEventListener('click', () => {
+      this.capturePinned = !this.capturePinned;
+      this.capturePin.setAttribute('aria-pressed', this.capturePinned ? 'true' : 'false');
+      this.capturePin.classList.toggle('is-active', this.capturePinned);
     });
 
-    this.contentInput = el('textarea', {
-      className: 'drawer__textarea',
-      attrs: { placeholder: 'Paste or type anything…', 'aria-label': 'Note content', rows: '3' },
+    const closeButton = el('button', {
+      className: 'button',
+      text: 'Close',
+      attrs: { type: 'button' },
+    });
+    closeButton.addEventListener('click', () => this.closeCapture());
+
+    const saveButton = el('button', {
+      className: 'button button--primary',
+      text: 'Save',
+      attrs: { type: 'button' },
+    });
+    saveButton.addEventListener('click', () => {
+      void this.saveCapture();
     });
 
-    this.colorSelect = el('select', {
-      className: 'drawer__select',
-      attrs: { 'aria-label': 'Note color' },
+    const captureActions = el('div', {
+      className: 'note-capture__actions',
+      children: [this.capturePin, closeButton, saveButton],
     });
-    for (const color of NOTE_COLORS) {
-      this.colorSelect.appendChild(el('option', { text: color, attrs: { value: color } }));
-    }
 
-    const addButton = el('button', {
-      className: 'icon-button',
-      attrs: { type: 'button', 'aria-label': 'Add note' },
+    this.captureEl = el('div', {
+      className: 'note-capture',
+      children: [this.captureTitle, this.captureContent, this.captureColors, captureActions],
     });
-    addButton.appendChild(svg(ICON_PLUS));
+    this.captureEl.hidden = true;
 
-    const controls = el('div', {
-      className: 'drawer__controls',
-      children: [this.colorSelect, addButton],
+    const captureTrigger = el('button', {
+      className: 'note-capture-trigger',
+      text: 'Take a note…',
+      attrs: { type: 'button' },
     });
-    const form = el('form', {
-      className: 'drawer__form drawer__form--stacked',
-      children: [this.titleInput, this.contentInput, controls],
-    });
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      void this.addNote();
-    });
+    captureTrigger.addEventListener('click', () => this.openCapture());
 
     this.listEl = el('div', { className: 'note-list' });
 
-    shell.body.appendChild(form);
+    shell.body.appendChild(captureTrigger);
+    shell.body.appendChild(this.captureEl);
     shell.body.appendChild(this.listEl);
+
+    /* ---- Edit modal ---- */
+    this.editor = new NoteEditor({
+      onSave: (note) => this.store.upsertNote(note),
+      onDelete: (id) => this.store.softDeleteNote(id),
+    });
+    document.body.appendChild(this.editor.element);
+
+    this.renderCaptureColors();
   }
 
   /** Rebuild the note list from current store state. */
@@ -117,20 +168,31 @@ export class NotesDrawer {
       this.listEl.appendChild(
         el('p', {
           className: 'empty-state',
-          text: "Scratchpad is empty. Click '+ Note' to paste temporary information.",
+          text: "Scratchpad is empty. Click 'Take a note…' to capture something.",
         }),
       );
       return;
     }
 
-    for (const note of notes) {
+    const pinned = notes.filter((note) => note.is_pinned === true);
+    const others = notes.filter((note) => note.is_pinned !== true);
+
+    if (pinned.length > 0) {
+      this.listEl.appendChild(this.renderSection('Pinned', pinned));
+      if (others.length > 0) {
+        this.listEl.appendChild(this.renderSection('Others', others));
+      }
+      return;
+    }
+
+    for (const note of others) {
       this.listEl.appendChild(this.renderNote(note));
     }
   }
 
-  /** Focus the note title input (used by the "New Note" app shortcut). */
+  /** Open the quick-capture box and focus the title (app shortcut). */
   focusInput(): void {
-    this.titleInput.focus();
+    this.openCapture();
   }
 
   setPinned(pinned: boolean): void {
@@ -142,12 +204,53 @@ export class NotesDrawer {
   }
 
   destroy(): void {
+    this.editor.element.remove();
     this.element.remove();
   }
 
-  private async addNote(): Promise<void> {
-    const title = this.titleInput.value.trim();
-    const content = this.contentInput.value;
+  /* ---------------------------------------------------------------- */
+  /* Quick capture                                                    */
+  /* ---------------------------------------------------------------- */
+
+  private renderCaptureColors(): void {
+    this.captureColors.replaceChildren();
+    for (const color of NOTE_COLORS) {
+      const swatch = el('button', {
+        className: `note-swatch note-swatch--${color}${color === this.captureColor ? ' is-active' : ''}`,
+        attrs: {
+          type: 'button',
+          role: 'radio',
+          'aria-checked': color === this.captureColor ? 'true' : 'false',
+          'aria-label': color,
+        },
+      });
+      swatch.addEventListener('click', () => {
+        this.captureColor = color;
+        this.renderCaptureColors();
+      });
+      this.captureColors.appendChild(swatch);
+    }
+  }
+
+  private openCapture(): void {
+    this.captureEl.hidden = false;
+    this.captureTitle.focus();
+  }
+
+  private closeCapture(): void {
+    this.captureEl.hidden = true;
+    this.captureTitle.value = '';
+    this.captureContent.value = '';
+    this.captureColor = 'default';
+    this.capturePinned = false;
+    this.capturePin.setAttribute('aria-pressed', 'false');
+    this.capturePin.classList.remove('is-active');
+    this.renderCaptureColors();
+  }
+
+  private async saveCapture(): Promise<void> {
+    const title = this.captureTitle.value.trim();
+    const content = this.captureContent.value;
     if (title.length === 0 && content.trim().length === 0) {
       return;
     }
@@ -159,46 +262,98 @@ export class NotesDrawer {
       profile_id: this.store.activeProfileId ?? '',
       title: title.length > 0 ? title : 'Untitled',
       content,
-      color_tag: this.colorSelect.value,
+      is_pinned: this.capturePinned,
+      color_tag: this.captureColor,
+      order: 0,
     };
-    this.titleInput.value = '';
-    this.contentInput.value = '';
+    this.closeCapture();
     await this.store.upsertNote(note);
   }
 
+  /* ---------------------------------------------------------------- */
+  /* Rendering                                                        */
+  /* ---------------------------------------------------------------- */
+
+  private renderSection(label: string, notes: readonly NoteItem[]): HTMLElement {
+    const section = el('section', { className: 'note-section' });
+    section.appendChild(el('h3', { className: 'note-section__title', text: label }));
+    const grid = el('div', { className: 'note-grid' });
+    for (const note of notes) {
+      grid.appendChild(this.renderNote(note));
+    }
+    section.appendChild(grid);
+    return section;
+  }
+
   private renderNote(note: NoteItem): HTMLElement {
-    const card = el('article', { className: `note ${noteColorClass(note.color_tag)}` });
-
-    const title = el('h3', { className: 'note__title', text: note.title });
-    const badge = el('span', { className: 'note__badge', text: note.color_tag ?? 'neutral' });
-
-    const copyButton = el('button', {
-      className: 'icon-button note__action',
-      attrs: { type: 'button', 'aria-label': `Copy ${note.title}` },
-    });
-    copyButton.appendChild(svg(ICON_COPY));
-    copyButton.addEventListener('click', () => {
-      void this.copyNote(note);
+    const card = el('article', {
+      className: `note ${noteColorClass(note.color_tag)}`,
+      attrs: { tabindex: '0', role: 'button', 'aria-label': `Edit ${note.title}` },
     });
 
-    const deleteButton = el('button', {
-      className: 'icon-button note__action',
-      attrs: { type: 'button', 'aria-label': `Delete ${note.title}` },
+    if (note.title.trim().length > 0) {
+      card.appendChild(el('h4', { className: 'note__title', text: note.title }));
+    }
+    if (note.content.trim().length > 0) {
+      card.appendChild(el('pre', { className: 'note__content', text: note.content }));
+    }
+
+    const toolbar = el('div', { className: 'note__toolbar' });
+    toolbar.appendChild(
+      this.toolbarButton(ICON_PALETTE, 'Change color', () => this.cycleColor(note)),
+    );
+    toolbar.appendChild(
+      this.toolbarButton(ICON_PIN, note.is_pinned ? 'Unpin' : 'Pin', () => this.togglePin(note)),
+    );
+    toolbar.appendChild(this.toolbarButton(ICON_COPY, 'Copy', () => void this.copyNote(note)));
+    toolbar.appendChild(
+      this.toolbarButton(ICON_TRASH, 'Delete', () => void this.store.softDeleteNote(note.id)),
+    );
+    card.appendChild(toolbar);
+
+    const openEditor = (): void => this.editor.open(note);
+    card.addEventListener('click', (event) => {
+      if ((event.target as HTMLElement).closest('.note__toolbar')) {
+        return;
+      }
+      openEditor();
     });
-    deleteButton.appendChild(svg(ICON_TRASH));
-    deleteButton.addEventListener('click', () => {
-      void this.store.softDeleteNote(note.id);
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openEditor();
+      }
     });
 
-    const header = el('header', {
-      className: 'note__header',
-      children: [title, badge, copyButton, deleteButton],
-    });
-    const content = el('pre', { className: 'note__content', text: note.content });
-
-    card.appendChild(header);
-    card.appendChild(content);
     return card;
+  }
+
+  private toolbarButton(icon: string, label: string, onClick: () => void): HTMLElement {
+    const button = el('button', {
+      className: 'icon-button note__action',
+      attrs: { type: 'button', 'aria-label': label, title: label },
+    });
+    button.appendChild(svg(icon, { size: 16 }));
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      onClick();
+    });
+    return button;
+  }
+
+  private async cycleColor(note: NoteItem): Promise<void> {
+    const current = normalizeNoteColor(note.color_tag);
+    const index = NOTE_COLORS.indexOf(current);
+    const next = NOTE_COLORS[(index + 1) % NOTE_COLORS.length] ?? 'default';
+    await this.store.upsertNote({ ...note, color_tag: next, updated_at: Date.now() });
+  }
+
+  private async togglePin(note: NoteItem): Promise<void> {
+    await this.store.upsertNote({
+      ...note,
+      is_pinned: note.is_pinned !== true,
+      updated_at: Date.now(),
+    });
   }
 
   private async copyNote(note: NoteItem): Promise<void> {
