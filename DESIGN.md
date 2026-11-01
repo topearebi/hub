@@ -108,3 +108,25 @@
   left; the input fills the middle; an `Enter` hint sits on the right.
 - **Hotkey:** pressing `/` focuses the pill and selects existing text. Ignored
   while typing in an input/textarea/select or when a modal is open.
+
+### 3.7 Tasks Drawer (Google Tasks pattern)
+
+- **Add action:** a dashed `+ Add a task` row at the top expands an inline
+  creator (title, details, and quick chips `Today` / `Tomorrow` /
+  `Date & Time` / `Recurrence`). Enter saves, Escape collapses.
+- **Task row:** circular radio check (`--accent-sage` fill on complete), title
+  and optional details (URLs rendered as safe anchors), and a hover three-dot
+  menu (Add subtask / Set date/time / Delete).
+- **Subtasks:** children indent `24px` beneath a subtle left connector guide.
+- **Completed:** a collapsible `Completed (count)` accordion with a filled check,
+  strikethrough title, and a muted `Completed: Day, Mon DD` label.
+
+### 3.8 Notes Drawer (Google Keep pattern)
+
+- **Quick capture:** a collapsed `Take a note…` card expands into title, body,
+  a color palette, a pin toggle, and Close/Save.
+- **Sections:** `PINNED` / `OTHERS` uppercase headers when pinned notes exist;
+  a single fluid list otherwise.
+- **Cards:** rounded `8px` pastel cards (default / burgundy / amber / sage /
+  terracotta / slate) with automatic light/dark contrast and a hover toolbar
+  (color, pin, copy, delete). Clicking a card opens the edit modal.

@@ -79,8 +79,9 @@ src/
 │   ├── profile-editor.ts  # Profile name, avatar, logo, engine, theme
 │   ├── omnibar.ts  # Search pill, engine selector, fuzzy matcher, `/` hotkey
 │   ├── bookmarks.ts# Categorized grid, recents, empty state
-│   ├── tasks.ts    # Tasks drawer (create, toggle, delete, sort, reminders)
-│   ├── notes.ts    # Scratchpad drawer (cards, color badges, clipboard)
+│   ├── tasks.ts    # Tasks drawer (inline creator, subtasks, completed accordion)
+│   ├── notes.ts    # Scratchpad drawer (quick capture, sections, pastel cards)
+│   ├── note-editor.ts # Note edit modal (title, body, color)
 │   ├── drawer.ts   # Shared drawer shell (header, pin, close)
 │   ├── settings.ts # Settings modal, features, connection test, import/export
 │   ├── share-target.ts # Shared-text -> bookmark/note prompt
@@ -94,6 +95,7 @@ src/
 │   └── schemas.ts  # Canonical data contracts (single source of truth)
 ├── utils/
 │   ├── dom.ts      # XSS-safe DOM builders (no innerHTML)
+│   ├── text.ts     # URL linkification for task text
 │   └── crypto.ts   # UUID v4 generation
 └── main.ts         # Application entrypoint & service worker registration
 ```
@@ -194,7 +196,7 @@ Enforced negative constraints (AGENTS.md):
 
 - [x] `npm run typecheck` passes with zero errors.
 - [x] `npm run lint` passes with zero errors.
-- [x] `npm run test` passes (114 tests across 15 suites).
+- [x] `npm run test` passes (126 tests across 16 suites).
 - [x] `npm run build` produces a production bundle under the 60 KB gzip budget.
 - [x] Omnibar auto-focuses; `Enter` navigates the current tab.
 - [x] Drawers slide with a 200ms transition; pinning persists to `AppConfig`.

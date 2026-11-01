@@ -35,6 +35,20 @@
   --accent-sage: #6b8e7d;
   --accent-amber: #d99b43;
 
+  /* ---- Note pastel surfaces (light) ---- */
+  --note-default-bg: var(--bg-card);
+  --note-default-fg: var(--text-main);
+  --note-burgundy-bg: #f6e3e6;
+  --note-burgundy-fg: #5c1324;
+  --note-amber-bg: #fbeccb;
+  --note-amber-fg: #614a00;
+  --note-terracotta-bg: #f7e1d8;
+  --note-terracotta-fg: #7a3b25;
+  --note-sage-bg: #e2ece5;
+  --note-sage-fg: #2f4a3a;
+  --note-slate-bg: #e6e9ef;
+  --note-slate-fg: #333a49;
+
   /* ---- Spacing Scale ---- */
   --space-xs: 4px;
   --space-sm: 8px;
@@ -128,6 +142,20 @@
     --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.5);
     --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
     --focus-ring: 0 0 0 3px rgba(224, 122, 95, 0.4);
+
+    /* ---- Note pastel surfaces (dark) ---- */
+    --note-default-bg: var(--bg-card);
+    --note-default-fg: var(--text-main);
+    --note-burgundy-bg: #4a2029;
+    --note-burgundy-fg: #f3d6db;
+    --note-amber-bg: #4a3b12;
+    --note-amber-fg: #f6e2b0;
+    --note-terracotta-bg: #4a2c22;
+    --note-terracotta-fg: #f3d3c6;
+    --note-sage-bg: #23342b;
+    --note-sage-fg: #cfe3d6;
+    --note-slate-bg: #2a2f3a;
+    --note-slate-fg: #d5dae6;
   }
 }
 
@@ -145,6 +173,18 @@
   --accent-sage: #6b8e7d;
   --accent-amber: #d99b43;
   --border-active: #d4cabe;
+  --note-default-bg: var(--bg-card);
+  --note-default-fg: var(--text-main);
+  --note-burgundy-bg: #f6e3e6;
+  --note-burgundy-fg: #5c1324;
+  --note-amber-bg: #fbeccb;
+  --note-amber-fg: #614a00;
+  --note-terracotta-bg: #f7e1d8;
+  --note-terracotta-fg: #7a3b25;
+  --note-sage-bg: #e2ece5;
+  --note-sage-fg: #2f4a3a;
+  --note-slate-bg: #e6e9ef;
+  --note-slate-fg: #333a49;
 }
 
 [data-theme='dark'] {
@@ -160,6 +200,18 @@
   --accent-sage: #81a492;
   --accent-amber: #e5a955;
   --border-active: #4a453f;
+  --note-default-bg: var(--bg-card);
+  --note-default-fg: var(--text-main);
+  --note-burgundy-bg: #4a2029;
+  --note-burgundy-fg: #f3d6db;
+  --note-amber-bg: #4a3b12;
+  --note-amber-fg: #f6e2b0;
+  --note-terracotta-bg: #4a2c22;
+  --note-terracotta-fg: #f3d3c6;
+  --note-sage-bg: #23342b;
+  --note-sage-fg: #cfe3d6;
+  --note-slate-bg: #2a2f3a;
+  --note-slate-fg: #d5dae6;
 }
 
 /* ---- Base reset (minimal, framework-free) ---- */

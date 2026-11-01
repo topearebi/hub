@@ -423,40 +423,214 @@
   cursor: pointer;
 }
 
-/* ---- Tasks ---- */
-.task-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-}
-
-.task {
+/* ---- Tasks (Google Tasks pattern) ---- */
+.task-add {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  width: 100%;
   padding: var(--space-sm) var(--space-md);
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-light);
+  border: 1px dashed var(--border-light);
   border-radius: var(--radius-input);
-}
-
-.task__checkbox {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent-sage);
+  background: transparent;
+  color: var(--accent-terracotta);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
   cursor: pointer;
 }
 
-.task__title {
+.task-add:hover {
+  background-color: var(--bg-subtle);
+}
+
+.task-add__icon {
+  color: inherit;
+}
+
+.task-creator {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-subtle);
+}
+
+.task-creator__title,
+.task-creator__details,
+.task-creator__date,
+.task-creator__time {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.task-creator__title {
+  font-weight: 600;
+}
+
+.task-creator__details {
+  resize: vertical;
+  color: var(--text-sub);
+}
+
+.task-creator__date-row {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.task-creator__date,
+.task-creator__time {
+  width: auto;
+  flex: 1;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-input);
+  background-color: var(--bg-subtle);
+}
+
+.task-creator__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.task-creator__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.task-chip {
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-pill);
+  background-color: var(--bg-subtle);
+  color: var(--text-sub);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.task-chip:hover {
+  color: var(--text-main);
+  border-color: var(--border-focus);
+}
+
+.task-chip.is-active {
+  background-color: var(--accent-terracotta);
+  border-color: transparent;
+  color: #fff;
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.task-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-left: var(--space-lg);
+  padding-left: var(--space-sm);
+  border-left: 2px solid var(--border-light);
+}
+
+.task {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border-radius: var(--radius-input);
+}
+
+.task:hover {
+  background-color: var(--bg-subtle);
+}
+
+.task__check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border: 2px solid var(--border-active);
+  border-radius: 50%;
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-speed),
+    border-color var(--transition-speed),
+    color var(--transition-speed);
+}
+
+.task__check:hover {
+  border-color: var(--accent-sage);
+}
+
+.task__check[aria-checked='true'] {
+  background-color: var(--accent-sage);
+  border-color: var(--accent-sage);
+  color: #fff;
+}
+
+.task__check-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.task__body {
   flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.task__title {
   color: var(--text-main);
   font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.task__details {
+  color: var(--text-sub);
+  font-size: var(--font-size-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task__meta {
+  display: flex;
+  gap: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+}
+
+.task__due {
+  color: var(--accent-terracotta);
+}
+
+.task__recurrence {
+  text-transform: capitalize;
 }
 
 .task--done .task__title {
@@ -464,103 +638,336 @@
   text-decoration: line-through;
 }
 
-.task__delete {
+.task__completed-at {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+}
+
+.text-link {
+  color: var(--accent-terracotta);
+  text-decoration: underline;
+}
+
+.task__menu-button {
   flex: none;
   width: 28px;
   height: 28px;
   border: none;
   background: transparent;
   color: var(--text-faint);
+  opacity: 0;
 }
 
-.task__delete:hover {
-  color: var(--accent-terracotta);
-  background-color: transparent;
+.task:hover .task__menu-button,
+.task__menu-button:focus-visible {
+  opacity: 1;
 }
 
-/* ---- Notes / Scratchpad cards (DESIGN.md §3.4) ---- */
-.note-list {
+.task-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: var(--z-omnibar);
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  min-width: 160px;
+  padding: var(--space-xs);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-input);
+  box-shadow: var(--shadow-elevated);
 }
 
-.note {
+.task-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: none;
+  border-radius: var(--radius-input);
+  background: transparent;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-menu__item:hover {
+  background-color: var(--bg-subtle);
+}
+
+.task__date-editor {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-xl);
+}
+
+.task-completed {
+  margin-top: var(--space-md);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-light);
+}
+
+.task-completed__header {
+  display: flex;
+  width: 100%;
+  padding: var(--space-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-sub);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-completed__header:hover {
+  background-color: var(--bg-subtle);
+  border-radius: var(--radius-input);
+}
+
+.task-completed__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+/* ---- Notes (Google Keep pattern) ---- */
+.note-capture-trigger {
+  width: 100%;
+  padding: var(--space-md);
+  text-align: left;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-subtle);
+  color: var(--text-sub);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  cursor: text;
+}
+
+.note-capture {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
   padding: var(--space-md);
   background-color: var(--bg-card);
   border: 1px solid var(--border-light);
-  border-left: 3px solid var(--accent-sage);
   border-radius: var(--radius-card);
+  box-shadow: var(--shadow-elevated);
 }
 
-.note--terracotta {
-  border-left-color: var(--accent-terracotta);
+.note-capture__title,
+.note-capture__content {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  outline: none;
 }
 
-.note--sage {
-  border-left-color: var(--accent-sage);
+.note-capture__title {
+  font-weight: 600;
 }
 
-.note--amber {
-  border-left-color: var(--accent-amber);
+.note-capture__content {
+  resize: vertical;
 }
 
-.note--neutral {
-  border-left-color: var(--border-light);
+.note-capture__colors,
+.note-editor__colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
 }
 
-.note__header {
+.note-capture__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-sm);
 }
 
-.note__title {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-main);
+.note-capture__pin {
+  margin-right: auto;
 }
 
-.note__badge {
-  flex: none;
-  padding: 1px var(--space-sm);
-  border-radius: var(--radius-pill);
-  background-color: var(--bg-subtle);
-  color: var(--text-sub);
-  font-size: 11px;
-  text-transform: capitalize;
+.note-swatch {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--border-light);
+  border-radius: 50%;
+  background-color: var(--note-default-bg);
+  cursor: pointer;
 }
 
-.note__action {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
+.note-swatch.is-active {
+  border-color: var(--border-focus);
+}
+
+.note-swatch--default {
+  background-color: var(--note-default-bg);
+}
+
+.note-swatch--burgundy {
+  background-color: var(--note-burgundy-bg);
+}
+
+.note-swatch--amber {
+  background-color: var(--note-amber-bg);
+}
+
+.note-swatch--terracotta {
+  background-color: var(--note-terracotta-bg);
+}
+
+.note-swatch--sage {
+  background-color: var(--note-sage-bg);
+}
+
+.note-swatch--slate {
+  background-color: var(--note-slate-bg);
+}
+
+.note-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.note-section__title {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--text-faint);
 }
 
-.note__action:hover {
-  color: var(--text-main);
-  background-color: transparent;
+.note-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.note {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: box-shadow var(--transition-speed);
+}
+
+.note:hover {
+  box-shadow: var(--shadow-elevated);
+}
+
+.note--default {
+  background-color: var(--note-default-bg);
+  color: var(--note-default-fg);
+}
+
+.note--burgundy {
+  background-color: var(--note-burgundy-bg);
+  color: var(--note-burgundy-fg);
+}
+
+.note--amber {
+  background-color: var(--note-amber-bg);
+  color: var(--note-amber-fg);
+}
+
+.note--terracotta {
+  background-color: var(--note-terracotta-bg);
+  color: var(--note-terracotta-fg);
+}
+
+.note--sage {
+  background-color: var(--note-sage-bg);
+  color: var(--note-sage-fg);
+}
+
+.note--slate {
+  background-color: var(--note-slate-bg);
+  color: var(--note-slate-fg);
+}
+
+.note__title {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: inherit;
+  overflow-wrap: anywhere;
 }
 
 .note__content {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-family: var(--font-mono);
+  font-family: inherit;
   font-size: var(--font-size-sm);
-  color: var(--text-sub);
+  color: inherit;
+  opacity: 0.9;
+}
+
+.note__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+  opacity: 0;
+  transition: opacity var(--transition-speed);
+}
+
+.note:hover .note__toolbar,
+.note:focus-within .note__toolbar {
+  opacity: 1;
+}
+
+.note__action {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.note__action:hover {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.06);
+}
+
+.note-editor__title,
+.note-editor__content {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-input);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.note-editor__content {
+  resize: vertical;
+}
+
+/* The `hidden` attribute must beat the flex display rules above. */
+.task-creator[hidden],
+.task-creator__date-row[hidden],
+.task-menu[hidden],
+.note-capture[hidden] {
+  display: none;
 }
 
 /* ---- Mobile tab bar ---- */
