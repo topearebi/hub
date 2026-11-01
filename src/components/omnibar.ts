@@ -12,13 +12,10 @@
  * without a DOM. The class only wires DOM events to that logic.
  */
 
-import { clearChildren, el, on, svg } from '../utils/dom';
+import { clearChildren, el, on } from '../utils/dom';
 import { hostnameOf } from '../core/fallback';
 import type { BookmarkItem, SearchProvider } from '../types/schemas';
 import type { LaunchpadStore } from '../core/store';
-
-/** Feather-style magnifier icon (local inline SVG, no CDN). */
-const ICON_SEARCH = 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35';
 
 /* ------------------------------------------------------------------ */
 /* Pure query logic (unit-tested)                                      */
@@ -110,11 +107,16 @@ export type QueryResolution =
   | { type: 'url'; url: string }
   | { type: 'search'; url: string };
 
-/** Resolve a query through the priority pipeline (PRD §5.1 Step 1-3). */
+/**
+ * Resolve a query through the priority pipeline (PRD §5.1 Step 1-3). The
+ * optional `preferredProviderId` (the active profile's default engine) takes
+ * precedence over the global default provider.
+ */
 export function resolveQuery(
   query: string,
   bookmarks: readonly BookmarkItem[],
   providers: readonly SearchProvider[],
+  preferredProviderId?: string,
 ): QueryResolution {
   const trimmed = query.trim();
 
@@ -127,7 +129,10 @@ export function resolveQuery(
     return { type: 'url', url: normalizeUrl(trimmed) };
   }
 
-  const provider = providers.find((p) => p.is_default) ?? providers[0];
+  const provider =
+    providers.find((p) => p.id === preferredProviderId) ??
+    providers.find((p) => p.is_default) ??
+    providers[0];
   if (!provider) {
     return { type: 'search', url: trimmed };
   }
@@ -141,17 +146,21 @@ export function resolveQuery(
 export interface OmnibarCallbacks {
   onActivateBookmark: (bookmark: BookmarkItem) => void;
   onNavigate: (url: string) => void;
+  /** Persist a newly selected search engine for the active profile. */
+  onSelectEngine?: (providerId: string) => void;
 }
 
 export class Omnibar {
   readonly element: HTMLElement;
 
   private readonly input: HTMLInputElement;
+  private readonly engineSelect: HTMLSelectElement;
   private readonly resultsEl: HTMLElement;
   private readonly disposers: Array<() => void> = [];
   private resultNodes: HTMLElement[] = [];
   private matches: BookmarkItem[] = [];
   private activeIndex = -1;
+  private selectedProviderId = '';
 
   constructor(
     private readonly store: LaunchpadStore,
@@ -172,14 +181,21 @@ export class Omnibar {
       },
     });
 
-    // Presentational only: the search glyph sits in a circular badge to match
-    // the target card aesthetic. No behaviour is attached to this wrapper.
-    const iconBadge = el('span', {
-      className: 'omnibar__icon-badge',
-      children: [svg(ICON_SEARCH, { className: 'omnibar__icon' })],
+    // Inline search-engine selector on the left of the pill.
+    this.engineSelect = el('select', {
+      className: 'omnibar__engine',
+      attrs: { 'aria-label': 'Search engine' },
     });
+    this.engineSelect.addEventListener('change', () => {
+      this.selectedProviderId = this.engineSelect.value;
+      this.callbacks.onSelectEngine?.(this.selectedProviderId);
+    });
+
     const hint = el('kbd', { className: 'omnibar__hint', text: 'Enter' });
-    const bar = el('div', { className: 'omnibar', children: [iconBadge, this.input, hint] });
+    const bar = el('div', {
+      className: 'omnibar',
+      children: [this.engineSelect, this.input, hint],
+    });
 
     this.resultsEl = el('ul', {
       className: 'omnibar__results',
@@ -188,6 +204,7 @@ export class Omnibar {
 
     this.element = el('div', { className: 'omnibar-wrap', children: [bar, this.resultsEl] });
 
+    this.renderEngine();
     this.bind();
   }
 
@@ -196,7 +213,30 @@ export class Omnibar {
     this.input.focus();
   }
 
-  /** Bind document-level `Alt + [1-9]` hotkeys for pinned bookmarks. */
+  /** Focus the input and select any existing text (the `/` hotkey). */
+  focusAndSelect(): void {
+    this.input.focus();
+    this.input.select();
+  }
+
+  /** Rebuild the engine selector (call after a profile switch). */
+  renderEngine(): void {
+    const providers = this.store.appConfig.search_providers;
+    this.engineSelect.replaceChildren();
+    for (const provider of providers) {
+      this.engineSelect.appendChild(
+        el('option', { text: provider.name, attrs: { value: provider.id } }),
+      );
+    }
+
+    const preferred = this.store.activeProfile?.default_search_provider_id;
+    const fallback = providers.find((p) => p.is_default)?.id ?? providers[0]?.id ?? '';
+    this.selectedProviderId =
+      preferred && providers.some((p) => p.id === preferred) ? preferred : fallback;
+    this.engineSelect.value = this.selectedProviderId;
+  }
+
+  /** Bind document-level `Alt + [1-9]` and `/` hotkeys. */
   attachGlobalHotkeys(): void {
     this.disposers.push(
       on(document, 'keydown', (event: KeyboardEvent) => {
@@ -212,6 +252,31 @@ export class Omnibar {
         }
         event.preventDefault();
         this.callbacks.onActivateBookmark(bookmark);
+      }),
+    );
+
+    // `/` focuses the search pill from any neutral page state. It is ignored
+    // while typing in a field or when a modal is open.
+    this.disposers.push(
+      on(document, 'keydown', (event: KeyboardEvent) => {
+        if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) {
+          return;
+        }
+        const target = event.target as HTMLElement | null;
+        if (
+          target &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.tagName === 'SELECT' ||
+            target.isContentEditable)
+        ) {
+          return;
+        }
+        if (document.querySelector('.modal-overlay.is-open')) {
+          return;
+        }
+        event.preventDefault();
+        this.focusAndSelect();
       }),
     );
   }
@@ -290,6 +355,7 @@ export class Omnibar {
       query,
       this.store.activeBookmarks,
       this.store.appConfig.search_providers,
+      this.selectedProviderId,
     );
     if (resolution.type === 'bookmark') {
       this.callbacks.onActivateBookmark(resolution.bookmark);

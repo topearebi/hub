@@ -31,28 +31,27 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding: var(--space-4);
+  padding: 0;
 }
 
-.launchpad__topbar {
+/* ---- System header (edge-to-edge) ---- */
+.system-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-light);
+  background-color: var(--bg-app);
 }
 
-.launchpad__actions {
+.system-header__left,
+.system-header__right {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.brand {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text-primary);
+  min-width: 0;
 }
 
 .launchpad__center {
@@ -63,7 +62,30 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  padding-top: var(--space-6);
+  padding: var(--space-6) var(--space-4) var(--space-4);
+}
+
+/* ---- Centered brand ---- */
+.brand-area {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 72px;
+  text-align: center;
+}
+
+.brand-area__title {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+}
+
+.brand-area__logo {
+  max-height: 72px;
+  max-width: 240px;
+  object-fit: contain;
 }
 
 .launchpad__omnibar {
@@ -144,13 +166,17 @@
 /* Mobile / PWA viewport (PRD §6.2). */
 @media (max-width: 768px) {
   .launchpad {
-    padding: var(--space-3);
+    padding: 0;
     padding-bottom: 80px;
   }
 
   .launchpad__center {
-    padding-top: var(--space-4);
+    padding: var(--space-4) var(--space-3) var(--space-3);
     gap: var(--space-5);
+  }
+
+  .brand-area {
+    min-height: 56px;
   }
 
   .launchpad__omnibar {

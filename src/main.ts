@@ -32,30 +32,28 @@ import { resolveDrawerOpen } from './components/drawer';
 import { SettingsModal } from './components/settings';
 import { ShareTargetPrompt } from './components/share-target';
 import { LockScreen } from './components/lock-screen';
+import { Header } from './components/header';
+import { Brand } from './components/brand';
+import { ProfilePopover } from './components/profile-popover';
+import { ProfileEditor } from './components/profile-editor';
 import { showToast } from './components/toast';
-import { el, svg } from './utils/dom';
+import { el } from './utils/dom';
 import { newId } from './utils/crypto';
 import { draftFromShare, parseLaunchIntent, updateAppBadge } from './core/pwa';
 import { NotificationManager } from './core/notifications';
 import { GamepadNavigator, isGamepadSupported } from './core/gamepad';
 import type { GamepadAction } from './core/gamepad';
+import { TelemetryService } from './core/telemetry';
 import {
   isWebAuthnAvailable,
   registerAppLock,
   resolveInitialLock,
   verifyAppLock,
 } from './core/lock';
-import type { BookmarkItem, CategoryItem, NoteItem } from './types/schemas';
+import type { BookmarkItem, CategoryItem, NoteItem, ProfileItem } from './types/schemas';
 
 type DrawerKey = 'tasks' | 'notes';
 type ViewKey = 'bookmarks' | 'tasks' | 'notes';
-
-/** Local inline SVG icons (no CDN). */
-const ICON_SETTINGS =
-  'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z';
-const ICON_TASKS = 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11';
-const ICON_NOTES =
-  'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8';
 
 /**
  * Activate a bookmark: record the local visit, resolve the best reachable URL
@@ -171,45 +169,23 @@ async function bootstrap(): Promise<void> {
   /* ---- Shell ---- */
   const shell = el('div', { className: 'app-shell', attrs: { 'data-view': 'bookmarks' } });
 
-  /* ---- Launchpad ---- */
-  const brand = el('span', { className: 'brand', text: 'Hub' });
-
-  const syncStatus = el('span', {
-    className: 'sync-status',
-    attrs: { 'data-status': 'idle', title: 'Sync: idle', 'aria-label': 'Sync status' },
+  /* ---- System header (telemetry + profile controls) ---- */
+  const header = new Header({
+    onToggleTasks: () => setOpen('tasks', !openState.tasks),
+    onToggleNotes: () => setOpen('notes', !openState.notes),
+    onOpenProfile: (anchor) => profilePopover.toggle(anchor),
   });
 
-  const tasksToggle = el('button', {
-    className: 'icon-button drawer-toggle',
-    attrs: { type: 'button', 'aria-label': 'Toggle tasks' },
-  });
-  tasksToggle.appendChild(svg(ICON_TASKS));
-
-  const notesToggle = el('button', {
-    className: 'icon-button drawer-toggle',
-    attrs: { type: 'button', 'aria-label': 'Toggle scratchpad' },
-  });
-  notesToggle.appendChild(svg(ICON_NOTES));
-
-  const settingsButton = el('button', {
-    className: 'icon-button',
-    attrs: { type: 'button', 'aria-label': 'Settings' },
-  });
-  settingsButton.appendChild(svg(ICON_SETTINGS));
-
-  const actions = el('div', {
-    className: 'launchpad__actions',
-    children: [syncStatus, tasksToggle, notesToggle, settingsButton],
-  });
-  const topbar = el('header', { className: 'launchpad__topbar', children: [brand, actions] });
+  /* ---- Centered brand + launchpad ---- */
+  const brand = new Brand();
 
   const omnibarHost = el('div', { className: 'launchpad__omnibar' });
   const bookmarksHost = el('div', { className: 'launchpad__bookmarks' });
   const center = el('div', {
     className: 'launchpad__center',
-    children: [omnibarHost, bookmarksHost],
+    children: [brand.element, omnibarHost, bookmarksHost],
   });
-  const launchpad = el('main', { className: 'launchpad', children: [topbar, center] });
+  const launchpad = el('main', { className: 'launchpad', children: [header.element, center] });
 
   /* ---- Drawers ---- */
   const tasksDrawer = new TasksDrawer(store, {
@@ -257,6 +233,16 @@ async function bootstrap(): Promise<void> {
       void activateBookmark(bookmark);
     },
     onNavigate: navigate,
+    onSelectEngine: (providerId) => {
+      const current = store.activeProfile;
+      if (current) {
+        void store.upsertProfile({
+          ...current,
+          default_search_provider_id: providerId,
+          updated_at: Date.now(),
+        });
+      }
+    },
   });
   omnibarHost.appendChild(omnibar.element);
   omnibar.attachGlobalHotkeys();
@@ -290,8 +276,7 @@ async function bootstrap(): Promise<void> {
   let suppressSync = false;
 
   function updateSyncStatus(status: SyncStatus): void {
-    syncStatus.setAttribute('data-status', status);
-    syncStatus.setAttribute('title', `Sync: ${status}`);
+    header.setSyncStatus(status);
     if (status === 'error') {
       showToast('Sync failed. Check your GitHub settings.', { variant: 'error' });
     }
@@ -358,7 +343,41 @@ async function bootstrap(): Promise<void> {
     },
   });
   document.body.appendChild(settings.element);
-  settingsButton.addEventListener('click', () => settings.open());
+
+  /* ---- Profile popover + editor ---- */
+  const profilePopover = new ProfilePopover(store, {
+    onSwitch: (id) => {
+      void switchProfile(id);
+    },
+    onAdd: () => {
+      void addProfile();
+    },
+    onEditProfile: () => profileEditor.open(),
+    onOpenSettings: () => settings.open(),
+  });
+  document.body.appendChild(profilePopover.element);
+
+  const profileEditor = new ProfileEditor(store, {
+    onSave: async (patch) => {
+      const current = store.activeProfile;
+      if (!current) {
+        return;
+      }
+      await store.upsertProfile({ ...current, ...patch, updated_at: Date.now() });
+      applyProfile();
+    },
+    onDelete: async () => {
+      const current = store.activeProfile;
+      if (current) {
+        await store.softDeleteProfile(current.id);
+      }
+      applyProfile();
+    },
+  });
+  document.body.appendChild(profileEditor.element);
+
+  /* ---- Environment telemetry (non-blocking) ---- */
+  const telemetry = new TelemetryService();
 
   /* ---- Drawer state helpers ---- */
   const openState: Record<DrawerKey, boolean> = { tasks: false, notes: false };
@@ -417,14 +436,46 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  tasksToggle.addEventListener('click', () => setOpen('tasks', !openState.tasks));
-  notesToggle.addEventListener('click', () => setOpen('notes', !openState.notes));
+  /* ---- Profile / theme helpers ---- */
+  function applyTheme(theme: 'auto' | 'light' | 'dark'): void {
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+
+  /** Apply the active profile's branding, theme, and engine to the UI. */
+  function applyProfile(): void {
+    const profile = store.activeProfile;
+    brand.render(profile);
+    header.renderProfile(profile);
+    omnibar.renderEngine();
+    applyTheme(profile?.theme ?? store.appConfig.theme);
+  }
+
+  async function switchProfile(id: string): Promise<void> {
+    await store.setActiveProfile(id);
+    applyProfile();
+  }
+
+  async function addProfile(): Promise<void> {
+    const now = Date.now();
+    const profile: ProfileItem = {
+      id: newId(),
+      created_at: now,
+      updated_at: now,
+      name: `Profile ${store.profiles.length + 1}`,
+      hub_title: 'Hub',
+    };
+    await store.upsertProfile(profile);
+    await store.setActiveProfile(profile.id);
+    applyProfile();
+    profileEditor.open();
+  }
 
   /* ---- Initial render ---- */
   bookmarksView.render();
   tasksDrawer.render();
   notesDrawer.render();
   applyPinnedState();
+  applyProfile();
   setView('bookmarks');
 
   store.subscribe('bookmarks', () => bookmarksView.render());
@@ -432,6 +483,7 @@ async function bootstrap(): Promise<void> {
   store.subscribe('metrics', () => bookmarksView.render());
   store.subscribe('tasks', () => tasksDrawer.render());
   store.subscribe('notes', () => notesDrawer.render());
+  store.subscribe('profiles', () => applyProfile());
 
   // Debounced sync on any syncable mutation (event-driven, never polled).
   for (const event of ['bookmarks', 'categories', 'tasks', 'notes'] as const) {
@@ -599,6 +651,9 @@ async function bootstrap(): Promise<void> {
     // Clear the launch query so a refresh does not replay the intent.
     window.history.replaceState(null, '', import.meta.env.BASE_URL);
   }
+
+  // Load environment telemetry without blocking the UI.
+  void telemetry.load().then((data) => header.telemetry.render(data));
 
   // Instant typing: focus the omnibar on boot.
   omnibar.focus();
