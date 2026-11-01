@@ -61,16 +61,23 @@ public/
 └── apple-touch-icon.png  # iOS home-screen icon (180×180)
 src/
 ├── core/           # Headless business logic (no DOM imports)
-│   ├── db.ts       # Native IndexedDB wrapper (CRUD, transactions, indices)
-│   ├── store.ts    # Reactive in-memory state store & event bus
-│   ├── sync.ts     # GitHub REST client, merge logic & debounced SyncEngine
+│   ├── db.ts       # Native IndexedDB wrapper (v2: profiles + partition indices)
+│   ├── store.ts    # Reactive state store, active-profile filtering & migration
+│   ├── sync.ts     # GitHub REST client, v2 merge logic & debounced SyncEngine
 │   ├── fallback.ts # URL health checks & mirror resolution
 │   ├── pwa.ts      # Launch intents, share parsing, app badging
 │   ├── notifications.ts # Local reminders + Web Push subscription
 │   ├── gamepad.ts  # Gamepad -> navigation action mapping
-│   └── lock.ts     # WebAuthn app lock (screen lock / biometrics)
+│   ├── lock.ts     # WebAuthn app lock (screen lock / biometrics)
+│   ├── telemetry.ts# IP/location (ipwho.is) + weather (Open-Meteo), TTL cache
+│   └── image.ts    # Canvas scale/compress for avatars & logos
 ├── components/     # Vanilla TS UI components
-│   ├── omnibar.ts  # Search bar, fuzzy matcher, hotkeys, provider router
+│   ├── header.ts   # Edge-to-edge system header (telemetry + profile controls)
+│   ├── telemetry-badge.ts # IP / location / weather badge with offline fallback
+│   ├── brand.ts    # Centered logo or custom Hub title
+│   ├── profile-popover.ts # Profile switcher / add / settings menu
+│   ├── profile-editor.ts  # Profile name, avatar, logo, engine, theme
+│   ├── omnibar.ts  # Search pill, engine selector, fuzzy matcher, `/` hotkey
 │   ├── bookmarks.ts# Categorized grid, recents, empty state
 │   ├── tasks.ts    # Tasks drawer (create, toggle, delete, sort, reminders)
 │   ├── notes.ts    # Scratchpad drawer (cards, color badges, clipboard)
@@ -103,6 +110,25 @@ src/
 - **Three data tiers:** remote sync payload (syncable entities only), local
   IndexedDB (entities + `DeviceMetrics` + `AppConfig`), and in-memory state.
   `DeviceMetrics` must **never** appear in the remote payload.
+
+---
+
+## Multi-Profile & Start Page
+
+- **Profiles:** every bookmark, category, task, and note is partitioned by
+  `profile_id`. Each profile carries its own name, avatar, custom Hub title or
+  logo, default search engine, and optional theme override.
+- **Migration:** on first run after upgrading, a default profile is created and
+  all legacy (unassigned) records are migrated into it — no data loss. v1 sync
+  payloads are migrated to v2 on read.
+- **System header:** an edge-to-edge header shows environment telemetry
+  (IP / location / weather via ipwho.is + Open-Meteo, cached for 30 minutes with
+  an offline fallback) on the left and the active-profile control on the right.
+- **Search pill:** a centered, pill-shaped search bar with an inline engine
+  selector. Press `/` anywhere to focus it and select existing text (ignored
+  while typing in a field or when a modal is open).
+- **Sync:** the BYOS payload is now `version: 2` and includes `profiles`; the
+  Last-Write-Wins merge remains non-destructive.
 
 ---
 
@@ -168,7 +194,7 @@ Enforced negative constraints (AGENTS.md):
 
 - [x] `npm run typecheck` passes with zero errors.
 - [x] `npm run lint` passes with zero errors.
-- [x] `npm run test` passes (100 tests across 12 suites).
+- [x] `npm run test` passes (114 tests across 15 suites).
 - [x] `npm run build` produces a production bundle under the 60 KB gzip budget.
 - [x] Omnibar auto-focuses; `Enter` navigates the current tab.
 - [x] Drawers slide with a 200ms transition; pinning persists to `AppConfig`.

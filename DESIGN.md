@@ -86,6 +86,25 @@
 
 - Styled like flat index cards or sticky notes using `--bg-card` and an optional vertical color border on the left (`border-left: 3px solid var(--accent-sage);`).
 
-```
+### 3.5 System Header (Edge-to-Edge)
 
-```
+- **Layout:** full-width bar pinned to the top of the viewport, `1px` bottom
+  border (`--border-light`), background `--bg-app`. Two clusters:
+  - **Left:** environment telemetry — client IP, location label, and weather
+    with temperature. Muted `--text-sub`; a single "Offline" badge when
+    telemetry is unavailable.
+  - **Right:** sync status dot, drawer toggles, and the active-profile control
+    (avatar + name) which opens the profile popover.
+- **Profile popover:** anchored beneath the profile control; lists profiles for
+  quick switching plus Add profile / Profile settings / App settings.
+
+### 3.6 Centered Brand & Search Pill
+
+- **Brand:** centered above the search pill. Renders the profile's custom logo
+  (`max-height: 72px`) when set, otherwise the custom Hub title in prominent
+  type (`clamp(2rem, 6vw, 3.5rem)`), otherwise "Hub".
+- **Search pill:** centered, `52px` tall, full pill radius, subtle border and
+  shadow; warm focus ring on focus. An inline search-engine selector sits on the
+  left; the input fills the middle; an `Enter` hint sits on the right.
+- **Hotkey:** pressing `/` focuses the pill and selects existing text. Ignored
+  while typing in an input/textarea/select or when a modal is open.

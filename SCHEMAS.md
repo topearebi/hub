@@ -59,11 +59,17 @@ This schema represents the exact byte-for-byte structure committed to and fetche
  * Serialized as pretty-printed JSON (2-space indent) on the remote target.
  */
 export interface HubStoragePayload {
-  /** Schema contract version for forward/backward migration handling */
-  version: 1;
+  /**
+   * Schema contract version. v2 adds `profiles` and `profile_id` partitioning;
+   * v1 payloads are migrated on read.
+   */
+  version: 2;
 
   /** Unix epoch timestamp (ms) indicating when this snapshot was written */
   last_synced_at: number;
+
+  /** Profile definitions (v2) */
+  profiles: ProfileItem[];
 
   /** Canonical collection arrays */
   bookmarks: BookmarkItem[];
@@ -110,6 +116,9 @@ export interface SyncableEntity {
 
 ```typescript
 export interface BookmarkItem extends SyncableEntity {
+  /** Owning profile id (partition key) */
+  profile_id: string;
+
   /** Human-readable display label */
   title: string;
 
@@ -140,6 +149,9 @@ export interface BookmarkItem extends SyncableEntity {
 }
 
 export interface CategoryItem extends SyncableEntity {
+  /** Owning profile id (partition key) */
+  profile_id: string;
+
   /** Category display name (e.g., "Daily Ops", "Infrastructure", "Media") */
   name: string;
 
@@ -152,6 +164,9 @@ export interface CategoryItem extends SyncableEntity {
 
 ```typescript
 export interface TaskItem extends SyncableEntity {
+  /** Owning profile id (partition key) */
+  profile_id: string;
+
   /** Primary task text */
   title: string;
 
@@ -176,6 +191,9 @@ export interface TaskItem extends SyncableEntity {
 
 ```typescript
 export interface NoteItem extends SyncableEntity {
+  /** Owning profile id (partition key) */
+  profile_id: string;
+
   /** Note card title / summary line */
   title: string;
 
@@ -191,6 +209,33 @@ export interface NoteItem extends SyncableEntity {
    * Restricted to theme tokens or predefined pastel/warm hex values.
    */
   color_tag?: 'terracotta' | 'sage' | 'amber' | 'neutral' | string;
+}
+```
+
+#### D. Profiles (v2)
+
+```typescript
+export interface ProfileItem extends SyncableEntity {
+  /** Display name of the profile / space */
+  name: string;
+
+  /** Avatar image (data URL or remote URL) */
+  avatar?: string;
+
+  /** Custom space title shown when no logo is configured */
+  hub_title?: string;
+
+  /** Custom space logo (compressed data URL) */
+  logo?: string;
+
+  /** Default search provider id (references AppConfig.search_providers) */
+  default_search_provider_id?: string;
+
+  /** Optional per-profile theme override */
+  theme?: 'auto' | 'light' | 'dark';
+
+  /** Preferred sync file path (stored; a single shared file is used) */
+  sync_path?: string;
 }
 ```
 
@@ -251,6 +296,9 @@ export interface AppConfig {
     tasks: boolean;
     notes: boolean;
   };
+
+  /** Id of the currently active profile (local-only) */
+  active_profile_id?: string;
 
   /* ---- Local-Only Feature Toggles (never synced, v1.1) ---- */
 
