@@ -71,6 +71,45 @@ describe('profile partitioning', () => {
   });
 });
 
+describe('legacy entity backfill', () => {
+  it('assigns unpartitioned entities to the active profile even when one exists', async () => {
+    const now = Date.now();
+    // A profile already exists (e.g. restored from sync) while a legacy record
+    // has no `profile_id`.
+    await put(STORE.profiles, { id: 'p1', created_at: now, updated_at: now, name: 'Existing' });
+    await put(STORE.bookmarks, {
+      id: 'b1',
+      created_at: now,
+      updated_at: now,
+      title: 'Legacy',
+      url: 'https://legacy.test',
+      category_id: 'c1',
+    } as unknown as BookmarkItem);
+
+    await store.init();
+
+    // The record must be visible and stamped with the active profile id.
+    expect(store.activeBookmarks.map((b) => b.id)).toEqual(['b1']);
+    expect(store.getBookmark('b1')?.profile_id).toBe('p1');
+  });
+});
+
+describe('profile deletion', () => {
+  it('creates a replacement profile when the last profile is deleted', async () => {
+    await store.init();
+    expect(store.profiles).toHaveLength(1);
+
+    await store.softDeleteProfile(DEFAULT_PROFILE_ID);
+
+    // A fresh live profile replaces the tombstone so the app stays usable and
+    // new entities are never stamped with a deleted profile id.
+    expect(store.profiles).toHaveLength(1);
+    expect(store.profiles[0]?.id).not.toBe(DEFAULT_PROFILE_ID);
+    expect(store.activeProfile?.is_deleted).not.toBe(true);
+    expect(store.activeProfileId).toBe(store.profiles[0]?.id);
+  });
+});
+
 describe('task cascade delete', () => {
   it('soft-deletes subtasks when a parent is deleted', async () => {
     await store.init();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildTaskTree, completedTasks, sortTasks } from '../tasks';
+import { TasksDrawer, buildTaskTree, completedTasks, sortTasks } from '../tasks';
 import type { TaskItem } from '../../types/schemas';
 
 /** Build a fully-formed task from minimal overrides. */
@@ -96,5 +96,36 @@ describe('completedTasks', () => {
     ];
 
     expect(completedTasks(tasks).map((t) => t.id)).toEqual(['c2', 'c1']);
+  });
+});
+
+describe('task context menu', () => {
+  it('closes when the user clicks outside the menu', () => {
+    const task = makeTask({ id: 't1', title: 'Task', created_at: 1 });
+    const fakeStore = {
+      activeTasks: [task],
+      activeProfileId: 'p1',
+      upsertTask: async () => undefined,
+      softDeleteTask: async () => undefined,
+    };
+    const drawer = new TasksDrawer(fakeStore, {
+      onPinToggle: () => undefined,
+      onClose: () => undefined,
+    });
+    document.body.appendChild(drawer.element);
+    drawer.render();
+
+    const menuButton = drawer.element.querySelector<HTMLElement>('.task__menu-button');
+    expect(menuButton).not.toBeNull();
+    menuButton?.click();
+
+    const menu = drawer.element.querySelector<HTMLElement>('.task-menu');
+    expect(menu?.hidden).toBe(false);
+
+    // A click anywhere outside the menu/button dismisses it.
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    expect(menu?.hidden).toBe(true);
+
+    drawer.destroy();
   });
 });

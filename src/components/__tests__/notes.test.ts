@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { noteColorClass, sortNotes } from '../notes';
+import { NotesDrawer, noteColorClass, sortNotes } from '../notes';
+import { NoteEditor } from '../note-editor';
 import type { NoteItem } from '../../types/schemas';
 
 /** Build a fully-formed note from minimal overrides. */
@@ -69,5 +70,46 @@ describe('noteColorClass', () => {
     expect(noteColorClass('neutral')).toBe('note--default');
     expect(noteColorClass(undefined)).toBe('note--default');
     expect(noteColorClass('chartreuse')).toBe('note--default');
+  });
+});
+
+describe('NoteEditor', () => {
+  it('closes when Escape is pressed', () => {
+    const editor = new NoteEditor({ onSave: () => undefined, onDelete: () => undefined });
+    document.body.appendChild(editor.element);
+
+    editor.open(makeNote({ id: 'n1', title: 'Note', updated_at: 1, content: 'body' }));
+    expect(editor.element.classList.contains('is-open')).toBe(true);
+
+    editor.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(editor.element.classList.contains('is-open')).toBe(false);
+  });
+});
+
+describe('NotesDrawer editor controls', () => {
+  it('reports and closes the note editor', () => {
+    const note = makeNote({ id: 'n1', title: 'Note', updated_at: 1, content: 'body' });
+    const fakeStore = {
+      activeNotes: [note],
+      activeProfileId: 'p1',
+      upsertNote: async () => undefined,
+      softDeleteNote: async () => undefined,
+    };
+    const drawer = new NotesDrawer(fakeStore, {
+      onPinToggle: () => undefined,
+      onClose: () => undefined,
+    });
+    document.body.appendChild(drawer.element);
+    drawer.render();
+
+    expect(drawer.isEditorOpen()).toBe(false);
+
+    drawer.element.querySelector<HTMLElement>('.note')?.click();
+    expect(drawer.isEditorOpen()).toBe(true);
+
+    drawer.closeEditor();
+    expect(drawer.isEditorOpen()).toBe(false);
+
+    drawer.destroy();
   });
 });

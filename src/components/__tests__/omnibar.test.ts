@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { filterBookmarks, fuzzyScore, isUrlLike, normalizeUrl, resolveQuery } from '../omnibar';
+import {
+  Omnibar,
+  filterBookmarks,
+  fuzzyScore,
+  isUrlLike,
+  normalizeUrl,
+  resolveQuery,
+} from '../omnibar';
+import { DEFAULT_APP_CONFIG } from '../../types/schemas';
 import type { BookmarkItem, SearchProvider } from '../../types/schemas';
 
 /** Build a fully-formed bookmark from minimal overrides. */
@@ -128,5 +136,42 @@ describe('resolveQuery', () => {
       type: 'search',
       url: 'https://duckduckgo.com/?q=hello%20world',
     });
+  });
+});
+
+describe('Alt+[1-9] hotkey', () => {
+  it('ignores the hotkey while the user is typing in a text field', () => {
+    const bookmark = makeBookmark({
+      id: 'b1',
+      title: 'One',
+      url: 'https://one.test',
+      hotkey: '1',
+    });
+    let activated = 0;
+    const fakeStore = {
+      activeBookmarks: [bookmark],
+      sortedCategories: [],
+      appConfig: DEFAULT_APP_CONFIG,
+      activeProfile: null,
+      profiles: [],
+      getRecentBookmarks: () => [],
+      getBookmarksByCategory: () => [],
+    };
+    const omnibar = new Omnibar(fakeStore, {
+      onActivateBookmark: () => {
+        activated += 1;
+      },
+      onNavigate: () => undefined,
+    });
+    document.body.appendChild(omnibar.element);
+    omnibar.attachGlobalHotkeys();
+
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: '1', altKey: true, bubbles: true }));
+
+    expect(activated).toBe(0);
+    omnibar.destroy();
   });
 });
