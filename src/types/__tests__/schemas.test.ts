@@ -10,6 +10,9 @@ describe('DEFAULT_APP_CONFIG', () => {
     expect(DEFAULT_APP_CONFIG.github_file_path).toBe('.hub/data.json');
     expect(DEFAULT_APP_CONFIG.theme).toBe('auto');
     expect(DEFAULT_APP_CONFIG.pinned_drawers).toEqual({ tasks: false, notes: false });
+    expect(DEFAULT_APP_CONFIG.notifications_enabled).toBe(false);
+    expect(DEFAULT_APP_CONFIG.gamepad_enabled).toBe(true);
+    expect(DEFAULT_APP_CONFIG.app_lock_enabled).toBe(false);
     expect(DEFAULT_APP_CONFIG.search_providers).toHaveLength(2);
 
     const defaults = DEFAULT_APP_CONFIG.search_providers.filter((p) => p.is_default);

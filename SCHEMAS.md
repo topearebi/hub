@@ -163,6 +163,12 @@ export interface TaskItem extends SyncableEntity {
 
   /** Unix epoch timestamp (ms) when completed, or null if pending */
   completed_at?: number | null;
+
+  /**
+   * Optional Unix epoch timestamp (ms) at which to raise a task reminder.
+   * Null/absent means no reminder is scheduled. (v1.1 authorized extension.)
+   */
+  remind_at?: number | null;
 }
 ```
 
@@ -245,6 +251,23 @@ export interface AppConfig {
     tasks: boolean;
     notes: boolean;
   };
+
+  /* ---- Local-Only Feature Toggles (never synced, v1.1) ---- */
+
+  /** Whether local task reminders are enabled */
+  notifications_enabled: boolean;
+
+  /** Optional VAPID public key used to subscribe to Web Push */
+  vapid_public_key?: string;
+
+  /** Whether gamepad navigation is enabled */
+  gamepad_enabled: boolean;
+
+  /** Whether the WebAuthn app lock gates the UI on launch */
+  app_lock_enabled: boolean;
+
+  /** Base64url credential id of the registered platform authenticator */
+  app_lock_credential_id?: string;
 }
 ```
 

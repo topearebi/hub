@@ -242,7 +242,12 @@ export interface SyncMetadata {
 /** Read the app config, falling back to a deep clone of the defaults. */
 export async function getAppConfig(): Promise<AppConfig> {
   const record = await get<ConfigRecord<AppConfig>>(STORE.config, APP_CONFIG_KEY);
-  return record ? record.value : structuredClone(DEFAULT_APP_CONFIG);
+  if (!record) {
+    return structuredClone(DEFAULT_APP_CONFIG);
+  }
+  // Backfill fields added after this record was persisted so the config schema
+  // can evolve without breaking existing installs.
+  return { ...structuredClone(DEFAULT_APP_CONFIG), ...record.value };
 }
 
 /** Persist the app config singleton. */
