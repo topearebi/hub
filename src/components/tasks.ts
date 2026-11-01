@@ -45,6 +45,7 @@ export class TasksDrawer {
 
   private readonly listEl: HTMLElement;
   private readonly input: HTMLInputElement;
+  private readonly reminderInput: HTMLInputElement;
 
   constructor(
     private readonly store: TasksStore,
@@ -69,7 +70,17 @@ export class TasksDrawer {
     });
     addButton.appendChild(svg(ICON_PLUS));
 
-    const form = el('form', { className: 'drawer__form', children: [this.input, addButton] });
+    // Optional reminder time: scheduled notifications are raised by the
+    // NotificationManager when this timestamp is reached.
+    this.reminderInput = el('input', {
+      className: 'drawer__input drawer__input--reminder',
+      attrs: { type: 'datetime-local', 'aria-label': 'Reminder time' },
+    });
+
+    const form = el('form', {
+      className: 'drawer__form drawer__form--stacked',
+      children: [this.input, this.reminderInput, addButton],
+    });
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       void this.addTask();
@@ -101,6 +112,11 @@ export class TasksDrawer {
     }
   }
 
+  /** Focus the new-task input (used by the "New Task" app shortcut). */
+  focusInput(): void {
+    this.input.focus();
+  }
+
   setPinned(pinned: boolean): void {
     this.element.setAttribute('data-pinned', pinned ? 'true' : 'false');
   }
@@ -119,6 +135,8 @@ export class TasksDrawer {
       return;
     }
     const now = Date.now();
+    const rawReminder = this.reminderInput.value;
+    const parsedReminder = rawReminder ? new Date(rawReminder).getTime() : NaN;
     const task: TaskItem = {
       id: newId(),
       created_at: now,
@@ -126,8 +144,10 @@ export class TasksDrawer {
       title,
       completed: false,
       completed_at: null,
+      remind_at: Number.isFinite(parsedReminder) ? parsedReminder : null,
     };
     this.input.value = '';
+    this.reminderInput.value = '';
     await this.store.upsertTask(task);
   }
 
@@ -144,6 +164,16 @@ export class TasksDrawer {
     });
 
     const title = el('span', { className: 'task__title', text: task.title });
+
+    // Surface scheduled reminders so the user can see when one is set.
+    if (typeof task.remind_at === 'number') {
+      item.appendChild(
+        el('span', {
+          className: 'task__reminder',
+          text: `Reminder: ${new Date(task.remind_at).toLocaleString()}`,
+        }),
+      );
+    }
 
     const removeButton = el('button', {
       className: 'icon-button task__delete',

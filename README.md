@@ -49,30 +49,40 @@ npm run dev
 ## Directory Map
 
 ```
+scripts/
+└── generate-icons.mjs # Dependency-free PNG icon generator (from the logo SVG)
 public/
-├── manifest.json   # PWA web app manifest (standalone, warm theme)
-├── sw.js           # Service worker (cache-first assets, network-first API)
-├── icon.svg        # Scalable app icon
+├── manifest.json   # PWA manifest (shortcuts, share target, maskable icons)
+├── sw.js           # Service worker (offline, push, notification, messaging)
+├── icon.svg        # Scalable app logo (sourced from the hub_backup branch)
 ├── icon-192.png    # PWA icon (192×192)
-└── icon-512.png    # PWA icon (512×512, also maskable)
+├── icon-512.png    # PWA icon (512×512)
+├── icon-maskable-512.png # Maskable PWA icon (512×512)
+└── apple-touch-icon.png  # iOS home-screen icon (180×180)
 src/
 ├── core/           # Headless business logic (no DOM imports)
 │   ├── db.ts       # Native IndexedDB wrapper (CRUD, transactions, indices)
 │   ├── store.ts    # Reactive in-memory state store & event bus
 │   ├── sync.ts     # GitHub REST client, merge logic & debounced SyncEngine
-│   └── fallback.ts # URL health checks & mirror resolution
+│   ├── fallback.ts # URL health checks & mirror resolution
+│   ├── pwa.ts      # Launch intents, share parsing, app badging
+│   ├── notifications.ts # Local reminders + Web Push subscription
+│   ├── gamepad.ts  # Gamepad -> navigation action mapping
+│   └── lock.ts     # WebAuthn app lock (screen lock / biometrics)
 ├── components/     # Vanilla TS UI components
 │   ├── omnibar.ts  # Search bar, fuzzy matcher, hotkeys, provider router
 │   ├── bookmarks.ts# Categorized grid, recents, empty state
-│   ├── tasks.ts    # Tasks drawer (create, toggle, delete, sort)
+│   ├── tasks.ts    # Tasks drawer (create, toggle, delete, sort, reminders)
 │   ├── notes.ts    # Scratchpad drawer (cards, color badges, clipboard)
 │   ├── drawer.ts   # Shared drawer shell (header, pin, close)
-│   ├── settings.ts # Settings modal, connection test, import/export
+│   ├── settings.ts # Settings modal, features, connection test, import/export
+│   ├── share-target.ts # Shared-text -> bookmark/note prompt
+│   ├── lock-screen.ts  # WebAuthn lock overlay
 │   └── toast.ts    # Bottom notification dispatcher
 ├── styles/
 │   ├── tokens.css  # Warm light/dark design tokens
 │   ├── layout.css  # Grid, drawers, responsive breakpoints
-│   └── components.css # Omnibar, cards, drawers, modal styles
+│   └── components.css # Omnibar, cards, drawers, modal, lock, share styles
 ├── types/
 │   └── schemas.ts  # Canonical data contracts (single source of truth)
 ├── utils/
@@ -100,8 +110,24 @@ src/
 
 - **Offline:** `public/sw.js` precaches the app shell and runtime-caches hashed
   bundles (cache-first). GitHub API requests are network-first and never cached.
-- **Installable:** `public/manifest.json` declares `display: standalone` with
-  local 192/512 icons and warm theme colors.
+  SPA navigations (including `/share-target` and `?action=` shortcuts) always
+  resolve to the cached `index.html` shell.
+- **Installable:** `public/manifest.json` declares `display: standalone`, an
+  app `id`, categories, `display_override`, local 192/512/maskable icons, and
+  the warm brand theme.
+- **App shortcuts:** long-press the installed icon for **New Bookmark**,
+  **New Task**, and **New Note** (`?action=...`).
+- **Share target:** share text/links from any app to Hub (`share_target`, GET);
+  Hub proposes a bookmark (when a URL is present) or a note.
+- **App badging:** the installed icon shows the count of open tasks via the
+  Badging API.
+- **Notifications:** local task reminders fire via the Notification API; Web
+  Push subscriptions use a configurable VAPID public key (see Settings), and the
+  service worker handles `push` / `notificationclick`.
+- **Gamepad navigation:** D-pad / left stick move focus, A activates, B backs
+  out, Y/Start focus the omnibar, and LB/RB toggle the drawers.
+- **App lock:** an optional WebAuthn gate using the device screen lock /
+  biometrics (Settings → App features).
 - **Deploy:** pushing to `main` triggers
   [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), which runs the
   full quality gate and publishes `dist/` to GitHub Pages. `base: './'` keeps
@@ -142,7 +168,7 @@ Enforced negative constraints (AGENTS.md):
 
 - [x] `npm run typecheck` passes with zero errors.
 - [x] `npm run lint` passes with zero errors.
-- [x] `npm run test` passes (65 tests across 7 suites).
+- [x] `npm run test` passes (100 tests across 12 suites).
 - [x] `npm run build` produces a production bundle under the 60 KB gzip budget.
 - [x] Omnibar auto-focuses; `Enter` navigates the current tab.
 - [x] Drawers slide with a 200ms transition; pinning persists to `AppConfig`.

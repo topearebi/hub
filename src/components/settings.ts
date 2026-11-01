@@ -28,6 +28,10 @@ export interface SettingsCallbacks {
   onSaved: () => void;
   /** Invoked by the "Sync now" control to pull remote changes on demand. */
   onSyncNow: () => void;
+  /** Register a WebAuthn platform credential to enable the app lock. */
+  onRegisterLock: () => Promise<void>;
+  /** Disable the app lock and clear its credential. */
+  onDisableLock: () => Promise<void>;
 }
 
 /** Wrap an input in a labelled field. */
@@ -49,6 +53,11 @@ export class SettingsModal {
   private readonly pathInput: HTMLInputElement;
   private readonly statusEl: HTMLElement;
   private readonly fileInput: HTMLInputElement;
+  private readonly notificationsEnabled: HTMLInputElement;
+  private readonly vapidInput: HTMLInputElement;
+  private readonly gamepadEnabled: HTMLInputElement;
+  private readonly lockEnabled: HTMLInputElement;
+  private readonly lockButton: HTMLButtonElement;
 
   constructor(
     private readonly store: SettingsStore,
@@ -68,6 +77,22 @@ export class SettingsModal {
     });
     this.fileInput = el('input', { attrs: { type: 'file', accept: 'application/json' } });
     this.fileInput.hidden = true;
+
+    this.notificationsEnabled = el('input', { attrs: { type: 'checkbox' } });
+    this.vapidInput = el('input', {
+      attrs: { type: 'text', placeholder: 'BEl62i…', autocomplete: 'off' },
+    });
+    this.gamepadEnabled = el('input', { attrs: { type: 'checkbox' } });
+    this.lockEnabled = el('input', { attrs: { type: 'checkbox' } });
+    this.lockEnabled.disabled = true;
+    this.lockButton = el('button', {
+      className: 'button',
+      text: 'Register app lock',
+      attrs: { type: 'button' },
+    });
+    this.lockButton.addEventListener('click', () => {
+      void this.handleLockToggle();
+    });
 
     this.element = this.build();
   }
@@ -179,9 +204,21 @@ export class SettingsModal {
       ],
     });
 
+    const appSection = el('section', {
+      className: 'settings-section',
+      children: [
+        el('h3', { className: 'settings-section__title', text: 'App features' }),
+        field('Local notifications & reminders', this.notificationsEnabled),
+        field('Web Push public key (VAPID)', this.vapidInput),
+        field('Gamepad navigation', this.gamepadEnabled),
+        field('App lock (device screen lock / biometrics)', this.lockEnabled),
+        el('div', { className: 'settings-actions', children: [this.lockButton] }),
+      ],
+    });
+
     const body = el('div', {
       className: 'modal__body',
-      children: [syncSection, portabilitySection],
+      children: [syncSection, appSection, portabilitySection],
     });
 
     const dialog = el('div', {
@@ -212,6 +249,13 @@ export class SettingsModal {
     this.repoInput.value = config.github_repo ?? '';
     this.branchInput.value = config.github_branch;
     this.pathInput.value = config.github_file_path;
+    this.notificationsEnabled.checked = config.notifications_enabled;
+    this.vapidInput.value = config.vapid_public_key ?? '';
+    this.gamepadEnabled.checked = config.gamepad_enabled;
+    this.lockEnabled.checked = config.app_lock_enabled;
+    this.lockButton.textContent = config.app_lock_enabled
+      ? 'Re-register app lock'
+      : 'Register app lock';
     this.statusEl.textContent = '';
     this.statusEl.removeAttribute('data-tone');
   }
@@ -235,10 +279,23 @@ export class SettingsModal {
       github_repo: gh.repo,
       github_branch: gh.branch,
       github_file_path: gh.filePath,
+      notifications_enabled: this.notificationsEnabled.checked,
+      vapid_public_key: this.vapidInput.value.trim(),
+      gamepad_enabled: this.gamepadEnabled.checked,
     });
-    // Let the host pull remote data immediately after enabling sync.
+    // Let the host pull remote data and re-evaluate feature toggles.
     this.callbacks.onSaved();
     this.setStatus('Settings saved.', 'ok');
+  }
+
+  /** Enable an app lock (register credential) or disable and clear it. */
+  private async handleLockToggle(): Promise<void> {
+    if (this.store.appConfig.app_lock_enabled) {
+      await this.callbacks.onDisableLock();
+    } else {
+      await this.callbacks.onRegisterLock();
+    }
+    this.render();
   }
 
   private async handleTest(): Promise<void> {

@@ -127,6 +127,11 @@ export class NotesDrawer {
     }
   }
 
+  /** Focus the note title input (used by the "New Note" app shortcut). */
+  focusInput(): void {
+    this.titleInput.focus();
+  }
+
   setPinned(pinned: boolean): void {
     this.element.setAttribute('data-pinned', pinned ? 'true' : 'false');
   }

@@ -30,9 +30,22 @@ import { TasksDrawer } from './components/tasks';
 import { NotesDrawer } from './components/notes';
 import { resolveDrawerOpen } from './components/drawer';
 import { SettingsModal } from './components/settings';
+import { ShareTargetPrompt } from './components/share-target';
+import { LockScreen } from './components/lock-screen';
 import { showToast } from './components/toast';
 import { el, svg } from './utils/dom';
-import type { BookmarkItem } from './types/schemas';
+import { newId } from './utils/crypto';
+import { draftFromShare, parseLaunchIntent, updateAppBadge } from './core/pwa';
+import { NotificationManager } from './core/notifications';
+import { GamepadNavigator, isGamepadSupported } from './core/gamepad';
+import type { GamepadAction } from './core/gamepad';
+import {
+  isWebAuthnAvailable,
+  registerAppLock,
+  resolveInitialLock,
+  verifyAppLock,
+} from './core/lock';
+import type { BookmarkItem, CategoryItem, NoteItem } from './types/schemas';
 
 type DrawerKey = 'tasks' | 'notes';
 type ViewKey = 'bookmarks' | 'tasks' | 'notes';
@@ -92,6 +105,55 @@ async function importJson(file: File): Promise<void> {
   } catch {
     showToast('Import failed: invalid file.', { variant: 'error' });
   }
+}
+
+/** Ensure at least one category exists so new bookmarks have a home. */
+async function ensureDefaultCategory(): Promise<CategoryItem> {
+  const existing = store.sortedCategories[0];
+  if (existing) {
+    return existing;
+  }
+  const now = Date.now();
+  const category: CategoryItem = {
+    id: newId(),
+    created_at: now,
+    updated_at: now,
+    name: 'Shared',
+    order: 0,
+  };
+  await store.upsertCategory(category);
+  return category;
+}
+
+/** Create a bookmark from shared or manually entered input. */
+async function createBookmark(title: string, url: string): Promise<void> {
+  const category = await ensureDefaultCategory();
+  const now = Date.now();
+  const bookmark: BookmarkItem = {
+    id: newId(),
+    created_at: now,
+    updated_at: now,
+    title: title.trim() || url,
+    url,
+    category_id: category.id,
+  };
+  await store.upsertBookmark(bookmark);
+  showToast('Bookmark saved.', { variant: 'success' });
+}
+
+/** Create a scratchpad note from shared or manually entered input. */
+async function createNote(title: string, content: string): Promise<void> {
+  const now = Date.now();
+  const note: NoteItem = {
+    id: newId(),
+    created_at: now,
+    updated_at: now,
+    title: title.trim() || 'Shared note',
+    content,
+    color_tag: 'terracotta',
+  };
+  await store.upsertNote(note);
+  showToast('Note saved.', { variant: 'success' });
 }
 
 async function bootstrap(): Promise<void> {
@@ -206,6 +268,21 @@ async function bootstrap(): Promise<void> {
   });
   bookmarksHost.appendChild(bookmarksView.element);
 
+  /* ---- Share target prompt (shared text -> bookmark or note) ---- */
+  const sharePrompt = new ShareTargetPrompt({
+    onCreateBookmark: (draft) => createBookmark(draft.title, draft.url),
+    onCreateNote: (draft) => createNote(draft.title, draft.content),
+    onDismiss: () => undefined,
+  });
+  document.body.appendChild(sharePrompt.element);
+
+  /* ---- App lock overlay (revealed only when locking is active) ---- */
+  const lockScreen = new LockScreen({
+    verify: () => verifyAppLock(store.appConfig.app_lock_credential_id ?? ''),
+    onUnlocked: () => undefined,
+  });
+  document.body.appendChild(lockScreen.element);
+
   /* ---- Sync engine ---- */
   let suppressSync = false;
 
@@ -256,8 +333,22 @@ async function bootstrap(): Promise<void> {
       const sha = await putRemoteFile(config, content, undefined, 'chore(hub): initialize data');
       await store.updateConfig({ github_last_sha: sha });
     },
+    onRegisterLock: async () => {
+      const credentialId = await registerAppLock('hub-user');
+      if (!credentialId) {
+        showToast('App lock could not be registered on this device.', { variant: 'warning' });
+        return;
+      }
+      await store.updateConfig({ app_lock_enabled: true, app_lock_credential_id: credentialId });
+      showToast('App lock enabled.', { variant: 'success' });
+    },
+    onDisableLock: async () => {
+      await store.updateConfig({ app_lock_enabled: false, app_lock_credential_id: '' });
+      showToast('App lock disabled.', { variant: 'info' });
+    },
     onSaved: () => {
       void syncEngine.pullNow();
+      applyFeatureToggles();
     },
     onSyncNow: () => {
       void syncEngine.pullNow();
@@ -357,6 +448,154 @@ async function bootstrap(): Promise<void> {
       void syncEngine.pullNow();
     }
   });
+
+  /* ---- PWA feature wiring (badge, notifications, gamepad, lock, share) ---- */
+
+  const notifications = new NotificationManager({
+    getTasks: () => store.activeTasks,
+    onFire: (reminder) => {
+      showToast(`Reminder: ${reminder.title}`, { variant: 'info' });
+    },
+  });
+
+  const gamepad = new GamepadNavigator({ onAction: handleGamepadAction });
+
+  /** Focusable elements currently visible inside the app shell. */
+  function collectFocusables(): HTMLElement[] {
+    const selector = 'button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])';
+    return Array.from(shell.querySelectorAll<HTMLElement>(selector)).filter(
+      (element) => !element.hasAttribute('disabled') && element.offsetParent !== null,
+    );
+  }
+
+  /** Move focus by `delta` steps through the visible focusables (wrapping). */
+  function moveFocus(delta: number): void {
+    const focusables = collectFocusables();
+    if (focusables.length === 0) {
+      return;
+    }
+    const current = document.activeElement as HTMLElement | null;
+    const index = current ? focusables.indexOf(current) : -1;
+    const next = index < 0 ? 0 : (index + delta + focusables.length) % focusables.length;
+    focusables[next]?.focus();
+  }
+
+  /** Close the top-most layer (modal, drawer, or blur). */
+  function closeTopLayer(): void {
+    if (sharePrompt.element.classList.contains('is-open')) {
+      sharePrompt.close();
+      return;
+    }
+    if (settings.element.classList.contains('is-open')) {
+      settings.close();
+      return;
+    }
+    if (openState.notes) {
+      setOpen('notes', false);
+      return;
+    }
+    if (openState.tasks) {
+      setOpen('tasks', false);
+      return;
+    }
+    (document.activeElement as HTMLElement | null)?.blur();
+  }
+
+  /** Translate a gamepad action into app navigation. */
+  function handleGamepadAction(action: GamepadAction): void {
+    switch (action) {
+      case 'omnibar':
+        omnibar.focus();
+        break;
+      case 'toggle-tasks':
+        setOpen('tasks', !openState.tasks);
+        break;
+      case 'toggle-notes':
+        setOpen('notes', !openState.notes);
+        break;
+      case 'activate':
+        (document.activeElement as HTMLElement | null)?.click();
+        break;
+      case 'back':
+        closeTopLayer();
+        break;
+      case 'up':
+      case 'left':
+        moveFocus(-1);
+        break;
+      case 'down':
+      case 'right':
+        moveFocus(1);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** Apply persisted feature toggles (boot + after settings are saved). */
+  function applyFeatureToggles(): void {
+    if (store.appConfig.notifications_enabled && NotificationManager.isSupported()) {
+      if (NotificationManager.permission() === 'granted') {
+        notifications.start();
+        void notifications.subscribeToPush(store.appConfig.vapid_public_key ?? '');
+      } else if (NotificationManager.permission() !== 'denied') {
+        void NotificationManager.requestPermission().then((permission) => {
+          if (permission === 'granted') {
+            notifications.start();
+            void notifications.subscribeToPush(store.appConfig.vapid_public_key ?? '');
+          }
+        });
+      }
+    } else {
+      notifications.stop();
+    }
+
+    if (store.appConfig.gamepad_enabled && isGamepadSupported()) {
+      gamepad.start();
+    } else {
+      gamepad.stop();
+    }
+
+    updateAppBadge(store.activeTasks.length);
+  }
+
+  // Keep the installed-icon badge and due reminders in sync with tasks.
+  store.subscribe('tasks', () => {
+    updateAppBadge(store.activeTasks.length);
+    if (store.appConfig.notifications_enabled) {
+      void notifications.tick();
+    }
+  });
+
+  applyFeatureToggles();
+
+  // App lock: gate the UI before the user interacts.
+  const lockPhase = resolveInitialLock(store.appConfig, isWebAuthnAvailable());
+  if (lockPhase === 'locked') {
+    lockScreen.open();
+  } else if (lockPhase === 'unsupported') {
+    showToast('App lock is on, but this device has no WebAuthn support.', { variant: 'warning' });
+  }
+
+  // Launch intent: app shortcuts and the Web Share Target.
+  const intent = parseLaunchIntent(window.location.search);
+  if (intent.share) {
+    sharePrompt.open(draftFromShare(intent.share));
+  } else if (intent.action === 'new-task') {
+    setView('tasks');
+    setOpen('tasks', true);
+    tasksDrawer.focusInput();
+  } else if (intent.action === 'new-note') {
+    setView('notes');
+    setOpen('notes', true);
+    notesDrawer.focusInput();
+  } else if (intent.action === 'new-bookmark') {
+    sharePrompt.open({ kind: 'bookmark', title: '', url: '', content: '' });
+  }
+  if (intent.action !== null || intent.share !== null) {
+    // Clear the launch query so a refresh does not replay the intent.
+    window.history.replaceState(null, '', import.meta.env.BASE_URL);
+  }
 
   // Instant typing: focus the omnibar on boot.
   omnibar.focus();

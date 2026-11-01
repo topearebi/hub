@@ -767,3 +767,94 @@
 .settings-status[data-tone='pending'] {
   color: var(--accent-amber);
 }
+
+/* ---- Task reminders ---- */
+.drawer__input--reminder {
+  font-size: var(--font-size-xs);
+}
+
+.task__reminder {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-xs);
+  font-size: var(--font-size-xs);
+  color: var(--accent-amber);
+}
+
+/* ---- Share target prompt ---- */
+.share-overlay {
+  z-index: calc(var(--z-modal) + 1);
+}
+
+.share__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+}
+
+.share__status {
+  margin: 0;
+  min-height: 1.2em;
+  font-size: var(--font-size-sm);
+  color: var(--text-sub);
+}
+
+.share__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+/* ---- App lock overlay ---- */
+.lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-modal) + 10);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md);
+  background-color: var(--bg-app);
+}
+
+.lock-overlay.is-open {
+  display: flex;
+}
+
+.lock__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  max-width: 360px;
+  padding: var(--space-xl);
+  text-align: center;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-elevated);
+}
+
+.lock__icon {
+  color: var(--accent-terracotta);
+}
+
+.lock__title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.lock__hint {
+  margin: 0;
+  color: var(--text-sub);
+  font-size: var(--font-size-sm);
+}
+
+.lock__status {
+  margin: 0;
+  min-height: 1.2em;
+  font-size: var(--font-size-sm);
+  color: var(--text-sub);
+}
