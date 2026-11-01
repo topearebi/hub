@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { TasksDrawer, buildTaskTree, completedTasks, sortTasks } from '../tasks';
+import {
+  TasksDrawer,
+  buildTaskTree,
+  completedTasks,
+  computeTaskMove,
+  isDescendantOf,
+  sortTasks,
+} from '../tasks';
 import type { TaskItem } from '../../types/schemas';
 
 /** Build a fully-formed task from minimal overrides. */
@@ -127,5 +134,122 @@ describe('task context menu', () => {
     expect(menu?.hidden).toBe(true);
 
     drawer.destroy();
+  });
+
+  it('closes the previous menu when another task menu is opened', () => {
+    const tasks = [
+      makeTask({ id: 't1', title: 'One', created_at: 2 }),
+      makeTask({ id: 't2', title: 'Two', created_at: 1 }),
+    ];
+    const fakeStore = {
+      activeTasks: tasks,
+      activeProfileId: 'p1',
+      upsertTask: async () => undefined,
+      softDeleteTask: async () => undefined,
+    };
+    const drawer = new TasksDrawer(fakeStore, {
+      onPinToggle: () => undefined,
+      onClose: () => undefined,
+    });
+    document.body.appendChild(drawer.element);
+    drawer.render();
+
+    const buttons = drawer.element.querySelectorAll<HTMLElement>('.task__menu-button');
+    const menus = drawer.element.querySelectorAll<HTMLElement>('.task-menu');
+    buttons[0]?.click();
+    expect(menus[0]?.hidden).toBe(false);
+
+    buttons[1]?.click();
+    expect(menus[0]?.hidden).toBe(true);
+    expect(menus[1]?.hidden).toBe(false);
+
+    drawer.destroy();
+  });
+});
+
+describe('date editor placement', () => {
+  it('renders the date editor inside the task body, not as a row sibling', () => {
+    const task = makeTask({ id: 't1', title: 'Task', created_at: 1 });
+    const fakeStore = {
+      activeTasks: [task],
+      activeProfileId: 'p1',
+      upsertTask: async () => undefined,
+      softDeleteTask: async () => undefined,
+    };
+    const drawer = new TasksDrawer(fakeStore, {
+      onPinToggle: () => undefined,
+      onClose: () => undefined,
+    });
+    document.body.appendChild(drawer.element);
+    drawer.render();
+
+    drawer.element.querySelector<HTMLElement>('.task__menu-button')?.click();
+    const setDate = Array.from(
+      drawer.element.querySelectorAll<HTMLElement>('.task-menu__item'),
+    ).find((button) => button.textContent?.includes('Set date/time'));
+    setDate?.click();
+
+    const editor = drawer.element.querySelector<HTMLElement>('.task__date-editor');
+    expect(editor).not.toBeNull();
+    expect(editor?.parentElement?.classList.contains('task__body')).toBe(true);
+
+    drawer.destroy();
+  });
+});
+
+describe('isDescendantOf', () => {
+  it('detects nested descendants and rejects unrelated tasks', () => {
+    const tasks = [
+      makeTask({ id: 'p', title: 'Parent', created_at: 3 }),
+      makeTask({ id: 'c', title: 'Child', created_at: 2, parent_id: 'p' }),
+      makeTask({ id: 'g', title: 'Grandchild', created_at: 1, parent_id: 'c' }),
+      makeTask({ id: 'x', title: 'Other', created_at: 1 }),
+    ];
+
+    expect(isDescendantOf(tasks, 'c', 'p')).toBe(true);
+    expect(isDescendantOf(tasks, 'g', 'p')).toBe(true);
+    expect(isDescendantOf(tasks, 'p', 'c')).toBe(false);
+    expect(isDescendantOf(tasks, 'x', 'p')).toBe(false);
+  });
+});
+
+describe('computeTaskMove', () => {
+  const tasks = [
+    makeTask({ id: 'a', title: 'A', created_at: 3 }),
+    makeTask({ id: 'b', title: 'B', created_at: 2 }),
+    makeTask({ id: 'c', title: 'C', created_at: 1 }),
+  ];
+
+  it('reorders a task before a sibling', () => {
+    const result = computeTaskMove(tasks, 'c', 'a', 'before');
+    expect(result).not.toBeNull();
+    const order = sortTasks(result ?? []).map((t) => t.id);
+    expect(order).toEqual(['c', 'a', 'b']);
+  });
+
+  it('reorders a task after a sibling', () => {
+    const result = computeTaskMove(tasks, 'a', 'c', 'after');
+    expect(result).not.toBeNull();
+    const order = sortTasks(result ?? []).map((t) => t.id);
+    expect(order).toEqual(['b', 'c', 'a']);
+  });
+
+  it('reparents a task as a child of the target', () => {
+    const result = computeTaskMove(tasks, 'b', 'a', 'child');
+    expect(result).not.toBeNull();
+    const moved = result?.find((t) => t.id === 'b');
+    expect(moved?.parent_id).toBe('a');
+  });
+
+  it('rejects dropping a task into its own descendant', () => {
+    const nested = [
+      makeTask({ id: 'p', title: 'Parent', created_at: 2 }),
+      makeTask({ id: 'c', title: 'Child', created_at: 1, parent_id: 'p' }),
+    ];
+    expect(computeTaskMove(nested, 'p', 'c', 'child')).toBeNull();
+  });
+
+  it('rejects dropping a task onto itself', () => {
+    expect(computeTaskMove(tasks, 'a', 'a', 'before')).toBeNull();
   });
 });
