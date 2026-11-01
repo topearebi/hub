@@ -12,10 +12,15 @@
  * without a DOM. The class only wires DOM events to that logic.
  */
 
-import { clearChildren, el, on } from '../utils/dom';
+import { clearChildren, el, on, svg } from '../utils/dom';
 import { hostnameOf } from '../core/fallback';
 import type { BookmarkItem, SearchProvider } from '../types/schemas';
 import type { LaunchpadStore } from '../core/store';
+
+/* Inline icon paths (AGENTS.md: no external icon CDNs). */
+const ICON_PLUS = 'M12 5v14M5 12h14';
+const ICON_ARROW = 'M7 17 17 7M17 7H8M17 7v9';
+const ICON_SEARCH = 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35';
 
 /* ------------------------------------------------------------------ */
 /* Pure query logic (unit-tested)                                      */
@@ -139,6 +144,62 @@ export function resolveQuery(
   return { type: 'search', url: provider.query_url.replace('%s', encodeURIComponent(trimmed)) };
 }
 
+/**
+ * A single selectable row in the omnibar result list.
+ *
+ * `add` rows are offered above the `navigate` row for URL-like queries so a
+ * user can capture a URL as a bookmark without leaving the launchpad.
+ */
+export type OmnibarAction =
+  | { kind: 'bookmark'; bookmark: BookmarkItem }
+  | { kind: 'add'; url: string }
+  | { kind: 'navigate'; url: string }
+  | { kind: 'search'; url: string };
+
+/**
+ * Build the ordered action list for a query. Bookmark fuzzy matches take
+ * precedence (PRD §5.1 Step 1). Otherwise a URL-like query yields an
+ * `add` row followed by a `navigate` row; anything else becomes a `search`.
+ */
+export function buildOmnibarActions(
+  query: string,
+  bookmarks: readonly BookmarkItem[],
+  providers: readonly SearchProvider[],
+  preferredProviderId?: string,
+): OmnibarAction[] {
+  const trimmed = query.trim();
+  if (trimmed.length === 0) {
+    return [];
+  }
+
+  const matches = filterBookmarks(trimmed, bookmarks);
+  if (matches.length > 0) {
+    return matches.map((bookmark): OmnibarAction => ({ kind: 'bookmark', bookmark }));
+  }
+
+  if (isUrlLike(trimmed)) {
+    const url = normalizeUrl(trimmed);
+    return [
+      { kind: 'add', url },
+      { kind: 'navigate', url },
+    ];
+  }
+
+  const resolution = resolveQuery(trimmed, bookmarks, providers, preferredProviderId);
+  // A bookmark resolution is impossible here (matches was empty above), but the
+  // union still needs narrowing before reading `.url`.
+  const url = resolution.type === 'bookmark' ? trimmed : resolution.url;
+  return [{ kind: 'search', url }];
+}
+
+/**
+ * Index of the row selected by default. Skips a leading `add` row so `Enter`
+ * keeps navigating by default; the add row stays reachable via `ArrowUp`/click.
+ */
+export function defaultActiveIndex(actions: readonly OmnibarAction[]): number {
+  return actions.findIndex((action) => action.kind !== 'add');
+}
+
 /* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
@@ -146,6 +207,8 @@ export function resolveQuery(
 export interface OmnibarCallbacks {
   onActivateBookmark: (bookmark: BookmarkItem) => void;
   onNavigate: (url: string) => void;
+  /** Open the bookmark editor prefilled with a captured URL. */
+  onAddBookmark: (url: string) => void;
   /** Persist a newly selected search engine for the active profile. */
   onSelectEngine?: (providerId: string) => void;
 }
@@ -158,7 +221,7 @@ export class Omnibar {
   private readonly resultsEl: HTMLElement;
   private readonly disposers: Array<() => void> = [];
   private resultNodes: HTMLElement[] = [];
-  private matches: BookmarkItem[] = [];
+  private actions: OmnibarAction[] = [];
   private activeIndex = -1;
   private selectedProviderId = '';
 
@@ -320,8 +383,13 @@ export class Omnibar {
   }
 
   private handleInput(): void {
-    this.matches = filterBookmarks(this.input.value, this.store.activeBookmarks);
-    this.activeIndex = this.matches.length > 0 ? 0 : -1;
+    this.actions = buildOmnibarActions(
+      this.input.value,
+      this.store.activeBookmarks,
+      this.store.appConfig.search_providers,
+      this.selectedProviderId,
+    );
+    this.activeIndex = defaultActiveIndex(this.actions);
     this.renderResults();
   }
 
@@ -332,15 +400,15 @@ export class Omnibar {
         this.input.blur();
         break;
       case 'ArrowDown':
-        if (this.matches.length > 0) {
+        if (this.actions.length > 0) {
           event.preventDefault();
-          this.setActive((this.activeIndex + 1) % this.matches.length);
+          this.setActive((this.activeIndex + 1) % this.actions.length);
         }
         break;
       case 'ArrowUp':
-        if (this.matches.length > 0) {
+        if (this.actions.length > 0) {
           event.preventDefault();
-          this.setActive((this.activeIndex - 1 + this.matches.length) % this.matches.length);
+          this.setActive((this.activeIndex - 1 + this.actions.length) % this.actions.length);
         }
         break;
       case 'Enter':
@@ -353,35 +421,33 @@ export class Omnibar {
   }
 
   private execute(): void {
-    const selected = this.activeIndex >= 0 ? this.matches[this.activeIndex] : undefined;
-    if (selected) {
-      this.callbacks.onActivateBookmark(selected);
-      this.reset();
+    const selected = this.activeIndex >= 0 ? this.actions[this.activeIndex] : undefined;
+    if (!selected) {
       return;
     }
-
-    const query = this.input.value.trim();
-    if (query.length === 0) {
-      return;
-    }
-
-    const resolution = resolveQuery(
-      query,
-      this.store.activeBookmarks,
-      this.store.appConfig.search_providers,
-      this.selectedProviderId,
-    );
-    if (resolution.type === 'bookmark') {
-      this.callbacks.onActivateBookmark(resolution.bookmark);
-    } else {
-      this.callbacks.onNavigate(resolution.url);
-    }
+    this.runAction(selected);
     this.reset();
+  }
+
+  /** Dispatch a resolved omnibar action to the host callbacks. */
+  private runAction(action: OmnibarAction): void {
+    switch (action.kind) {
+      case 'bookmark':
+        this.callbacks.onActivateBookmark(action.bookmark);
+        break;
+      case 'add':
+        this.callbacks.onAddBookmark(action.url);
+        break;
+      case 'navigate':
+      case 'search':
+        this.callbacks.onNavigate(action.url);
+        break;
+    }
   }
 
   private reset(): void {
     this.input.value = '';
-    this.matches = [];
+    this.actions = [];
     this.activeIndex = -1;
     this.renderResults();
   }
@@ -399,28 +465,54 @@ export class Omnibar {
     clearChildren(this.resultsEl);
     this.resultNodes = [];
 
-    const open = this.matches.length > 0;
+    const open = this.actions.length > 0;
     this.resultsEl.classList.toggle('is-open', open);
     this.input.setAttribute('aria-expanded', open ? 'true' : 'false');
 
-    this.matches.forEach((bookmark, index) => {
+    this.actions.forEach((action, index) => {
       const item = el('li', {
-        className: 'omnibar__result',
+        className: `omnibar__result omnibar__result--${action.kind}`,
         attrs: { role: 'option', 'aria-selected': 'false' },
       });
-      item.appendChild(el('span', { className: 'omnibar__result-title', text: bookmark.title }));
-      item.appendChild(
-        el('span', { className: 'omnibar__result-url', text: hostnameOf(bookmark.url) }),
-      );
-      if (bookmark.hotkey) {
+
+      if (action.kind === 'bookmark') {
         item.appendChild(
-          el('kbd', { className: 'omnibar__result-hotkey', text: `Alt+${bookmark.hotkey}` }),
+          el('span', { className: 'omnibar__result-title', text: action.bookmark.title }),
+        );
+        item.appendChild(
+          el('span', { className: 'omnibar__result-url', text: hostnameOf(action.bookmark.url) }),
+        );
+        if (action.bookmark.hotkey) {
+          item.appendChild(
+            el('kbd', {
+              className: 'omnibar__result-hotkey',
+              text: `Alt+${action.bookmark.hotkey}`,
+            }),
+          );
+        }
+      } else if (action.kind === 'add') {
+        item.appendChild(svg(ICON_PLUS, { className: 'omnibar__result-icon' }));
+        item.appendChild(
+          el('span', { className: 'omnibar__result-title', text: 'Add to bookmarks' }),
+        );
+        item.appendChild(
+          el('span', { className: 'omnibar__result-url', text: hostnameOf(action.url) }),
+        );
+      } else if (action.kind === 'navigate') {
+        item.appendChild(svg(ICON_ARROW, { className: 'omnibar__result-icon' }));
+        item.appendChild(el('span', { className: 'omnibar__result-title', text: 'Go to' }));
+        item.appendChild(el('span', { className: 'omnibar__result-url', text: action.url }));
+      } else {
+        item.appendChild(svg(ICON_SEARCH, { className: 'omnibar__result-icon' }));
+        item.appendChild(el('span', { className: 'omnibar__result-title', text: 'Search' }));
+        item.appendChild(
+          el('span', { className: 'omnibar__result-url', text: this.input.value.trim() }),
         );
       }
 
       item.addEventListener('mouseenter', () => this.setActive(index));
       item.addEventListener('click', () => {
-        this.callbacks.onActivateBookmark(bookmark);
+        this.runAction(action);
         this.reset();
       });
 

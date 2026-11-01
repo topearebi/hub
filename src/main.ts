@@ -26,6 +26,7 @@ import {
 import type { SyncStatus } from './core/sync';
 import { Omnibar } from './components/omnibar';
 import { BookmarksView } from './components/bookmarks';
+import { BookmarkEditor } from './components/bookmark-editor';
 import { TasksDrawer } from './components/tasks';
 import { NotesDrawer } from './components/notes';
 import { resolveDrawerOpen } from './components/drawer';
@@ -37,7 +38,7 @@ import { Brand } from './components/brand';
 import { ProfilePopover } from './components/profile-popover';
 import { ProfileEditor } from './components/profile-editor';
 import { showToast } from './components/toast';
-import { el } from './utils/dom';
+import { el, svg } from './utils/dom';
 import { newId } from './utils/crypto';
 import { draftFromShare, parseLaunchIntent, updateAppBadge } from './core/pwa';
 import { NotificationManager } from './core/notifications';
@@ -54,6 +55,9 @@ import type { BookmarkItem, CategoryItem, NoteItem, ProfileItem } from './types/
 
 type DrawerKey = 'tasks' | 'notes';
 type ViewKey = 'bookmarks' | 'tasks' | 'notes';
+
+/** Inline 'plus' icon for the add-bookmark control (no external icons). */
+const ICON_PLUS = 'M12 5v14M5 12h14';
 
 /**
  * Activate a bookmark: record the local visit, resolve the best reachable URL
@@ -130,21 +134,39 @@ async function ensureDefaultCategory(): Promise<CategoryItem> {
   return category;
 }
 
-/** Create a bookmark from shared or manually entered input. */
-async function createBookmark(title: string, url: string): Promise<void> {
-  const category = await ensureDefaultCategory();
-  const now = Date.now();
-  const bookmark: BookmarkItem = {
-    id: newId(),
-    created_at: now,
-    updated_at: now,
-    profile_id: store.activeProfileId ?? '',
-    title: title.trim() || url,
-    url,
-    category_id: category.id,
-  };
-  await store.upsertBookmark(bookmark);
-  showToast('Bookmark saved.', { variant: 'success' });
+/** Show a nested confirmation dialog and resolve with the user's choice. */
+function confirmDialog(message: string, confirmLabel: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const text = el('p', { className: 'modal__message', text: message });
+    const cancelButton = el('button', {
+      className: 'button',
+      text: 'Cancel',
+      attrs: { type: 'button' },
+    });
+    const confirmButton = el('button', {
+      className: 'button button--primary',
+      text: confirmLabel,
+      attrs: { type: 'button' },
+    });
+    const actions = el('div', {
+      className: 'modal__actions',
+      children: [cancelButton, confirmButton],
+    });
+    const dialog = el('div', { className: 'modal modal--sm', children: [text, actions] });
+    const overlay = el('div', {
+      className: 'modal-overlay modal-overlay--nested',
+      attrs: { role: 'alertdialog', 'aria-modal': 'true' },
+      children: [dialog],
+    });
+    document.body.appendChild(overlay);
+
+    const finish = (value: boolean): void => {
+      overlay.remove();
+      resolve(value);
+    };
+    cancelButton.addEventListener('click', () => finish(false));
+    confirmButton.addEventListener('click', () => finish(true));
+  });
 }
 
 /** Create a scratchpad note from shared or manually entered input. */
@@ -239,6 +261,9 @@ async function bootstrap(): Promise<void> {
       void activateBookmark(bookmark);
     },
     onNavigate: navigate,
+    onAddBookmark: (url) => {
+      void openBookmarkEditor(undefined, { url });
+    },
     onSelectEngine: (providerId) => {
       const current = store.activeProfile;
       if (current) {
@@ -260,12 +285,82 @@ async function bootstrap(): Promise<void> {
     onOpenAlternate: (_bookmark, url) => {
       navigate(url);
     },
+    onEdit: (bookmark) => {
+      void openBookmarkEditor(bookmark);
+    },
+    onDelete: (bookmark) => {
+      void deleteBookmark(bookmark);
+    },
   });
   bookmarksHost.appendChild(bookmarksView.element);
 
+  /* ---- Bookmark editor + add-bookmark control ---- */
+  const bookmarkEditor = new BookmarkEditor(store, {
+    onSave: async (bookmark) => {
+      await store.upsertBookmark(bookmark);
+      showToast('Bookmark saved.', { variant: 'success' });
+    },
+    onDelete: (id) => {
+      const bookmark = store.getBookmark(id);
+      if (bookmark) {
+        void deleteBookmark(bookmark);
+      }
+    },
+    onCreateCategory: async (name) => {
+      // New categories land at the end of the ordered list.
+      const order = store.sortedCategories.reduce((max, c) => Math.max(max, c.order), -1) + 1;
+      const now = Date.now();
+      const category: CategoryItem = {
+        id: newId(),
+        created_at: now,
+        updated_at: now,
+        profile_id: store.activeProfileId ?? '',
+        name,
+        order,
+      };
+      await store.upsertCategory(category);
+      return category;
+    },
+  });
+  document.body.appendChild(bookmarkEditor.element);
+
+  const addBookmarkButton = el('button', {
+    className: 'button launchpad__add-bookmark',
+    attrs: { type: 'button', 'aria-label': 'Add bookmark' },
+  });
+  addBookmarkButton.appendChild(svg(ICON_PLUS, { size: 16 }));
+  addBookmarkButton.appendChild(el('span', { text: 'Add bookmark' }));
+  addBookmarkButton.addEventListener('click', () => {
+    void openBookmarkEditor();
+  });
+  bookmarksHost.insertBefore(
+    el('div', { className: 'launchpad__bookmarks-actions', children: [addBookmarkButton] }),
+    bookmarksView.element,
+  );
+
+  /** Open the bookmark editor, ensuring a category exists for new bookmarks. */
+  async function openBookmarkEditor(
+    bookmark?: BookmarkItem,
+    prefill?: { url?: string; title?: string },
+  ): Promise<void> {
+    if (!bookmark && store.sortedCategories.length === 0) {
+      await ensureDefaultCategory();
+    }
+    bookmarkEditor.open(bookmark, prefill);
+  }
+
+  /** Confirm and soft-delete a bookmark. */
+  async function deleteBookmark(bookmark: BookmarkItem): Promise<void> {
+    const confirmed = await confirmDialog(`Delete "${bookmark.title}"?`, 'Delete');
+    if (!confirmed) {
+      return;
+    }
+    await store.softDeleteBookmark(bookmark.id);
+    showToast('Bookmark deleted.', { variant: 'info' });
+  }
+
   /* ---- Share target prompt (shared text -> bookmark or note) ---- */
   const sharePrompt = new ShareTargetPrompt({
-    onCreateBookmark: (draft) => createBookmark(draft.title, draft.url),
     onCreateNote: (draft) => createNote(draft.title, draft.content),
     onDismiss: () => undefined,
   });
@@ -557,6 +652,10 @@ async function bootstrap(): Promise<void> {
       profileEditor.close();
       return;
     }
+    if (bookmarkEditor.isOpen()) {
+      bookmarkEditor.close();
+      return;
+    }
     if (notesDrawer.isEditorOpen()) {
       notesDrawer.closeEditor();
       return;
@@ -655,7 +754,13 @@ async function bootstrap(): Promise<void> {
   // Launch intent: app shortcuts and the Web Share Target.
   const intent = parseLaunchIntent(window.location.search);
   if (intent.share) {
-    sharePrompt.open(draftFromShare(intent.share));
+    const draft = draftFromShare(intent.share);
+    // Bookmark shares open the dedicated editor; everything else is a note.
+    if (draft.kind === 'bookmark') {
+      void openBookmarkEditor(undefined, { url: draft.url ?? '', title: draft.title });
+    } else {
+      sharePrompt.open(draft);
+    }
   } else if (intent.action === 'new-task') {
     setView('tasks');
     setOpen('tasks', true);
@@ -665,7 +770,7 @@ async function bootstrap(): Promise<void> {
     setOpen('notes', true);
     notesDrawer.focusInput();
   } else if (intent.action === 'new-bookmark') {
-    sharePrompt.open({ kind: 'bookmark', title: '', url: '', content: '' });
+    void openBookmarkEditor();
   }
   if (intent.action !== null || intent.share !== null) {
     // Clear the launch query so a refresh does not replay the intent.

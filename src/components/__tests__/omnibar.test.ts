@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   Omnibar,
+  buildOmnibarActions,
+  defaultActiveIndex,
   filterBookmarks,
   fuzzyScore,
   isUrlLike,
@@ -139,6 +141,54 @@ describe('resolveQuery', () => {
   });
 });
 
+describe('buildOmnibarActions', () => {
+  const bookmarks: BookmarkItem[] = [
+    makeBookmark({ id: 'b1', title: 'GitHub', url: 'https://github.com' }),
+  ];
+
+  it('returns no actions for an empty query', () => {
+    expect(buildOmnibarActions('', bookmarks, PROVIDERS)).toEqual([]);
+  });
+
+  it('prefers bookmark matches over the add/navigate rows', () => {
+    const actions = buildOmnibarActions('github', bookmarks, PROVIDERS);
+    expect(actions).toHaveLength(1);
+    expect(actions[0]?.kind).toBe('bookmark');
+  });
+
+  it('offers an add row above the navigate row for a URL-like query', () => {
+    const actions = buildOmnibarActions('example.com', bookmarks, PROVIDERS);
+    expect(actions.map((action) => action.kind)).toEqual(['add', 'navigate']);
+    expect(actions[0]).toEqual({ kind: 'add', url: 'https://example.com' });
+    expect(actions[1]).toEqual({ kind: 'navigate', url: 'https://example.com' });
+  });
+
+  it('falls back to a search action for a plain query', () => {
+    const actions = buildOmnibarActions('hello world', bookmarks, PROVIDERS);
+    expect(actions).toHaveLength(1);
+    expect(actions[0]?.kind).toBe('search');
+  });
+});
+
+describe('defaultActiveIndex', () => {
+  it('skips a leading add row so Enter navigates by default', () => {
+    expect(
+      defaultActiveIndex([
+        { kind: 'add', url: 'https://example.com' },
+        { kind: 'navigate', url: 'https://example.com' },
+      ]),
+    ).toBe(1);
+  });
+
+  it('selects the first bookmark or search row', () => {
+    expect(defaultActiveIndex([{ kind: 'search', url: 'https://duckduckgo.com/?q=x' }])).toBe(0);
+  });
+
+  it('returns -1 when there are no actions', () => {
+    expect(defaultActiveIndex([])).toBe(-1);
+  });
+});
+
 describe('Alt+[1-9] hotkey', () => {
   it('ignores the hotkey while the user is typing in a text field', () => {
     const bookmark = makeBookmark({
@@ -162,6 +212,7 @@ describe('Alt+[1-9] hotkey', () => {
         activated += 1;
       },
       onNavigate: () => undefined,
+      onAddBookmark: () => undefined,
     });
     document.body.appendChild(omnibar.element);
     omnibar.attachGlobalHotkeys();

@@ -20,6 +20,10 @@ export interface BookmarksStore {
 export interface BookmarksCallbacks {
   onActivate: (bookmark: BookmarkItem) => void;
   onOpenAlternate: (bookmark: BookmarkItem, url: string) => void;
+  /** Open the editor for an existing bookmark. */
+  onEdit: (bookmark: BookmarkItem) => void;
+  /** Soft-delete a bookmark (host confirms before persisting). */
+  onDelete: (bookmark: BookmarkItem) => void;
 }
 
 export class BookmarksView {
@@ -184,6 +188,31 @@ export class BookmarksView {
       });
       menu.appendChild(item);
     });
+
+    // Management actions: edit the bookmark or soft-delete it.
+    menu.appendChild(el('div', { className: 'context-menu__separator' }));
+
+    const editItem = el('button', {
+      className: 'context-menu__item',
+      text: 'Edit bookmark',
+      attrs: { type: 'button', role: 'menuitem' },
+    });
+    editItem.addEventListener('click', () => {
+      this.closeContextMenu();
+      this.callbacks.onEdit(bookmark);
+    });
+    menu.appendChild(editItem);
+
+    const deleteItem = el('button', {
+      className: 'context-menu__item context-menu__item--danger',
+      text: 'Delete',
+      attrs: { type: 'button', role: 'menuitem' },
+    });
+    deleteItem.addEventListener('click', () => {
+      this.closeContextMenu();
+      this.callbacks.onDelete(bookmark);
+    });
+    menu.appendChild(deleteItem);
 
     // Coordinates are passed as CSS custom properties so all visual styling
     // stays in the stylesheet (AGENTS.md: no inline CSS).

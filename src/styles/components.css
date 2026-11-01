@@ -160,6 +160,17 @@
   font-size: 11px;
 }
 
+.omnibar__result-icon {
+  flex: none;
+  color: var(--text-sub);
+}
+
+/* The "Add to bookmarks" action is visually distinct from navigation rows. */
+.omnibar__result--add .omnibar__result-icon,
+.omnibar__result--add .omnibar__result-title {
+  color: var(--accent-terracotta);
+}
+
 /* ---- Sections & bookmark cards (DESIGN.md §3.2) ---- */
 .bookmarks {
   display: flex;
@@ -348,6 +359,16 @@
   background-color: var(--bg-subtle);
 }
 
+.context-menu__separator {
+  height: 1px;
+  margin: var(--space-xs) 0;
+  background-color: var(--border-light);
+}
+
+.context-menu__item--danger {
+  color: var(--accent-terracotta);
+}
+
 /* ---- Drawer chrome (DESIGN.md §3.3) ---- */
 .drawer__header {
   display: flex;
@@ -421,6 +442,24 @@
 .drawer__select {
   width: auto;
   cursor: pointer;
+}
+
+/* ---- Bookmark editor & add control ---- */
+.bookmark-editor__new-category {
+  margin-top: var(--space-sm);
+}
+
+.launchpad__bookmarks-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-md);
+}
+
+.launchpad__add-bookmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
 }
 
 /* ---- Tasks (Google Tasks pattern) ---- */
