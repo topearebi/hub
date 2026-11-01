@@ -26,6 +26,7 @@ import {
   recordVisit as persistVisit,
   setAppConfig,
 } from './db';
+import { newId } from '../utils/crypto';
 import { DEFAULT_APP_CONFIG, DEFAULT_PROFILE_ID } from '../types/schemas';
 import type {
   AppConfig,
@@ -123,34 +124,40 @@ class HubStore implements LaunchpadStore {
   private async migrateProfiles(): Promise<void> {
     const live = this.profileList.filter((p) => p.is_deleted !== true);
 
+    let activeId: string;
     if (live.length > 0) {
       const configured = this.config.active_profile_id;
       const valid = configured && live.some((p) => p.id === configured);
-      const active = valid ? configured : live[0]!.id;
-      this.currentProfileId = active;
-      if (active !== configured) {
-        await this.updateConfig({ active_profile_id: active });
+      activeId = valid ? configured : live[0]!.id;
+      this.currentProfileId = activeId;
+      if (activeId !== configured) {
+        await this.updateConfig({ active_profile_id: activeId });
       }
-      return;
+    } else {
+      const now = Date.now();
+      const profile: ProfileItem = {
+        id: DEFAULT_PROFILE_ID,
+        created_at: now,
+        updated_at: now,
+        name: 'Default',
+        hub_title: 'Hub',
+      };
+      this.profileList = [profile];
+      await put(STORE.profiles, profile);
+      activeId = profile.id;
+      this.currentProfileId = activeId;
+      await this.updateConfig({ active_profile_id: activeId });
     }
 
-    const now = Date.now();
-    const profile: ProfileItem = {
-      id: DEFAULT_PROFILE_ID,
-      created_at: now,
-      updated_at: now,
-      name: 'Default',
-      hub_title: 'Hub',
-    };
-    this.profileList = [profile];
-    await put(STORE.profiles, profile);
-
+    // Backfill any legacy entities that predate profile partitioning, whether
+    // or not a profile already existed. Without this, such records stay in
+    // IndexedDB but are invisible (orphaned) in the UI.
     const backfill = async <T extends { profile_id: string }>(
       storeName: (typeof STORE)[keyof typeof STORE],
       items: T[],
     ): Promise<T[]> => {
       const updated = items.map((item) =>
-        item.profile_id ? item : { ...item, profile_id: profile.id },
+        item.profile_id ? item : { ...item, profile_id: activeId },
       );
       const changed = updated.filter((item, index) => item !== items[index]);
       if (changed.length > 0) {
@@ -163,9 +170,6 @@ class HubStore implements LaunchpadStore {
     this.categories = await backfill(STORE.categories, this.categories);
     this.tasks = await backfill(STORE.tasks, this.tasks);
     this.notes = await backfill(STORE.notes, this.notes);
-
-    this.currentProfileId = profile.id;
-    await this.updateConfig({ active_profile_id: profile.id });
   }
 
   /* ---------------------------------------------------------------- */
@@ -383,7 +387,14 @@ class HubStore implements LaunchpadStore {
     this.emit('profiles');
   }
 
-  /** Soft-delete a profile; if it was active, switch to another live profile. */
+  /**
+   * Soft-delete a profile; if it was active, switch to another live profile.
+   *
+   * Deleting the *last* live profile would otherwise leave `currentProfileId`
+   * pointing at a tombstone (so `activeProfile` returns a deleted record and
+   * new entities are stamped with a dead `profile_id`). In that case a fresh
+   * default profile is created so the app always has a valid active profile.
+   */
   async softDeleteProfile(id: string, now: number = Date.now()): Promise<void> {
     const existing = this.profileList.find((p) => p.id === id);
     if (!existing) {
@@ -395,6 +406,16 @@ class HubStore implements LaunchpadStore {
       const next = this.profileList.find((p) => p.is_deleted !== true);
       if (next) {
         await this.setActiveProfile(next.id);
+      } else {
+        const replacement: ProfileItem = {
+          id: newId(),
+          created_at: now,
+          updated_at: now,
+          name: 'Default',
+          hub_title: 'Hub',
+        };
+        await this.upsertProfile(replacement);
+        await this.setActiveProfile(replacement.id);
       }
     }
   }

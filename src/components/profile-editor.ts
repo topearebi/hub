@@ -41,6 +41,8 @@ export class ProfileEditor {
   private readonly logoInput: HTMLInputElement;
   private readonly avatarPreview: HTMLElement;
   private readonly logoPreview: HTMLElement;
+  private readonly removeAvatarButton: HTMLButtonElement;
+  private readonly removeLogoButton: HTMLButtonElement;
   private readonly statusEl: HTMLElement;
 
   private avatarData: string | undefined;
@@ -70,6 +72,30 @@ export class ProfileEditor {
     });
     this.avatarPreview = el('span', { className: 'profile-editor__preview' });
     this.logoPreview = el('span', { className: 'profile-editor__preview' });
+
+    // "Remove" controls let the user clear a previously stored image. They are
+    // only shown while an image is present (see `updateRemoveButtons`).
+    this.removeAvatarButton = el('button', {
+      className: 'button',
+      text: 'Remove',
+      attrs: { type: 'button', 'aria-label': 'Remove avatar' },
+    });
+    this.removeAvatarButton.addEventListener('click', () => {
+      this.avatarData = undefined;
+      this.renderPreview(this.avatarPreview, undefined);
+      this.updateRemoveButtons();
+    });
+    this.removeLogoButton = el('button', {
+      className: 'button',
+      text: 'Remove',
+      attrs: { type: 'button', 'aria-label': 'Remove logo' },
+    });
+    this.removeLogoButton.addEventListener('click', () => {
+      this.logoData = undefined;
+      this.renderPreview(this.logoPreview, undefined);
+      this.updateRemoveButtons();
+    });
+
     this.statusEl = el('p', {
       className: 'settings-status',
       attrs: { role: 'status', 'aria-live': 'polite' },
@@ -144,9 +170,15 @@ export class ProfileEditor {
         field('Default search engine', this.engineSelect),
         field('Theme', this.themeSelect),
         field('Avatar', this.avatarInput),
-        this.avatarPreview,
+        el('div', {
+          className: 'profile-editor__preview-row',
+          children: [this.avatarPreview, this.removeAvatarButton],
+        }),
         field('Custom logo', this.logoInput),
-        this.logoPreview,
+        el('div', {
+          className: 'profile-editor__preview-row',
+          children: [this.logoPreview, this.removeLogoButton],
+        }),
         this.statusEl,
         actions,
       ],
@@ -174,6 +206,7 @@ export class ProfileEditor {
     this.logoData = profile?.logo;
     this.renderPreview(this.avatarPreview, profile?.avatar);
     this.renderPreview(this.logoPreview, profile?.logo);
+    this.updateRemoveButtons();
 
     this.engineSelect.replaceChildren();
     for (const provider of this.store.appConfig.search_providers) {
@@ -191,6 +224,12 @@ export class ProfileEditor {
     if (data) {
       target.appendChild(el('img', { attrs: { src: data, alt: '' } }));
     }
+  }
+
+  /** Show each "Remove" control only when its image is present. */
+  private updateRemoveButtons(): void {
+    this.removeAvatarButton.hidden = !this.avatarData;
+    this.removeLogoButton.hidden = !this.logoData;
   }
 
   private async handleUpload(
@@ -219,12 +258,10 @@ export class ProfileEditor {
       default_search_provider_id: this.engineSelect.value,
       theme: this.themeSelect.value as 'auto' | 'light' | 'dark',
     };
-    if (this.avatarData) {
-      patch.avatar = this.avatarData;
-    }
-    if (this.logoData) {
-      patch.logo = this.logoData;
-    }
+    // Always write the current value (including an empty string) so the
+    // "Remove" control can clear a previously stored image.
+    patch.avatar = this.avatarData ?? '';
+    patch.logo = this.logoData ?? '';
 
     await this.callbacks.onSave(patch);
     this.statusEl.textContent = 'Profile saved.';

@@ -73,6 +73,11 @@ export class ProfilePopover {
     this.isOpen = false;
   }
 
+  /** True when the popover is currently visible. */
+  isVisible(): boolean {
+    return this.isOpen;
+  }
+
   private render(): void {
     clearChildren(this.element);
     const activeId = this.store.activeProfile?.id;

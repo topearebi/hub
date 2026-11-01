@@ -246,6 +246,20 @@ export class Omnibar {
         if (!/^[1-9]$/.test(event.key)) {
           return;
         }
+        // Ignore the hotkey while the user is editing a field (task/note
+        // inputs, settings, etc.) so Alt+digit never navigates away mid-edit.
+        // The omnibar's own input is exempt: it is the launchpad's primary
+        // surface and is auto-focused on boot.
+        const target = event.target as HTMLElement | null;
+        const isEditable =
+          target !== null &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.tagName === 'SELECT' ||
+            target.isContentEditable);
+        if (isEditable && target !== this.input) {
+          return;
+        }
         const bookmark = this.store.activeBookmarks.find((b) => b.hotkey === event.key);
         if (!bookmark) {
           return;

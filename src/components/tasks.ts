@@ -132,6 +132,18 @@ export class TasksDrawer {
   private creatorRecurrence: Recurrence = null;
   private completedOpen = false;
 
+  /**
+   * Dismiss any open three-dot menu when the user clicks outside it. Registered
+   * once on the document (not per render) so re-renders never leak listeners.
+   */
+  private readonly onDocumentMouseDown = (event: MouseEvent): void => {
+    const target = event.target as HTMLElement | null;
+    if (target && target.closest('.task-menu, .task__menu-button')) {
+      return;
+    }
+    this.closeAllMenus();
+  };
+
   constructor(
     private readonly store: TasksStore,
     callbacks: TasksCallbacks,
@@ -229,6 +241,8 @@ export class TasksDrawer {
     shell.body.appendChild(addButton);
     shell.body.appendChild(this.creatorEl);
     shell.body.appendChild(this.listEl);
+
+    document.addEventListener('mousedown', this.onDocumentMouseDown);
   }
 
   /** Rebuild the task list from current store state. */
@@ -272,7 +286,15 @@ export class TasksDrawer {
   }
 
   destroy(): void {
+    document.removeEventListener('mousedown', this.onDocumentMouseDown);
     this.element.remove();
+  }
+
+  /** Hide every open task context menu. */
+  private closeAllMenus(): void {
+    for (const menu of this.listEl.querySelectorAll<HTMLElement>('.task-menu')) {
+      menu.hidden = true;
+    }
   }
 
   /* ---------------------------------------------------------------- */
@@ -447,7 +469,11 @@ export class TasksDrawer {
     });
     button.appendChild(svg(icon, { size: 16 }));
     button.appendChild(el('span', { text: label }));
-    button.addEventListener('click', onClick);
+    button.addEventListener('click', () => {
+      // Dismiss the menu before running the action so it never lingers.
+      this.closeAllMenus();
+      onClick();
+    });
     return button;
   }
 

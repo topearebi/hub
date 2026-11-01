@@ -1408,6 +1408,12 @@
 }
 
 /* ---- Profile editor previews ---- */
+.profile-editor__preview-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
 .profile-editor__preview {
   display: inline-flex;
   align-items: center;

@@ -129,6 +129,14 @@ export class NoteEditor {
         this.close();
       }
     });
+    // Escape dismisses the editor. The listener lives on the overlay (which
+    // contains the focused input) so it only fires while the modal is open.
+    overlay.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.close();
+      }
+    });
     return overlay;
   }
 

@@ -195,6 +195,16 @@ export class NotesDrawer {
     this.openCapture();
   }
 
+  /** True when the note edit modal is open. */
+  isEditorOpen(): boolean {
+    return this.editor.element.classList.contains('is-open');
+  }
+
+  /** Close the note edit modal (used by the gamepad Back action). */
+  closeEditor(): void {
+    this.editor.close();
+  }
+
   setPinned(pinned: boolean): void {
     this.element.setAttribute('data-pinned', pinned ? 'true' : 'false');
   }

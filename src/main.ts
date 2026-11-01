@@ -61,7 +61,13 @@ type ViewKey = 'bookmarks' | 'tasks' | 'notes';
  * current tab (PRD §5.1 navigation mandate).
  */
 async function activateBookmark(bookmark: BookmarkItem): Promise<void> {
-  await store.recordVisit(bookmark.id);
+  // Metrics are best-effort: a storage failure (e.g. private mode) must never
+  // block navigation, otherwise the click would silently do nothing.
+  try {
+    await store.recordVisit(bookmark.id);
+  } catch {
+    // Ignore: the visit counter is non-essential.
+  }
 
   const result = await resolveBookmarkUrl(bookmark);
   if (result.usedAlternate) {
@@ -486,7 +492,9 @@ async function bootstrap(): Promise<void> {
   store.subscribe('profiles', () => applyProfile());
 
   // Debounced sync on any syncable mutation (event-driven, never polled).
-  for (const event of ['bookmarks', 'categories', 'tasks', 'notes'] as const) {
+  // `profiles` is included because profile branding/preferences are part of the
+  // v2 sync payload; without it, profile edits would never reach the remote.
+  for (const event of ['profiles', 'bookmarks', 'categories', 'tasks', 'notes'] as const) {
     store.subscribe(event, () => {
       if (!suppressSync) {
         syncEngine.schedule();
@@ -543,6 +551,18 @@ async function bootstrap(): Promise<void> {
     }
     if (settings.element.classList.contains('is-open')) {
       settings.close();
+      return;
+    }
+    if (profileEditor.element.classList.contains('is-open')) {
+      profileEditor.close();
+      return;
+    }
+    if (notesDrawer.isEditorOpen()) {
+      notesDrawer.closeEditor();
+      return;
+    }
+    if (profilePopover.isVisible()) {
+      profilePopover.close();
       return;
     }
     if (openState.notes) {
