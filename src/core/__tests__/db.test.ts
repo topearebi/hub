@@ -55,7 +55,12 @@ describe('database initialization', () => {
     const db = await openDatabase();
     const tx = db.transaction(STORE.bookmarks, 'readonly');
     const indexNames = Array.from(tx.objectStore(STORE.bookmarks).indexNames).sort();
-    expect(indexNames).toEqual(['idx_category_id', 'idx_is_deleted', 'idx_updated_at']);
+    expect(indexNames).toEqual([
+      'idx_category_id',
+      'idx_is_deleted',
+      'idx_profile_id',
+      'idx_updated_at',
+    ]);
   });
 
   it('creates the declared indices on the metrics store', async () => {
@@ -72,6 +77,7 @@ describe('generic CRUD', () => {
       id: 'bm_1',
       created_at: 1,
       updated_at: 1,
+      profile_id: 'p1',
       title: 'Example',
       url: 'https://example.com',
       category_id: 'cat_1',
@@ -91,8 +97,15 @@ describe('generic CRUD', () => {
 
   it('bulk-writes categories in a single transaction', async () => {
     const categories: CategoryItem[] = [
-      { id: 'c1', created_at: 1, updated_at: 1, name: 'Daily Ops', order: 0 },
-      { id: 'c2', created_at: 1, updated_at: 1, name: 'Infrastructure', order: 1 },
+      { id: 'c1', created_at: 1, updated_at: 1, profile_id: 'p1', name: 'Daily Ops', order: 0 },
+      {
+        id: 'c2',
+        created_at: 1,
+        updated_at: 1,
+        profile_id: 'p1',
+        name: 'Infrastructure',
+        order: 1,
+      },
     ];
 
     await bulkPut(STORE.categories, categories);
@@ -106,6 +119,7 @@ describe('generic CRUD', () => {
       id: 't1',
       created_at: 1,
       updated_at: 1,
+      profile_id: 'p1',
       title: 'Review logs',
       completed: false,
       completed_at: null,
@@ -114,6 +128,7 @@ describe('generic CRUD', () => {
       id: 'n1',
       created_at: 1,
       updated_at: 1,
+      profile_id: 'p1',
       title: 'Scratch',
       content: 'Wireguard Gateway: 10.0.0.1',
       color_tag: 'terracotta',
@@ -132,6 +147,7 @@ describe('generic CRUD', () => {
         id: 'b1',
         created_at: 1,
         updated_at: 1,
+        profile_id: 'p1',
         title: 'A',
         url: 'https://a.example',
         category_id: 'cat_x',
@@ -140,6 +156,7 @@ describe('generic CRUD', () => {
         id: 'b2',
         created_at: 1,
         updated_at: 1,
+        profile_id: 'p1',
         title: 'B',
         url: 'https://b.example',
         category_id: 'cat_y',

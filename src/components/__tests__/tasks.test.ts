@@ -9,6 +9,7 @@ function makeTask(
 ): TaskItem {
   return {
     updated_at: overrides.created_at,
+    profile_id: 'p1',
     completed: false,
     ...overrides,
   };

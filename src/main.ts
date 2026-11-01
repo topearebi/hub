@@ -118,6 +118,7 @@ async function ensureDefaultCategory(): Promise<CategoryItem> {
     id: newId(),
     created_at: now,
     updated_at: now,
+    profile_id: store.activeProfileId ?? '',
     name: 'Shared',
     order: 0,
   };
@@ -133,6 +134,7 @@ async function createBookmark(title: string, url: string): Promise<void> {
     id: newId(),
     created_at: now,
     updated_at: now,
+    profile_id: store.activeProfileId ?? '',
     title: title.trim() || url,
     url,
     category_id: category.id,
@@ -148,6 +150,7 @@ async function createNote(title: string, content: string): Promise<void> {
     id: newId(),
     created_at: now,
     updated_at: now,
+    profile_id: store.activeProfileId ?? '',
     title: title.trim() || 'Shared note',
     content,
     color_tag: 'terracotta',

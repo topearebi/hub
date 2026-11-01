@@ -9,6 +9,7 @@ function makeNote(
 ): NoteItem {
   return {
     created_at: overrides.updated_at,
+    profile_id: 'p1',
     content: '',
     ...overrides,
   };

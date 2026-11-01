@@ -35,6 +35,7 @@ export function noteColorClass(tag: string | undefined): string {
 
 export interface NotesStore {
   readonly activeNotes: NoteItem[];
+  readonly activeProfileId: string | null;
   upsertNote(item: NoteItem): Promise<void>;
   softDeleteNote(id: string): Promise<void>;
 }
@@ -155,6 +156,7 @@ export class NotesDrawer {
       id: newId(),
       created_at: now,
       updated_at: now,
+      profile_id: this.store.activeProfileId ?? '',
       title: title.length > 0 ? title : 'Untitled',
       content,
       color_tag: this.colorSelect.value,

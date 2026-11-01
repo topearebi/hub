@@ -31,6 +31,7 @@ export function sortTasks(tasks: readonly TaskItem[]): TaskItem[] {
 
 export interface TasksStore {
   readonly activeTasks: TaskItem[];
+  readonly activeProfileId: string | null;
   upsertTask(item: TaskItem): Promise<void>;
   softDeleteTask(id: string): Promise<void>;
 }
@@ -141,6 +142,7 @@ export class TasksDrawer {
       id: newId(),
       created_at: now,
       updated_at: now,
+      profile_id: this.store.activeProfileId ?? '',
       title,
       completed: false,
       completed_at: null,

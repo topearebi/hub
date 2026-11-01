@@ -9,7 +9,27 @@
  * the core reusable and unit-testable.
  */
 
-import type { AppConfig, HubStoragePayload, SyncableEntity } from '../types/schemas';
+import { DEFAULT_PROFILE_ID } from '../types/schemas';
+import type {
+  AppConfig,
+  BookmarkItem,
+  CategoryItem,
+  HubStoragePayload,
+  NoteItem,
+  ProfileItem,
+  SyncableEntity,
+  TaskItem,
+} from '../types/schemas';
+
+/** Legacy v1 payload shape (no profiles, unpartitioned entities). */
+interface HubStoragePayloadV1 {
+  version: 1;
+  last_synced_at: number;
+  bookmarks: BookmarkItem[];
+  categories: CategoryItem[];
+  tasks: TaskItem[];
+  notes: NoteItem[];
+}
 
 const API_BASE = 'https://api.github.com';
 
@@ -72,15 +92,16 @@ export function mergeCollection<T extends SyncableEntity>(
   return Array.from(merged.values());
 }
 
-/** Merge every syncable collection of two payloads. */
+/** Merge every syncable collection (including profiles) of two payloads. */
 export function mergePayloads(
   local: HubStoragePayload,
   remote: HubStoragePayload,
   now: number = Date.now(),
 ): HubStoragePayload {
   return {
-    version: 1,
+    version: 2,
     last_synced_at: now,
+    profiles: mergeCollection(local.profiles, remote.profiles),
     bookmarks: mergeCollection(local.bookmarks, remote.bookmarks),
     categories: mergeCollection(local.categories, remote.categories),
     tasks: mergeCollection(local.tasks, remote.tasks),
@@ -104,8 +125,9 @@ export function cullPayloadTombstones(
   now: number = Date.now(),
 ): HubStoragePayload {
   return {
-    version: 1,
+    version: 2,
     last_synced_at: payload.last_synced_at,
+    profiles: cullTombstones(payload.profiles, now),
     bookmarks: cullTombstones(payload.bookmarks, now),
     categories: cullTombstones(payload.categories, now),
     tasks: cullTombstones(payload.tasks, now),
@@ -118,16 +140,63 @@ export function serializePayload(payload: HubStoragePayload): string {
   return JSON.stringify(payload, null, 2);
 }
 
-/** Parse and validate a payload, throwing on malformed input. */
+/**
+ * Parse and validate a payload, throwing on malformed input. v1 payloads are
+ * transparently migrated to v2 (a default profile is created and every entity
+ * is assigned to it) so older backups and remote files keep working.
+ */
 export function parsePayload(json: string): HubStoragePayload {
   const data: unknown = JSON.parse(json);
-  if (!isHubStoragePayload(data)) {
-    throw new Error('Invalid Hub payload.');
+  if (isHubStoragePayloadV2(data)) {
+    return data;
   }
-  return data;
+  if (isHubStoragePayloadV1(data)) {
+    return migrateV1ToV2(data);
+  }
+  throw new Error('Invalid Hub payload.');
 }
 
-function isHubStoragePayload(value: unknown): value is HubStoragePayload {
+/** Migrate a legacy v1 payload into the v2 profile-partitioned shape. */
+export function migrateV1ToV2(v1: HubStoragePayloadV1): HubStoragePayload {
+  const now = Date.now();
+  const profile: ProfileItem = {
+    id: DEFAULT_PROFILE_ID,
+    created_at: now,
+    updated_at: now,
+    name: 'Default',
+    hub_title: 'Hub',
+  };
+
+  const assign = <T extends { profile_id?: string }>(items: T[]): T[] =>
+    items.map((item) => (item.profile_id ? item : { ...item, profile_id: profile.id }));
+
+  return {
+    version: 2,
+    last_synced_at: v1.last_synced_at,
+    profiles: [profile],
+    bookmarks: assign(v1.bookmarks),
+    categories: assign(v1.categories),
+    tasks: assign(v1.tasks),
+    notes: assign(v1.notes),
+  };
+}
+
+function isHubStoragePayloadV2(value: unknown): value is HubStoragePayload {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    record.version === 2 &&
+    Array.isArray(record.profiles) &&
+    Array.isArray(record.bookmarks) &&
+    Array.isArray(record.categories) &&
+    Array.isArray(record.tasks) &&
+    Array.isArray(record.notes)
+  );
+}
+
+function isHubStoragePayloadV1(value: unknown): value is HubStoragePayloadV1 {
   if (typeof value !== 'object' || value === null) {
     return false;
   }

@@ -16,7 +16,7 @@ import {
   toGitHubConfig,
 } from '../sync';
 import type { GitHubConfig } from '../sync';
-import { DEFAULT_APP_CONFIG } from '../../types/schemas';
+import { DEFAULT_APP_CONFIG, DEFAULT_PROFILE_ID } from '../../types/schemas';
 import type { BookmarkItem, HubStoragePayload } from '../../types/schemas';
 
 /** Build a fully-formed bookmark from minimal overrides. */
@@ -25,6 +25,7 @@ function bookmark(
 ): BookmarkItem {
   return {
     created_at: overrides.updated_at,
+    profile_id: 'p1',
     category_id: 'cat_1',
     ...overrides,
   };
@@ -33,8 +34,9 @@ function bookmark(
 /** Build an empty payload from minimal overrides. */
 function payload(overrides: Partial<HubStoragePayload> = {}): HubStoragePayload {
   return {
-    version: 1,
+    version: 2,
     last_synced_at: 0,
+    profiles: [],
     bookmarks: [],
     categories: [],
     tasks: [],
@@ -215,6 +217,27 @@ describe('payload serialization', () => {
   it('throws on malformed payloads', () => {
     expect(() => parsePayload('{"version":2}')).toThrow();
     expect(() => parsePayload('not json')).toThrow();
+  });
+
+  it('migrates a legacy v1 payload into a default profile', () => {
+    // A genuine v1 payload has no `profile_id` on its entities.
+    const v1 = {
+      version: 1,
+      last_synced_at: 5,
+      bookmarks: [
+        bookmark({ id: 'a', title: 'A', url: 'https://a.test', updated_at: 1, profile_id: '' }),
+      ],
+      categories: [],
+      tasks: [],
+      notes: [],
+    };
+
+    const migrated = parsePayload(JSON.stringify(v1));
+
+    expect(migrated.version).toBe(2);
+    expect(migrated.profiles).toHaveLength(1);
+    expect(migrated.profiles[0]?.id).toBe(DEFAULT_PROFILE_ID);
+    expect(migrated.bookmarks[0]?.profile_id).toBe(DEFAULT_PROFILE_ID);
   });
 });
 

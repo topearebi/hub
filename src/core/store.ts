@@ -9,6 +9,10 @@
  *   IndexedDB  --init()-->  Store (RAM)  --subscribe/emit-->  UI components
  *   UI mutation  -->  Store (RAM)  -->  IndexedDB (async persist)
  *
+ * Multi-profile: every syncable entity carries a `profile_id`. The active
+ * profile is resolved on init (creating a default and backfilling legacy
+ * records when none exist) and all "active" getters are scoped to it.
+ *
  * Headless by design: no DOM imports, so it is unit-testable in isolation.
  */
 
@@ -22,7 +26,7 @@ import {
   recordVisit as persistVisit,
   setAppConfig,
 } from './db';
-import { DEFAULT_APP_CONFIG } from '../types/schemas';
+import { DEFAULT_APP_CONFIG, DEFAULT_PROFILE_ID } from '../types/schemas';
 import type {
   AppConfig,
   BookmarkItem,
@@ -30,15 +34,18 @@ import type {
   DeviceMetrics,
   HubStoragePayload,
   NoteItem,
+  ProfileItem,
   TaskItem,
 } from '../types/schemas';
 
 /** Collections that can be observed for change notifications. */
-export type StoreEvent = 'bookmarks' | 'categories' | 'tasks' | 'notes' | 'metrics' | 'config';
+export type StoreEvent =
+  'profiles' | 'bookmarks' | 'categories' | 'tasks' | 'notes' | 'metrics' | 'config';
 
 export type StoreListener = () => void;
 
 const ALL_EVENTS: readonly StoreEvent[] = [
+  'profiles',
   'bookmarks',
   'categories',
   'tasks',
@@ -52,17 +59,21 @@ export interface LaunchpadStore {
   readonly activeBookmarks: BookmarkItem[];
   readonly sortedCategories: CategoryItem[];
   readonly appConfig: AppConfig;
+  readonly activeProfile: ProfileItem | null;
+  readonly profiles: ProfileItem[];
   getRecentBookmarks(limit?: number): BookmarkItem[];
   getBookmarksByCategory(categoryId: string): BookmarkItem[];
 }
 
 class HubStore implements LaunchpadStore {
+  private profileList: ProfileItem[] = [];
   private bookmarks: BookmarkItem[] = [];
   private categories: CategoryItem[] = [];
   private tasks: TaskItem[] = [];
   private notes: NoteItem[] = [];
   private metrics: DeviceMetrics[] = [];
   private config: AppConfig = structuredClone(DEFAULT_APP_CONFIG);
+  private currentProfileId: string | null = null;
 
   private readonly listeners = new Map<StoreEvent, Set<StoreListener>>();
   private initialized = false;
@@ -73,7 +84,8 @@ class HubStore implements LaunchpadStore {
 
   /** Hydrate every collection from IndexedDB, then notify subscribers. */
   async init(): Promise<void> {
-    const [bookmarks, categories, tasks, notes, metrics, config] = await Promise.all([
+    const [profiles, bookmarks, categories, tasks, notes, metrics, config] = await Promise.all([
+      getAll<ProfileItem>(STORE.profiles),
       getAll<BookmarkItem>(STORE.bookmarks),
       getAll<CategoryItem>(STORE.categories),
       getAll<TaskItem>(STORE.tasks),
@@ -82,12 +94,16 @@ class HubStore implements LaunchpadStore {
       getAppConfig(),
     ]);
 
+    this.profileList = profiles;
     this.bookmarks = bookmarks;
     this.categories = categories;
     this.tasks = tasks;
     this.notes = notes;
     this.metrics = metrics;
     this.config = config;
+
+    await this.migrateProfiles();
+
     this.initialized = true;
 
     for (const event of ALL_EVENTS) {
@@ -97,6 +113,59 @@ class HubStore implements LaunchpadStore {
 
   isInitialized(): boolean {
     return this.initialized;
+  }
+
+  /**
+   * Ensure at least one profile exists and that every entity is assigned to
+   * one. Legacy (pre-v2) records without a `profile_id` are migrated into a
+   * freshly created default profile — no data is dropped.
+   */
+  private async migrateProfiles(): Promise<void> {
+    const live = this.profileList.filter((p) => p.is_deleted !== true);
+
+    if (live.length > 0) {
+      const configured = this.config.active_profile_id;
+      const valid = configured && live.some((p) => p.id === configured);
+      const active = valid ? configured : live[0]!.id;
+      this.currentProfileId = active;
+      if (active !== configured) {
+        await this.updateConfig({ active_profile_id: active });
+      }
+      return;
+    }
+
+    const now = Date.now();
+    const profile: ProfileItem = {
+      id: DEFAULT_PROFILE_ID,
+      created_at: now,
+      updated_at: now,
+      name: 'Default',
+      hub_title: 'Hub',
+    };
+    this.profileList = [profile];
+    await put(STORE.profiles, profile);
+
+    const backfill = async <T extends { profile_id: string }>(
+      storeName: (typeof STORE)[keyof typeof STORE],
+      items: T[],
+    ): Promise<T[]> => {
+      const updated = items.map((item) =>
+        item.profile_id ? item : { ...item, profile_id: profile.id },
+      );
+      const changed = updated.filter((item, index) => item !== items[index]);
+      if (changed.length > 0) {
+        await bulkPut(storeName, changed);
+      }
+      return updated;
+    };
+
+    this.bookmarks = await backfill(STORE.bookmarks, this.bookmarks);
+    this.categories = await backfill(STORE.categories, this.categories);
+    this.tasks = await backfill(STORE.tasks, this.tasks);
+    this.notes = await backfill(STORE.notes, this.notes);
+
+    this.currentProfileId = profile.id;
+    await this.updateConfig({ active_profile_id: profile.id });
   }
 
   /* ---------------------------------------------------------------- */
@@ -130,22 +199,52 @@ class HubStore implements LaunchpadStore {
   /* Read getters                                                     */
   /* ---------------------------------------------------------------- */
 
-  /** Bookmarks excluding soft-deleted tombstones. */
-  get activeBookmarks(): BookmarkItem[] {
-    return this.bookmarks.filter((b) => b.is_deleted !== true);
+  /** True when an entity belongs to the active profile (or none is set). */
+  private inActiveProfile(entity: { profile_id?: string }): boolean {
+    if (this.currentProfileId === null) {
+      return true;
+    }
+    return entity.profile_id === this.currentProfileId;
   }
 
-  /** Categories excluding tombstones, ordered ascending by `order`. */
+  /** Bookmarks in the active profile, excluding soft-deleted tombstones. */
+  get activeBookmarks(): BookmarkItem[] {
+    return this.bookmarks.filter((b) => b.is_deleted !== true && this.inActiveProfile(b));
+  }
+
+  /** Categories in the active profile, ordered ascending by `order`. */
   get sortedCategories(): CategoryItem[] {
-    return this.categories.filter((c) => c.is_deleted !== true).sort((a, b) => a.order - b.order);
+    return this.categories
+      .filter((c) => c.is_deleted !== true && this.inActiveProfile(c))
+      .sort((a, b) => a.order - b.order);
   }
 
   get activeTasks(): TaskItem[] {
-    return this.tasks.filter((t) => t.is_deleted !== true);
+    return this.tasks.filter((t) => t.is_deleted !== true && this.inActiveProfile(t));
   }
 
   get activeNotes(): NoteItem[] {
-    return this.notes.filter((n) => n.is_deleted !== true);
+    return this.notes.filter((n) => n.is_deleted !== true && this.inActiveProfile(n));
+  }
+
+  /** Non-deleted profiles, oldest first. */
+  get profiles(): ProfileItem[] {
+    return this.profileList
+      .filter((p) => p.is_deleted !== true)
+      .sort((a, b) => a.created_at - b.created_at);
+  }
+
+  /** The currently active profile, if any. */
+  get activeProfile(): ProfileItem | null {
+    if (this.currentProfileId === null) {
+      return null;
+    }
+    return this.profileList.find((p) => p.id === this.currentProfileId) ?? null;
+  }
+
+  /** Id of the active profile (used to stamp newly created entities). */
+  get activeProfileId(): string | null {
+    return this.currentProfileId;
   }
 
   get allMetrics(): DeviceMetrics[] {
@@ -244,6 +343,41 @@ class HubStore implements LaunchpadStore {
     await this.upsertNote({ ...existing, is_deleted: true, updated_at: now });
   }
 
+  /* ---- Profiles ---- */
+
+  async upsertProfile(item: ProfileItem): Promise<void> {
+    replaceIn(this.profileList, item);
+    await put(STORE.profiles, item);
+    this.emit('profiles');
+  }
+
+  /** Soft-delete a profile; if it was active, switch to another live profile. */
+  async softDeleteProfile(id: string, now: number = Date.now()): Promise<void> {
+    const existing = this.profileList.find((p) => p.id === id);
+    if (!existing) {
+      return;
+    }
+    await this.upsertProfile({ ...existing, is_deleted: true, updated_at: now });
+
+    if (this.currentProfileId === id) {
+      const next = this.profileList.find((p) => p.is_deleted !== true);
+      if (next) {
+        await this.setActiveProfile(next.id);
+      }
+    }
+  }
+
+  /** Switch the active profile and refresh every partitioned view. */
+  async setActiveProfile(id: string): Promise<void> {
+    this.currentProfileId = id;
+    await this.updateConfig({ active_profile_id: id });
+    this.emit('profiles');
+    this.emit('bookmarks');
+    this.emit('categories');
+    this.emit('tasks');
+    this.emit('notes');
+  }
+
   /** Record a bookmark activation and refresh the local metrics cache. */
   async recordVisit(bookmarkId: string): Promise<DeviceMetrics> {
     const updated = await persistVisit(bookmarkId);
@@ -270,13 +404,14 @@ class HubStore implements LaunchpadStore {
   /* ---------------------------------------------------------------- */
 
   /**
-   * Snapshot the four syncable collections into a `HubStoragePayload`.
-   * Tombstones are included so deletions propagate across devices.
+   * Snapshot the syncable collections (including profiles) into a v2
+   * `HubStoragePayload`. Tombstones are included so deletions propagate.
    */
   getPayload(now: number = Date.now()): HubStoragePayload {
     return {
-      version: 1,
+      version: 2,
       last_synced_at: now,
+      profiles: [...this.profileList],
       bookmarks: [...this.bookmarks],
       categories: [...this.categories],
       tasks: [...this.tasks],
@@ -289,18 +424,28 @@ class HubStore implements LaunchpadStore {
    * transaction per store, and notify subscribers.
    */
   async applyPayload(payload: HubStoragePayload): Promise<void> {
+    this.profileList = [...payload.profiles];
     this.bookmarks = [...payload.bookmarks];
     this.categories = [...payload.categories];
     this.tasks = [...payload.tasks];
     this.notes = [...payload.notes];
 
     await Promise.all([
+      bulkPut(STORE.profiles, this.profileList),
       bulkPut(STORE.bookmarks, this.bookmarks),
       bulkPut(STORE.categories, this.categories),
       bulkPut(STORE.tasks, this.tasks),
       bulkPut(STORE.notes, this.notes),
     ]);
 
+    // Keep the active profile valid after a remote merge.
+    const live = this.profileList.filter((p) => p.is_deleted !== true);
+    if (live.length > 0 && !live.some((p) => p.id === this.currentProfileId)) {
+      this.currentProfileId = live[0]!.id;
+      await this.updateConfig({ active_profile_id: this.currentProfileId });
+    }
+
+    this.emit('profiles');
     this.emit('bookmarks');
     this.emit('categories');
     this.emit('tasks');

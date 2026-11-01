@@ -23,24 +23,26 @@ describe('DEFAULT_APP_CONFIG', () => {
 
 describe('HubStoragePayload', () => {
   const payload: HubStoragePayload = {
-    version: 1,
+    version: 2,
     last_synced_at: 0,
+    profiles: [],
     bookmarks: [],
     categories: [],
     tasks: [],
     notes: [],
   };
 
-  it('exposes exactly the four syncable collections plus envelope fields', () => {
+  it('exposes the syncable collections plus envelope fields', () => {
     expect(Object.keys(payload).sort()).toEqual([
       'bookmarks',
       'categories',
       'last_synced_at',
       'notes',
+      'profiles',
       'tasks',
       'version',
     ]);
-    expect(SYNCABLE_COLLECTIONS).toEqual(['bookmarks', 'categories', 'tasks', 'notes']);
+    expect(SYNCABLE_COLLECTIONS).toEqual(['profiles', 'bookmarks', 'categories', 'tasks', 'notes']);
   });
 
   it('never serializes device metrics', () => {

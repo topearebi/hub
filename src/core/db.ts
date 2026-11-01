@@ -15,10 +15,11 @@ import { DEFAULT_APP_CONFIG } from '../types/schemas';
 import type { AppConfig, DeviceMetrics } from '../types/schemas';
 
 export const DB_NAME = 'hub_local_db';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 /** Canonical object store names. */
 export const STORE = {
+  profiles: 'profiles',
   bookmarks: 'bookmarks',
   categories: 'categories',
   tasks: 'tasks',
@@ -31,6 +32,7 @@ export type StoreName = (typeof STORE)[keyof typeof STORE];
 
 /** Primary key path per store (SCHEMAS.md §4.1). */
 const STORE_KEY_PATHS: Record<StoreName, string> = {
+  profiles: 'id',
   bookmarks: 'id',
   categories: 'id',
   tasks: 'id',
@@ -47,22 +49,34 @@ interface IndexDef {
 
 /** Secondary indices per store (SCHEMAS.md §4.1). */
 const STORE_INDICES: Partial<Record<StoreName, readonly IndexDef[]>> = {
+  profiles: [{ name: 'idx_updated_at', keyPath: 'updated_at', unique: false }],
   bookmarks: [
+    { name: 'idx_profile_id', keyPath: 'profile_id', unique: false },
     { name: 'idx_category_id', keyPath: 'category_id', unique: false },
     { name: 'idx_updated_at', keyPath: 'updated_at', unique: false },
     { name: 'idx_is_deleted', keyPath: 'is_deleted', unique: false },
   ],
-  categories: [{ name: 'idx_order', keyPath: 'order', unique: false }],
+  categories: [
+    { name: 'idx_profile_id', keyPath: 'profile_id', unique: false },
+    { name: 'idx_order', keyPath: 'order', unique: false },
+  ],
   tasks: [
+    { name: 'idx_profile_id', keyPath: 'profile_id', unique: false },
     { name: 'idx_completed', keyPath: 'completed', unique: false },
     { name: 'idx_updated_at', keyPath: 'updated_at', unique: false },
   ],
-  notes: [{ name: 'idx_updated_at', keyPath: 'updated_at', unique: false }],
+  notes: [
+    { name: 'idx_profile_id', keyPath: 'profile_id', unique: false },
+    { name: 'idx_updated_at', keyPath: 'updated_at', unique: false },
+  ],
   metrics: [
     { name: 'idx_click_count', keyPath: 'click_count', unique: false },
     { name: 'idx_visited', keyPath: 'last_visited_at', unique: false },
   ],
 };
+
+/** Entity stores partitioned by `profile_id` (v2). */
+const PARTITIONED_STORES = ['bookmarks', 'categories', 'tasks', 'notes'] as const;
 
 /* ------------------------------------------------------------------ */
 /* Connection lifecycle                                                */
@@ -74,7 +88,7 @@ let dbPromise: Promise<IDBDatabase> | null = null;
  * Apply schema migrations. Additive and version-gated so future releases can
  * introduce stores/indices without destroying existing user data.
  */
-function upgrade(db: IDBDatabase, oldVersion: number): void {
+function upgrade(db: IDBDatabase, oldVersion: number, tx: IDBTransaction | null): void {
   if (oldVersion < 1) {
     for (const name of Object.values(STORE)) {
       if (db.objectStoreNames.contains(name)) {
@@ -86,7 +100,29 @@ function upgrade(db: IDBDatabase, oldVersion: number): void {
       }
     }
   }
-  // Future migrations: if (oldVersion < 2) { ... }
+
+  // v2: introduce the `profiles` store and `profile_id` partition indices.
+  // Additive only — existing records are preserved and backfilled at runtime
+  // by `store.migrateProfiles()`.
+  if (oldVersion < 2) {
+    if (!db.objectStoreNames.contains(STORE.profiles)) {
+      const store = db.createObjectStore(STORE.profiles, { keyPath: STORE_KEY_PATHS.profiles });
+      for (const index of STORE_INDICES.profiles ?? []) {
+        store.createIndex(index.name, index.keyPath, { unique: index.unique });
+      }
+    }
+    if (tx) {
+      for (const name of PARTITIONED_STORES) {
+        if (!db.objectStoreNames.contains(name)) {
+          continue;
+        }
+        const store = tx.objectStore(name);
+        if (!store.indexNames.contains('idx_profile_id')) {
+          store.createIndex('idx_profile_id', 'profile_id', { unique: false });
+        }
+      }
+    }
+  }
 }
 
 /** Open (and cache) the database connection. */
@@ -99,7 +135,7 @@ export function openDatabase(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
-      upgrade(request.result, event.oldVersion);
+      upgrade(request.result, event.oldVersion, request.transaction);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('Failed to open IndexedDB'));

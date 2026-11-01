@@ -10,6 +10,7 @@ function makeBookmark(
   return {
     created_at: 1,
     updated_at: 1,
+    profile_id: 'p1',
     category_id: 'cat_1',
     ...overrides,
   };

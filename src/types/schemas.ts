@@ -20,11 +20,17 @@
  * (`.hub/data.json`). Serialized as pretty-printed JSON (2-space indent).
  */
 export interface HubStoragePayload {
-  /** Schema contract version for forward/backward migration handling. */
-  version: 1;
+  /**
+   * Schema contract version. v2 introduces `profiles` and `profile_id`
+   * partitioning; v1 payloads are migrated on read (see `sync.parsePayload`).
+   */
+  version: 2;
 
   /** Unix epoch timestamp (ms) indicating when this snapshot was written. */
   last_synced_at: number;
+
+  /** Profile definitions (v2). */
+  profiles: ProfileItem[];
 
   /** Canonical collection arrays. */
   bookmarks: BookmarkItem[];
@@ -63,6 +69,9 @@ export interface SyncableEntity {
 /* ------------------------------------------------------------------ */
 
 export interface BookmarkItem extends SyncableEntity {
+  /** Owning profile id (partition key). */
+  profile_id: string;
+
   /** Human-readable display label. */
   title: string;
 
@@ -89,6 +98,9 @@ export interface BookmarkItem extends SyncableEntity {
 }
 
 export interface CategoryItem extends SyncableEntity {
+  /** Owning profile id (partition key). */
+  profile_id: string;
+
   /** Category display name (e.g., "Daily Ops", "Infrastructure", "Media"). */
   name: string;
 
@@ -97,6 +109,9 @@ export interface CategoryItem extends SyncableEntity {
 }
 
 export interface TaskItem extends SyncableEntity {
+  /** Owning profile id (partition key). */
+  profile_id: string;
+
   /** Primary task text. */
   title: string;
 
@@ -118,6 +133,9 @@ export interface TaskItem extends SyncableEntity {
 }
 
 export interface NoteItem extends SyncableEntity {
+  /** Owning profile id (partition key). */
+  profile_id: string;
+
   /** Note card title / summary line. */
   title: string;
 
@@ -129,6 +147,36 @@ export interface NoteItem extends SyncableEntity {
 
   /** Visual badge color identifier (theme token or warm hex value). */
   color_tag?: 'terracotta' | 'sage' | 'amber' | 'neutral' | string;
+}
+
+/**
+ * A user profile / space. Profiles partition every syncable collection via
+ * `profile_id` and carry their own branding and search preference.
+ */
+export interface ProfileItem extends SyncableEntity {
+  /** Display name of the profile / space. */
+  name: string;
+
+  /** Avatar image (data URL or remote URL). */
+  avatar?: string;
+
+  /** Custom space title shown when no logo is configured. */
+  hub_title?: string;
+
+  /** Custom space logo (compressed data URL). */
+  logo?: string;
+
+  /** Default search provider id (references `AppConfig.search_providers`). */
+  default_search_provider_id?: string;
+
+  /** Optional per-profile theme override. */
+  theme?: 'auto' | 'light' | 'dark';
+
+  /**
+   * Preferred sync file path. Stored as a preference; Hub currently syncs all
+   * profiles into a single shared file.
+   */
+  sync_path?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -166,6 +214,9 @@ export interface AppConfig {
     tasks: boolean;
     notes: boolean;
   };
+
+  /** Id of the currently active profile (local-only). */
+  active_profile_id?: string;
 
   /* ---- Local-only feature toggles (never synced) ---- */
 
@@ -208,7 +259,20 @@ export interface DeviceMetrics {
  * The four collections that participate in remote sync. Used by the merge
  * routine (Phase 4) and by tests asserting DeviceMetrics never serializes.
  */
-export const SYNCABLE_COLLECTIONS = ['bookmarks', 'categories', 'tasks', 'notes'] as const;
+export const SYNCABLE_COLLECTIONS = [
+  'profiles',
+  'bookmarks',
+  'categories',
+  'tasks',
+  'notes',
+] as const;
+
+/**
+ * Deterministic id for the auto-created default profile. Using a fixed id
+ * (rather than a random UUID) keeps v1->v2 migrations idempotent across devices
+ * so their default profiles merge instead of duplicating.
+ */
+export const DEFAULT_PROFILE_ID = 'default-profile';
 
 export type SyncableCollection = (typeof SYNCABLE_COLLECTIONS)[number];
 

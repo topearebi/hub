@@ -9,6 +9,7 @@ function makeTask(overrides: Partial<TaskItem> & Pick<TaskItem, 'id'>): TaskItem
     title: overrides.id,
     created_at: 1,
     updated_at: 1,
+    profile_id: 'p1',
     completed: false,
     ...overrides,
   };
