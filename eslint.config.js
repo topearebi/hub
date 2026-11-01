@@ -55,5 +55,17 @@ export default tseslint.config(
       },
     },
   },
+  {
+    // Node build scripts (e.g. icon generation).
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        Buffer: 'readonly',
+        console: 'readonly',
+        process: 'readonly',
+        URL: 'readonly',
+      },
+    },
+  },
   prettier,
 );

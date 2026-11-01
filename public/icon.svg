@@ -1,4 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Hub">
-  <rect width="512" height="512" rx="92" fill="#c86d51" />
-  <path d="M154 143 H205 V236 H307 V143 H358 V369 H307 V277 H205 V369 H154 Z" fill="#ffffff" />
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="112" fill="#f6f4ef"/>
+  <g fill="#3d5a7a">
+    <rect x="132" y="132" width="104" height="104" rx="26"/>
+    <rect x="276" y="132" width="104" height="104" rx="26" opacity=".55"/>
+    <rect x="132" y="276" width="104" height="104" rx="26" opacity=".55"/>
+    <rect x="276" y="276" width="104" height="104" rx="26" opacity=".3"/>
+  </g>
 </svg>

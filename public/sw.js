@@ -3,13 +3,17 @@
  * ------------------
  * Offline strategy (PRD §3.1, AGENTS.md Phase 5):
  *   - Static app assets: cache-first (precached shell + runtime-cached bundles).
+ *   - Navigations: network-first with an app-shell fallback so SPA routes such
+ *     as `/share-target` and `?action=` shortcuts resolve to `index.html` even
+ *     on static hosts that would otherwise return a 404.
  *   - GitHub API: network-first, never cached (sync data must stay fresh).
  *
- * The app shell is precached on install so Hub boots in airplane mode after the
- * first visit. Hashed Vite bundles are cached on first fetch at runtime.
+ * Also implements the PWA push surface: `push` renders a notification,
+ * `notificationclick` focuses/opens the app, and `message` supports the
+ * page->SW `SKIP_WAITING` handshake for prompt updates.
  */
 
-const CACHE_NAME = 'hub-static-v1';
+const CACHE_NAME = 'hub-static-v2';
 
 /** App shell precached on install (relative to the SW scope). */
 const APP_SHELL = [
@@ -19,6 +23,8 @@ const APP_SHELL = [
   './icon.svg',
   './icon-192.png',
   './icon-512.png',
+  './icon-maskable-512.png',
+  './apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -57,6 +63,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // SPA navigations (including /share-target and ?action= shortcuts) must
+  // always resolve to the app shell.
+  if (request.mode === 'navigate') {
+    event.respondWith(navigateShell(request));
+    return;
+  }
+
   // Cache-first for same-origin static assets.
   if (url.origin === self.location.origin) {
     event.respondWith(cacheFirst(request));
@@ -78,15 +91,31 @@ async function cacheFirst(request) {
     }
     return response;
   } catch {
-    // Offline navigation: fall back to the cached app shell.
-    if (request.mode === 'navigate') {
-      const shell = await cache.match('./index.html');
-      if (shell) {
-        return shell;
-      }
-    }
     throw new Error('Resource unavailable offline.');
   }
+}
+
+/** Serve the cached app shell for any navigation, refreshing it when online. */
+async function navigateShell(request) {
+  const cache = await caches.open(CACHE_NAME);
+
+  try {
+    const response = await fetch(request);
+    // A real HTML document (not a host 404 error page) wins and refreshes the
+    // cached shell so future offline loads stay current.
+    if (response.ok) {
+      cache.put('./index.html', response.clone());
+      return response;
+    }
+  } catch {
+    // Offline: fall through to the cached shell.
+  }
+
+  const shell = (await cache.match('./index.html')) ?? (await cache.match('./'));
+  if (shell) {
+    return shell;
+  }
+  throw new Error('App shell unavailable offline.');
 }
 
 /** Try the network first, falling back to any cached copy. */
@@ -102,3 +131,63 @@ async function networkFirst(request) {
     throw new Error('Resource unavailable offline.');
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Push notifications                                                  */
+/* ------------------------------------------------------------------ */
+
+self.addEventListener('push', (event) => {
+  let payload = { title: 'Hub', body: 'You have a new update.', url: './' };
+
+  if (event.data) {
+    try {
+      const parsed = event.data.json();
+      payload = { ...payload, ...parsed };
+    } catch {
+      payload.body = event.data.text();
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: './icon-192.png',
+      badge: './icon-192.png',
+      tag: payload.tag,
+      data: { url: payload.url },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || './';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ('focus' in client) {
+          if ('navigate' in client) {
+            void client.navigate(target);
+          }
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(target);
+      }
+      return undefined;
+    }),
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* Page <-> SW messaging                                               */
+/* ------------------------------------------------------------------ */
+
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if (data && data.type === 'SKIP_WAITING') {
+    void self.skipWaiting();
+  }
+});
