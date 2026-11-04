@@ -112,16 +112,25 @@ function insideRoundedRect(x, y, rx, ry, w, h, radius) {
   return dx * dx + dy * dy <= radius * radius;
 }
 
-/** Render the logo at `size` px. `maskable` uses a full-bleed background. */
-function render(size, maskable) {
-  const buffer = Buffer.alloc(size * size * 4);
-  const scale = size / 512;
+/**
+ * Render the logo centred on a canvas of `width` x `height`. For square icons
+ * `logoSize === width === height`; for screenshots the logo is drawn smaller on
+ * a full-bleed background. `maskable` uses a full-bleed background and the
+ * inset maskable geometry.
+ */
+function renderCanvas(width, height, logoSize, maskable) {
+  const buffer = Buffer.alloc(width * height * 4);
   const samples = 4; // 4x4 supersampling for antialiasing
   const backgroundRadius = maskable ? 0 : 112;
   const squares = maskable ? MASKABLE_SQUARES : ICON_SQUARES;
 
-  for (let py = 0; py < size; py += 1) {
-    for (let px = 0; px < size; px += 1) {
+  // Top-left of the logo within the canvas, and the logo's own scale.
+  const offsetX = (width - logoSize) / 2;
+  const offsetY = (height - logoSize) / 2;
+  const scale = logoSize / 512;
+
+  for (let py = 0; py < height; py += 1) {
+    for (let px = 0; px < width; px += 1) {
       let accR = 0;
       let accG = 0;
       let accB = 0;
@@ -129,8 +138,8 @@ function render(size, maskable) {
 
       for (let sy = 0; sy < samples; sy += 1) {
         for (let sx = 0; sx < samples; sx += 1) {
-          const x = (px + (sx + 0.5) / samples) / scale;
-          const y = (py + (sy + 0.5) / samples) / scale;
+          const x = (px + (sx + 0.5) / samples - offsetX) / scale;
+          const y = (py + (sy + 0.5) / samples - offsetY) / scale;
 
           let r = 0;
           let g = 0;
@@ -162,7 +171,7 @@ function render(size, maskable) {
       }
 
       const total = samples * samples;
-      const index = (py * size + px) * 4;
+      const index = (py * width + px) * 4;
       // Colour channels are accumulated in 0-255 space; alpha is 0-1 and is
       // scaled to 0-255 on write.
       buffer[index] = Math.round(accR / total);
@@ -175,6 +184,11 @@ function render(size, maskable) {
   return buffer;
 }
 
+/** Render a square icon at `size` px. */
+function render(size, maskable) {
+  return renderCanvas(size, size, size, maskable);
+}
+
 /* ------------------------------------------------------------------ */
 /* Emit                                                                */
 /* ------------------------------------------------------------------ */
@@ -182,8 +196,12 @@ function render(size, maskable) {
 mkdirSync(PUBLIC_DIR, { recursive: true });
 
 const targets = [
+  { file: 'icon-144.png', size: 144, maskable: false },
   { file: 'icon-192.png', size: 192, maskable: false },
+  { file: 'icon-256.png', size: 256, maskable: false },
+  { file: 'icon-384.png', size: 384, maskable: false },
   { file: 'icon-512.png', size: 512, maskable: false },
+  { file: 'icon-maskable-192.png', size: 192, maskable: true },
   { file: 'icon-maskable-512.png', size: 512, maskable: true },
   { file: 'apple-touch-icon.png', size: 180, maskable: false },
 ];
@@ -193,4 +211,41 @@ for (const target of targets) {
   const png = encodePng(target.size, target.size, rgba);
   writeFileSync(resolve(PUBLIC_DIR, target.file), png);
   console.log(`wrote public/${target.file} (${target.size}x${target.size}, ${png.length} bytes)`);
+}
+
+// Manifest screenshots (narrow + wide). These are branded placeholders — the
+// logo centred on the app background — so the install UI has a form factor
+// preview. Real device screenshots are captured in the Phase 11 matrix.
+const screenshots = [
+  { file: 'screenshot-narrow.png', width: 540, height: 720 },
+  { file: 'screenshot-wide.png', width: 1280, height: 720 },
+];
+
+for (const shot of screenshots) {
+  const logoSize = Math.round(Math.min(shot.width, shot.height) * 0.4);
+  const rgba = renderCanvas(shot.width, shot.height, logoSize, false);
+  const png = encodePng(shot.width, shot.height, rgba);
+  writeFileSync(resolve(PUBLIC_DIR, shot.file), png);
+  console.log(
+    `wrote public/${shot.file} (${shot.width}x${shot.height}, ${png.length} bytes)`,
+  );
+}
+
+// iOS launch (splash) images for the most common device classes. iOS ignores
+// the manifest background, so these prevent a white flash on launch (G-51).
+const splashes = [
+  { file: 'splash-750x1334.png', width: 750, height: 1334 },
+  { file: 'splash-1170x2532.png', width: 1170, height: 2532 },
+  { file: 'splash-1284x2778.png', width: 1284, height: 2778 },
+  { file: 'splash-1536x2048.png', width: 1536, height: 2048 },
+];
+
+for (const splash of splashes) {
+  const logoSize = Math.round(Math.min(splash.width, splash.height) * 0.3);
+  const rgba = renderCanvas(splash.width, splash.height, logoSize, false);
+  const png = encodePng(splash.width, splash.height, rgba);
+  writeFileSync(resolve(PUBLIC_DIR, splash.file), png);
+  console.log(
+    `wrote public/${splash.file} (${splash.width}x${splash.height}, ${png.length} bytes)`,
+  );
 }

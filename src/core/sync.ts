@@ -214,15 +214,19 @@ function isHubStoragePayloadV1(value: unknown): value is HubStoragePayloadV1 {
 /* Config helpers                                                      */
 /* ------------------------------------------------------------------ */
 
-/** True when the minimum GitHub credentials are present. */
-export function hasGitHubConfig(config: AppConfig): boolean {
-  return Boolean(config.github_pat && config.github_owner && config.github_repo);
+/**
+ * True when the minimum GitHub credentials are present. `token` overrides the
+ * stored `github_pat` so callers can pass the decrypted token from the vault
+ * (the stored value is an `enc1:` envelope — SCHEMAS.md §3.5).
+ */
+export function hasGitHubConfig(config: AppConfig, token?: string): boolean {
+  return Boolean((token ?? config.github_pat) && config.github_owner && config.github_repo);
 }
 
 /** Narrow an AppConfig into the GitHub client config. */
-export function toGitHubConfig(config: AppConfig): GitHubConfig {
+export function toGitHubConfig(config: AppConfig, token?: string): GitHubConfig {
   return {
-    token: config.github_pat ?? '',
+    token: token ?? config.github_pat ?? '',
     owner: config.github_owner ?? '',
     repo: config.github_repo ?? '',
     branch: config.github_branch,
@@ -364,6 +368,11 @@ export interface SyncEngineOptions {
   applyRemote: (payload: HubStoragePayload) => Promise<void>;
   onStatus?: (status: SyncStatus) => void;
   onSha?: (sha: string) => void;
+  /**
+   * Supplies the decrypted GitHub token (from the token vault). When omitted,
+   * the stored `github_pat` is used directly (legacy/plaintext callers).
+   */
+  getToken?: () => string;
   fetchImpl?: FetchLike;
   debounceMs?: number;
 }
@@ -395,14 +404,15 @@ export class SyncEngine {
       return;
     }
     const config = this.options.getConfig();
-    if (!config.sync_enabled || !hasGitHubConfig(config)) {
+    const token = this.options.getToken?.() ?? config.github_pat ?? '';
+    if (!config.sync_enabled || !hasGitHubConfig(config, token)) {
       return;
     }
 
     this.busy = true;
     this.options.onStatus?.('syncing');
     try {
-      const gh = toGitHubConfig(config);
+      const gh = toGitHubConfig(config, token);
       const remote = await fetchRemoteFile(gh, this.options.fetchImpl);
       const local = this.options.getPayload();
       const merged = remote ? mergePayloads(local, parsePayload(remote.content)) : local;
@@ -434,12 +444,13 @@ export class SyncEngine {
   /** Fetch remote changes and merge them into local state. */
   async pullNow(): Promise<void> {
     const config = this.options.getConfig();
-    if (!config.sync_enabled || !hasGitHubConfig(config)) {
+    const token = this.options.getToken?.() ?? config.github_pat ?? '';
+    if (!config.sync_enabled || !hasGitHubConfig(config, token)) {
       return;
     }
 
     try {
-      const remote = await fetchRemoteFile(toGitHubConfig(config), this.options.fetchImpl);
+      const remote = await fetchRemoteFile(toGitHubConfig(config, token), this.options.fetchImpl);
       if (!remote) {
         return;
       }

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Hub">
+  <!-- Monochrome mark: the OS tints this single-colour glyph for themed icons. -->
+  <g fill="#000000">
+    <rect x="132" y="132" width="104" height="104" rx="26" opacity="1" />
+    <rect x="276" y="132" width="104" height="104" rx="26" opacity="0.55" />
+    <rect x="132" y="276" width="104" height="104" rx="26" opacity="0.55" />
+    <rect x="276" y="276" width="104" height="104" rx="26" opacity="0.3" />
+  </g>
+</svg>

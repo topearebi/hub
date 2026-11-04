@@ -52,6 +52,8 @@ export default tseslint.config(
         caches: 'readonly',
         fetch: 'readonly',
         URL: 'readonly',
+        // Replaced at build time by the `hub-precache` Vite plugin.
+        __PRECACHE_MANIFEST__: 'readonly',
       },
     },
   },

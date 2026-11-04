@@ -2,11 +2,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   draftFromShare,
+  estimateStorage,
   extractUrl,
+  formatBytes,
+  isStoragePersisted,
   parseLaunchAction,
   parseLaunchIntent,
   parseShareTarget,
+  requestPersistentStorage,
+  shouldShowInstallPrompt,
   updateAppBadge,
+  wcoCssVars,
+  wcoNarrowing,
 } from '../pwa';
 
 afterEach(() => {
@@ -98,5 +105,80 @@ describe('updateAppBadge', () => {
 
     expect(clearAppBadge).toHaveBeenCalled();
     expect(setAppBadge).not.toHaveBeenCalled();
+  });
+});
+
+describe('wcoCssVars', () => {
+  it('maps a titlebar rect to rounded pixel custom properties', () => {
+    expect(wcoCssVars({ x: 10.4, y: 0, width: 1200.6, height: 33.5 })).toEqual({
+      '--wco-x': '10px',
+      '--wco-y': '0px',
+      '--wco-w': '1201px',
+      '--wco-h': '34px',
+    });
+  });
+});
+
+describe('wcoNarrowing', () => {
+  it('keeps everything visible on a wide window', () => {
+    expect(wcoNarrowing(1280)).toEqual({ profileName: true, statusText: true, homeLabel: true });
+  });
+
+  it('collapses in order as the window narrows', () => {
+    expect(wcoNarrowing(420)).toEqual({ profileName: false, statusText: true, homeLabel: true });
+    expect(wcoNarrowing(380)).toEqual({ profileName: false, statusText: false, homeLabel: true });
+    expect(wcoNarrowing(320)).toEqual({ profileName: false, statusText: false, homeLabel: false });
+  });
+});
+
+describe('shouldShowInstallPrompt', () => {
+  const now = Date.parse('2026-11-04T00:00:00Z');
+
+  it('shows when never dismissed', () => {
+    expect(shouldShowInstallPrompt(undefined, now)).toBe(true);
+  });
+
+  it('suppresses inside the cool-down window', () => {
+    expect(shouldShowInstallPrompt('2026-11-01T00:00:00Z', now)).toBe(false);
+  });
+
+  it('re-shows after the cool-down elapses', () => {
+    expect(shouldShowInstallPrompt('2026-10-01T00:00:00Z', now)).toBe(true);
+  });
+
+  it('treats an unparseable timestamp as never dismissed', () => {
+    expect(shouldShowInstallPrompt('not-a-date', now)).toBe(true);
+  });
+});
+
+describe('formatBytes', () => {
+  it('formats byte sizes with sensible units', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(1024)).toBe('1 KB');
+    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(5 * 1024 * 1024)).toBe('5 MB');
+  });
+});
+
+describe('storage persistence helpers', () => {
+  it('requests persistence and reports the granted state', async () => {
+    const persist = vi.fn(async () => true);
+    vi.stubGlobal('navigator', { storage: { persist } });
+    await expect(requestPersistentStorage()).resolves.toBe(true);
+    expect(persist).toHaveBeenCalled();
+  });
+
+  it('returns false when the Storage API is unavailable', async () => {
+    vi.stubGlobal('navigator', {});
+    await expect(requestPersistentStorage()).resolves.toBe(false);
+    await expect(isStoragePersisted()).resolves.toBe(false);
+    await expect(estimateStorage()).resolves.toBeNull();
+  });
+
+  it('reads the usage/quota estimate', async () => {
+    const estimate = vi.fn(async () => ({ usage: 1024, quota: 2048 }));
+    vi.stubGlobal('navigator', { storage: { estimate } });
+    await expect(estimateStorage()).resolves.toEqual({ usage: 1024, quota: 2048 });
   });
 });

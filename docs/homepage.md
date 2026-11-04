@@ -1,6 +1,6 @@
 # Make Hub Your Homepage, Startup Page or Home-Screen App
 
-**Document Version:** 1.0.0 (specification — user-facing copy to be published with roadmap Phase 8)
+**Document Version:** 1.0.0 (published with roadmap Phase 8)
 **Parent specs:** [`PRD.md`](../PRD.md) §5.9, [`DESIGN.md`](../DESIGN.md) §7
 
 Hub works best when it is one tap (or one keystroke) away. This guide lists the supported ways to do that. Menu names vary between browser versions; the principle is the same everywhere.

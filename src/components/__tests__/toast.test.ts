@@ -58,4 +58,12 @@ describe('showToast', () => {
     const messages = Array.from(document.querySelectorAll('.toast')).map((t) => t.textContent);
     expect(messages.some((message) => message?.includes('Second'))).toBe(true);
   });
+
+  it('invokes onDismiss when the dismiss button is used', () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    showToast('Install Hub?', { variant: 'info', persistent: true, onDismiss });
+    document.querySelector<HTMLButtonElement>('.toast__dismiss')?.click();
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
 });

@@ -29,7 +29,7 @@ import { BookmarksView } from './components/bookmarks';
 import { BookmarkEditor } from './components/bookmark-editor';
 import { TasksDrawer } from './components/tasks';
 import { NotesDrawer } from './components/notes';
-import { resolveDrawerOpen } from './components/drawer';
+import { maxPinnedDrawers, resolveDrawerOpen } from './components/drawer';
 import { SettingsModal } from './components/settings';
 import { OnboardingCard } from './components/onboarding';
 import { CategoryManager } from './components/category-manager';
@@ -43,8 +43,21 @@ import { ProfileEditor } from './components/profile-editor';
 import { showToast } from './components/toast';
 import { el, svg } from './utils/dom';
 import { confirmDialog, Dialog } from './utils/dialog';
+import { bindVisualViewport } from './utils/viewport';
 import { newId } from './utils/crypto';
-import { draftFromShare, parseLaunchIntent, updateAppBadge } from './core/pwa';
+import {
+  draftFromShare,
+  estimateStorage,
+  isStoragePersisted,
+  parseLaunchIntent,
+  requestPersistentStorage,
+  shouldShowInstallPrompt,
+  updateAppBadge,
+  wcoCssVars,
+  wcoNarrowing,
+} from './core/pwa';
+import { TokenVault } from './core/token';
+import { tokenKeyStore } from './core/db';
 import { NotificationManager } from './core/notifications';
 import { GamepadNavigator, isGamepadSupported } from './core/gamepad';
 import type { GamepadAction } from './core/gamepad';
@@ -59,6 +72,29 @@ import type { BookmarkItem, CategoryItem, NoteItem, ProfileItem } from './types/
 
 type DrawerKey = 'tasks' | 'notes';
 type ViewKey = 'bookmarks' | 'tasks' | 'notes';
+
+/** The non-standard `beforeinstallprompt` event (Chromium install prompt). */
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+/** The Window Controls Overlay API surface used by the binder (DESIGN.md §3.1). */
+interface WindowControlsOverlayLike extends EventTarget {
+  readonly visible: boolean;
+  getTitlebarAreaRect(): { x: number; y: number; width: number; height: number };
+}
+
+/** A captured `beforeinstallprompt` event, consumed on the next user action. */
+let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
+
+/** Whether the app is running as an installed/standalone window. */
+function isStandaloneDisplay(): boolean {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
 
 /** Inline 'plus' icon for the add-bookmark control (no external icons). */
 const ICON_PLUS = 'M12 5v14M5 12h14';
@@ -257,8 +293,48 @@ function renderBootstrapError(root: HTMLElement): void {
   root.replaceChildren(card);
 }
 
-/** Show platform-specific install guidance (DESIGN.md §7). */
-function showInstallGuidance(): void {
+/**
+ * Publish Window Controls Overlay geometry as `--wco-*` custom properties and
+ * keep the header's graceful-narrowing state in sync (DESIGN.md §3.1). A no-op
+ * when the API is absent (phones, tablets, Safari, Firefox).
+ */
+function bindWindowControlsOverlay(header: Header): void {
+  const wco = (navigator as Navigator & { windowControlsOverlay?: WindowControlsOverlayLike })
+    .windowControlsOverlay;
+  if (!wco) {
+    return;
+  }
+  const apply = (): void => {
+    if (!wco.visible) {
+      return;
+    }
+    for (const [name, value] of Object.entries(wcoCssVars(wco.getTitlebarAreaRect()))) {
+      document.documentElement.style.setProperty(name, value);
+    }
+    header.setWcoNarrowing(wcoNarrowing(window.innerWidth));
+  };
+  wco.addEventListener('geometrychange', apply);
+  window.addEventListener('resize', apply);
+  apply();
+}
+
+/**
+ * Offer platform-specific install guidance (DESIGN.md §7). Prefers the native
+ * `beforeinstallprompt` flow on Chromium; falls back to an instructions sheet
+ * (iOS cannot show a native prompt).
+ */
+async function showInstallGuidance(): Promise<void> {
+  if (deferredInstallPrompt) {
+    const prompt = deferredInstallPrompt;
+    deferredInstallPrompt = null;
+    await prompt.prompt();
+    const choice = await prompt.userChoice;
+    if (choice.outcome === 'accepted') {
+      showToast('Installing Hub…', { variant: 'info' });
+    }
+    return;
+  }
+
   const dialog = new Dialog({
     label: 'Install Hub',
     onRequestClose: () => dialog.close(),
@@ -293,6 +369,33 @@ function showInstallGuidance(): void {
   dialog.open();
 }
 
+/**
+ * Non-intrusive install offer shown once the browser signals installability
+ * (G-50). Suppressed during the cool-down after a dismissal (SCHEMAS.md §3.3).
+ */
+function offerInstall(): void {
+  if (!deferredInstallPrompt) {
+    return;
+  }
+  if (!shouldShowInstallPrompt(store.appConfig.install_prompt_dismissed_at, Date.now())) {
+    return;
+  }
+  showToast('Install Hub for one-tap access and offline use.', {
+    variant: 'info',
+    persistent: true,
+    dedupeKey: 'install-prompt',
+    action: {
+      label: 'Install',
+      onSelect: () => {
+        void showInstallGuidance();
+      },
+    },
+    onDismiss: () => {
+      void store.updateConfig({ install_prompt_dismissed_at: new Date().toISOString() });
+    },
+  });
+}
+
 async function bootstrap(): Promise<void> {
   const root = document.getElementById('app');
   if (!root) {
@@ -313,6 +416,51 @@ async function bootstrap(): Promise<void> {
   }
   root.replaceChildren();
 
+  /* ---- Encrypted token vault (SCHEMAS.md §3.5) ---- */
+  // Decrypt the stored GitHub token into memory, migrating legacy plaintext in
+  // place. The ciphertext envelope is what lives in `github_pat`.
+  const tokenVault = new TokenVault({ keyStore: tokenKeyStore });
+  const tokenInit = await tokenVault.init(store.appConfig.github_pat);
+  if (tokenInit.migratedEnvelope) {
+    await store.updateConfig({ github_pat: tokenInit.migratedEnvelope });
+  }
+  if (
+    tokenInit.status === 'needs-reentry' &&
+    store.appConfig.sync_enabled &&
+    Boolean(store.appConfig.github_owner)
+  ) {
+    // The key record is missing/undecryptable (G-55): treat sync as "not
+    // configured" and ask the user to re-enter the token. No data is lost.
+    showToast(
+      'Your saved GitHub token could not be read on this device. Re-enter it in Settings → Sync.',
+      {
+        variant: 'warning',
+        persistent: true,
+        dedupeKey: 'token-reentry',
+      },
+    );
+  }
+
+  /* ---- Standalone detection (back/home affordance — DESIGN.md §3) ---- */
+  if (isStandaloneDisplay()) {
+    document.documentElement.classList.add('is-standalone');
+  }
+
+  /* ---- Request durable storage so IndexedDB is not evicted (G-52) ---- */
+  void (async () => {
+    const persisted = await isStoragePersisted();
+    if (persisted) {
+      if (!store.appConfig.storage_persisted) {
+        await store.updateConfig({ storage_persisted: true });
+      }
+      return;
+    }
+    const granted = await requestPersistentStorage();
+    if (granted) {
+      await store.updateConfig({ storage_persisted: true });
+    }
+  })();
+
   /* ---- Shell ---- */
   const shell = el('div', { className: 'app-shell', attrs: { 'data-view': 'bookmarks' } });
 
@@ -322,7 +470,9 @@ async function bootstrap(): Promise<void> {
     onToggleNotes: () => setOpen('notes', !openState.notes),
     onOpenProfile: (anchor) => profilePopover.toggle(anchor),
     onOpenSync: () => settings.open(),
+    onHome: () => navigate(import.meta.env.BASE_URL),
   });
+  bindWindowControlsOverlay(header);
 
   /* ---- Centered brand + launchpad ---- */
   const brand = new Brand();
@@ -349,6 +499,10 @@ async function bootstrap(): Promise<void> {
     onClose: () => setOpen('notes', false),
   });
 
+  // Scrim behind overlay drawers on tablet+ (G-09). Inserted before the drawers
+  // so it shares their z-index but paints underneath them.
+  const drawerScrim = el('div', { className: 'drawer-scrim' });
+  shell.appendChild(drawerScrim);
   shell.appendChild(tasksDrawer.element);
   shell.appendChild(launchpad);
   shell.appendChild(notesDrawer.element);
@@ -484,7 +638,9 @@ async function bootstrap(): Promise<void> {
     onTrySample: () => {
       void seedSampleSet();
     },
-    onInstall: () => showInstallGuidance(),
+    onInstall: () => {
+      void showInstallGuidance();
+    },
     onComplete: () => {
       void store.updateConfig({ onboarding_completed: true });
     },
@@ -580,6 +736,9 @@ async function bootstrap(): Promise<void> {
   const syncEngine = new SyncEngine({
     getConfig: () => store.appConfig,
     getPayload: () => store.getPayload(),
+    // The stored `github_pat` is an `enc1:` envelope; the vault holds the
+    // decrypted token in memory only (SCHEMAS.md §3.5).
+    getToken: () => tokenVault.token,
     applyRemote: async (payload) => {
       // Applying remote data emits collection events; suppress the resulting
       // debounced push to avoid a redundant commit loop.
@@ -598,7 +757,7 @@ async function bootstrap(): Promise<void> {
 
   // Pull remote data on boot when sync is enabled, so a normal load shows the
   // latest data without requiring a manual refresh.
-  if (store.appConfig.sync_enabled && hasGitHubConfig(store.appConfig)) {
+  if (store.appConfig.sync_enabled && hasGitHubConfig(store.appConfig, tokenVault.token)) {
     void syncEngine.pullNow();
   }
 
@@ -629,6 +788,8 @@ async function bootstrap(): Promise<void> {
       await store.updateConfig({ app_lock_enabled: false, app_lock_credential_id: '' });
       showToast('App lock disabled.', { variant: 'info' });
     },
+    /** Encrypt a newly entered token before it is persisted (SCHEMAS.md §3.5). */
+    encryptToken: (plaintext) => tokenVault.setToken(plaintext),
     onSaved: () => {
       void syncEngine.pullNow();
       applyFeatureToggles();
@@ -638,7 +799,20 @@ async function bootstrap(): Promise<void> {
     },
     onOpenRecentlyDeleted: () => recentlyDeleted.open(),
     onOpenCategories: () => categoryManager.open(),
-    onInstall: () => showInstallGuidance(),
+    onInstall: () => {
+      void showInstallGuidance();
+    },
+    onRequestPersist: async () => {
+      const granted = await requestPersistentStorage();
+      await store.updateConfig({ storage_persisted: granted });
+    },
+    onRefreshStorage: async () => {
+      const persisted = await isStoragePersisted();
+      if (persisted !== Boolean(store.appConfig.storage_persisted)) {
+        await store.updateConfig({ storage_persisted: persisted });
+      }
+      return estimateStorage();
+    },
   });
   document.body.appendChild(settings.element);
 
@@ -732,12 +906,36 @@ async function bootstrap(): Promise<void> {
   /* ---- Drawer state helpers ---- */
   const openState: Record<DrawerKey, boolean> = { tasks: false, notes: false };
 
+  /** Whether a drawer is currently pinned (lives in the grid flow). */
+  function isPinned(key: DrawerKey): boolean {
+    const pinned = store.appConfig.pinned_drawers;
+    return key === 'tasks' ? pinned.tasks : pinned.notes;
+  }
+
+  /** Show the scrim only while an unpinned (overlay) drawer is open (G-09). */
+  function updateScrim(): void {
+    const anyOpen =
+      (openState.tasks && !isPinned('tasks')) || (openState.notes && !isPinned('notes'));
+    drawerScrim.classList.toggle('is-open', anyOpen);
+  }
+
   function setOpen(key: DrawerKey, open: boolean): void {
     openState[key] = open;
     const drawer = key === 'tasks' ? tasksDrawer : notesDrawer;
     drawer.setOpen(open);
     header.setDrawerExpanded(key, open);
+    updateScrim();
   }
+
+  // Tapping the scrim closes the open overlay drawer(s).
+  drawerScrim.addEventListener('click', () => {
+    if (openState.tasks && !isPinned('tasks')) {
+      setOpen('tasks', false);
+    }
+    if (openState.notes && !isPinned('notes')) {
+      setOpen('notes', false);
+    }
+  });
 
   /** Reflect persisted pinning into the shell grid + drawer attributes. */
   function applyPinnedState(): void {
@@ -776,9 +974,39 @@ async function bootstrap(): Promise<void> {
       tasks: key === 'tasks' ? !current.tasks : current.tasks,
       notes: key === 'notes' ? !current.notes : current.notes,
     };
+    // Enforce the per-tier pin limit (DESIGN.md §3): pinning a second drawer on
+    // a laptop unpins the other so only one stays pinned.
+    const limit = maxPinnedDrawers(window.innerWidth);
+    const pinnedCount = (next.tasks ? 1 : 0) + (next.notes ? 1 : 0);
+    if (limit === 0) {
+      next.tasks = false;
+      next.notes = false;
+    } else if (pinnedCount > limit) {
+      if (key === 'tasks') {
+        next.notes = false;
+      } else {
+        next.tasks = false;
+      }
+    }
     await store.updateConfig({ pinned_drawers: next });
     applyPinnedState();
   }
+
+  /** Drop pins that exceed the current tier's limit after a resize. */
+  function reconcilePins(): void {
+    const limit = maxPinnedDrawers(window.innerWidth);
+    const current = store.appConfig.pinned_drawers;
+    const count = (current.tasks ? 1 : 0) + (current.notes ? 1 : 0);
+    if (count <= limit) {
+      return;
+    }
+    const next = {
+      tasks: limit >= 1 ? current.tasks : false,
+      notes: limit >= 2 ? current.notes : false,
+    };
+    void store.updateConfig({ pinned_drawers: next }).then(() => applyPinnedState());
+  }
+  window.addEventListener('resize', reconcilePins);
 
   function setView(view: ViewKey): void {
     shell.setAttribute('data-view', view);
@@ -807,6 +1035,18 @@ async function bootstrap(): Promise<void> {
   /* ---- Profile / theme helpers ---- */
   function applyTheme(theme: 'auto' | 'light' | 'dark'): void {
     document.documentElement.setAttribute('data-theme', theme);
+    // Keep the browser-chrome `theme-color` in sync with the effective theme
+    // (DESIGN.md §3.1, §10), so the installed title bar matches the in-app UI.
+    const effective =
+      theme === 'auto'
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light'
+        : theme;
+    const color = effective === 'dark' ? '#181716' : '#faf7f2';
+    for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
+      meta.setAttribute('content', color);
+    }
   }
 
   /** Apply the active profile's branding, theme, and engine to the UI. */
@@ -1026,6 +1266,10 @@ async function bootstrap(): Promise<void> {
 
   applyFeatureToggles();
 
+  // Publish the on-screen keyboard height so sheets and toasts reflow above it
+  // (G-16). No-ops where the Visual Viewport API is unavailable.
+  bindVisualViewport();
+
   // App lock: gate the UI before the user interacts.
   const lockPhase = resolveInitialLock(store.appConfig, isWebAuthnAvailable());
   if (lockPhase === 'locked') {
@@ -1058,6 +1302,38 @@ async function bootstrap(): Promise<void> {
   if (intent.action !== null || intent.share !== null) {
     // Clear the launch query so a refresh does not replay the intent.
     window.history.replaceState(null, '', import.meta.env.BASE_URL);
+  }
+
+  /* ---- Install lifecycle (G-50) ---- */
+  window.addEventListener('beforeinstallprompt', (event) => {
+    // Suppress the browser's mini-infobar; Hub offers its own non-intrusive UI.
+    event.preventDefault();
+    deferredInstallPrompt = event as BeforeInstallPromptEvent;
+    offerInstall();
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    showToast('Hub installed. Launch it from your home screen or app list.', {
+      variant: 'success',
+      dedupeKey: 'app-installed',
+    });
+  });
+
+  /* ---- File handlers: JSON import via the Launch Queue API (G-47) ---- */
+  interface LaunchParamsLike {
+    files?: readonly FileSystemFileHandle[];
+  }
+  interface LaunchQueueLike {
+    setConsumer(consumer: (params: LaunchParamsLike) => void): void;
+  }
+  const launchQueue = (window as Window & { launchQueue?: LaunchQueueLike }).launchQueue;
+  if (launchQueue) {
+    launchQueue.setConsumer((params) => {
+      const handle = params.files?.[0];
+      if (handle) {
+        void handle.getFile().then((file) => importJson(file));
+      }
+    });
   }
 
   /* ---- Keyboard shortcuts overlay + non-Alt pinned shortcut (G-26) ---- */
@@ -1138,9 +1414,25 @@ async function bootstrap(): Promise<void> {
   }
 }
 
+/** Offer the user-controlled "Update available — Reload" flow (G-49). */
+function promptUpdate(worker: ServiceWorker): void {
+  showToast('A new version of Hub is ready.', {
+    variant: 'info',
+    persistent: true,
+    dedupeKey: 'sw-update',
+    action: {
+      label: 'Reload',
+      // Only the user's explicit action activates the new worker.
+      onSelect: () => worker.postMessage({ type: 'SKIP_WAITING' }),
+    },
+  });
+}
+
 /**
  * Register the service worker for offline asset caching (PWA). Registration is
- * a progressive enhancement: failures are swallowed so the app still runs.
+ * a progressive enhancement: failures are swallowed so the app still runs. A
+ * new worker is never activated under a running page — the user chooses when to
+ * reload (G-49).
  */
 function registerServiceWorker(): void {
   // Only register in production: a dev-time service worker can serve stale
@@ -1148,10 +1440,40 @@ function registerServiceWorker(): void {
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) {
     return;
   }
+
+  // Reload once the newly activated worker takes control.
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) {
+      return;
+    }
+    refreshing = true;
+    window.location.reload();
+  });
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
-      // Offline caching is optional; ignore registration failures.
-    });
+    navigator.serviceWorker
+      .register(`${import.meta.env.BASE_URL}sw.js`)
+      .then((registration) => {
+        // A worker may already be waiting from a previous session.
+        if (registration.waiting && navigator.serviceWorker.controller) {
+          promptUpdate(registration.waiting);
+        }
+        registration.addEventListener('updatefound', () => {
+          const installing = registration.installing;
+          if (!installing) {
+            return;
+          }
+          installing.addEventListener('statechange', () => {
+            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+              promptUpdate(installing);
+            }
+          });
+        });
+      })
+      .catch(() => {
+        // Offline caching is optional; ignore registration failures.
+      });
   });
 }
 

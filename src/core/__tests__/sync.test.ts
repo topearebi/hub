@@ -269,6 +269,20 @@ describe('config helpers', () => {
       filePath: '.hub/data.json',
     });
   });
+
+  it('accepts a decrypted token override (SCHEMAS.md §3.5)', () => {
+    // The stored `github_pat` is an `enc1:` envelope; the vault supplies the
+    // plaintext token out of band.
+    const base = {
+      ...DEFAULT_APP_CONFIG,
+      github_pat: 'enc1:ciphertext',
+      github_owner: 'o',
+      github_repo: 'r',
+    };
+    expect(hasGitHubConfig(base, 'plaintext-token')).toBe(true);
+    expect(hasGitHubConfig(base, '')).toBe(false);
+    expect(toGitHubConfig(base, 'plaintext-token').token).toBe('plaintext-token');
+  });
 });
 
 describe('GitHub client', () => {

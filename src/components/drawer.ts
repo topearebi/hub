@@ -57,6 +57,23 @@ export function resolveDrawerOpen(pinned: boolean, wasPinned: boolean, wasOpen: 
   return wasOpen;
 }
 
+/**
+ * How many drawers may be pinned at a given viewport width (DESIGN.md §3).
+ *
+ * Pinning is a desktop affordance: it is disabled on phones and tablets
+ * (< 1024px), limited to one drawer on laptops (1024–1439px) and allows both
+ * drawers only on wide displays (>= 1440px).
+ */
+export function maxPinnedDrawers(viewportWidth: number): number {
+  if (viewportWidth >= 1440) {
+    return 2;
+  }
+  if (viewportWidth >= 1024) {
+    return 1;
+  }
+  return 0;
+}
+
 /** Build the shared drawer chrome. */
 export function buildDrawerShell(options: DrawerShellOptions): DrawerShell {
   const pinButton = el('button', {

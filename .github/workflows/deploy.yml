@@ -17,7 +17,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Reuse the single CI gate so a push to `main` is verified exactly once and
+  # deployment only proceeds when it is green (G-56).
+  verify:
+    name: CI gate
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,15 +38,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Test
-        run: npm run test
 
       - name: Build
         run: npm run build

@@ -1,24 +1,33 @@
 /**
  * Hub Service Worker
  * ------------------
- * Offline strategy (PRD §3.1, AGENTS.md Phase 5):
- *   - Static app assets: cache-first (precached shell + runtime-cached bundles).
- *   - Navigations: network-first with an app-shell fallback so SPA routes such
- *     as `/share-target` and `?action=` shortcuts resolve to `index.html` even
- *     on static hosts that would otherwise return a 404.
+ * Offline strategy (PRD §3.1, AGENTS.md Phase 8):
+ *   - The build injects a versioned precache manifest of every emitted asset
+ *     (hashed JS/CSS, `index.html`, icons, manifest) so a fresh install works
+ *     offline immediately — no "install then go offline" gap (G-48).
+ *   - Static metadata (manifest, icons) uses stale-while-revalidate so it
+ *     revalidates in the background without blocking.
+ *   - Navigations use navigation preload + a validated app-shell fallback, so a
+ *     captive-portal 200 is never cached as the shell.
  *   - GitHub API: network-first, never cached (sync data must stay fresh).
  *
- * Also implements the PWA push surface: `push` renders a notification,
- * `notificationclick` focuses/opens the app, and `message` supports the
- * page->SW `SKIP_WAITING` handshake for prompt updates.
+ * Update flow (G-49): the worker never calls `skipWaiting()` on install. The
+ * page detects a `waiting` worker, offers "Update available — Reload", and only
+ * then posts `SKIP_WAITING`. This keeps a deploy from swapping the worker under
+ * a running page.
+ *
+ * The cache-version and precache-manifest placeholders below are replaced at
+ * build time by the `hub-precache` Vite plugin (see `vite.config.ts`).
  */
 
-const CACHE_NAME = 'hub-static-v2';
+const CACHE_VERSION = '__CACHE_VERSION__';
+const PRECACHE_MANIFEST = __PRECACHE_MANIFEST__;
 
-/** App shell precached on install (relative to the SW scope). */
-const APP_SHELL = [
-  './',
-  './index.html',
+const CACHE_NAME = `hub-static-${CACHE_VERSION}`;
+const SHELL_URL = './index.html';
+
+/** Static metadata that should revalidate in the background. */
+const STATIC_METADATA = [
   './manifest.json',
   './icon.svg',
   './icon-192.png',
@@ -28,22 +37,28 @@ const APP_SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting()),
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_MANIFEST)));
+  // Deliberately no `skipWaiting()` here: the page controls the update flow.
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
-      )
-      .then(() => self.clients.claim()),
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)));
+
+      // Navigation preload lets the browser start the navigation request in
+      // parallel with worker startup, removing the SW boot cost from the path.
+      if (self.registration.navigationPreload) {
+        try {
+          await self.registration.navigationPreload.enable();
+        } catch {
+          // Navigation preload is a progressive enhancement.
+        }
+      }
+
+      await self.clients.claim();
+    })(),
   );
 });
 
@@ -66,15 +81,24 @@ self.addEventListener('fetch', (event) => {
   // SPA navigations (including /share-target and ?action= shortcuts) must
   // always resolve to the app shell.
   if (request.mode === 'navigate') {
-    event.respondWith(navigateShell(request));
+    event.respondWith(navigateShell(event));
     return;
   }
 
-  // Cache-first for same-origin static assets.
+  // Same-origin static assets.
   if (url.origin === self.location.origin) {
-    event.respondWith(cacheFirst(request));
+    if (isStaticMetadata(url)) {
+      event.respondWith(staleWhileRevalidate(request));
+    } else {
+      event.respondWith(cacheFirst(request));
+    }
   }
 });
+
+/** True for the manifest and icon files that should revalidate in the background. */
+function isStaticMetadata(url) {
+  return STATIC_METADATA.some((entry) => url.pathname.endsWith(entry.replace('./', '/')));
+}
 
 /** Serve from cache, falling back to the network and caching the response. */
 async function cacheFirst(request) {
@@ -95,23 +119,56 @@ async function cacheFirst(request) {
   }
 }
 
-/** Serve the cached app shell for any navigation, refreshing it when online. */
-async function navigateShell(request) {
+/** Serve the cached copy immediately, refreshing it in the background. */
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+
+  const network = fetch(request)
+    .then((response) => {
+      if (response.ok) {
+        cache.put(request, response.clone());
+      }
+      return response;
+    })
+    .catch(() => undefined);
+
+  if (cached) {
+    return cached;
+  }
+  const response = await network;
+  if (response) {
+    return response;
+  }
+  throw new Error('Resource unavailable offline.');
+}
+
+/** A real HTML document (not a host 404 or captive-portal page). */
+function isValidShell(response) {
+  if (!response || !response.ok) {
+    return false;
+  }
+  const type = response.headers.get('content-type') || '';
+  return type.includes('text/html');
+}
+
+/** Serve the app shell for any navigation, refreshing it when online. */
+async function navigateShell(event) {
   const cache = await caches.open(CACHE_NAME);
 
   try {
-    const response = await fetch(request);
-    // A real HTML document (not a host 404 error page) wins and refreshes the
-    // cached shell so future offline loads stay current.
-    if (response.ok) {
-      cache.put('./index.html', response.clone());
+    // Prefer the navigation-preload response when the browser provided one.
+    const preload = await event.preloadResponse;
+    const response = preload || (await fetch(event.request));
+    if (isValidShell(response)) {
+      cache.put(SHELL_URL, response.clone());
       return response;
     }
   } catch {
     // Offline: fall through to the cached shell.
   }
 
-  const shell = (await cache.match('./index.html')) ?? (await cache.match('./'));
+  const shell = (await cache.match(SHELL_URL)) || (await cache.match('./'));
   if (shell) {
     return shell;
   }

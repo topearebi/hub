@@ -19,6 +19,7 @@ import type { SyncStatus } from '../core/sync';
 const ICON_TASKS = 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11';
 const ICON_NOTES =
   'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8';
+const ICON_HOME = 'M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5';
 
 export interface HeaderCallbacks {
   onToggleTasks: () => void;
@@ -26,6 +27,8 @@ export interface HeaderCallbacks {
   onOpenProfile: (anchor: HTMLElement) => void;
   /** Open sync details / retry (status chip activation). */
   onOpenSync: () => void;
+  /** Return to the launchpad (standalone back/home affordance). */
+  onHome: () => void;
 }
 
 export class Header {
@@ -35,6 +38,7 @@ export class Header {
 
   private readonly tasksToggle: HTMLButtonElement;
   private readonly notesToggle: HTMLButtonElement;
+  private readonly homeButton: HTMLButtonElement;
   private readonly avatar: HTMLElement;
   private readonly profileName: HTMLElement;
   private readonly profileButton: HTMLButtonElement;
@@ -59,6 +63,16 @@ export class Header {
     this.notesToggle.appendChild(svg(ICON_NOTES));
     this.notesToggle.addEventListener('click', () => this.callbacks.onToggleNotes());
 
+    // Standalone back/home affordance (DESIGN.md §3, §6.1). Hidden unless the
+    // app is installed/standalone (see `layout.css`).
+    this.homeButton = el('button', {
+      className: 'icon-button header-home',
+      attrs: { type: 'button', 'aria-label': 'Home' },
+    });
+    this.homeButton.appendChild(svg(ICON_HOME));
+    this.homeButton.appendChild(el('span', { className: 'header-home__label', text: 'Home' }));
+    this.homeButton.addEventListener('click', () => this.callbacks.onHome());
+
     this.avatar = el('span', { className: 'profile-button__avatar' });
     this.profileName = el('span', { className: 'profile-button__name', text: 'Profile' });
     this.profileButton = el('button', {
@@ -72,7 +86,7 @@ export class Header {
 
     const left = el('div', {
       className: 'system-header__left',
-      children: [this.telemetry.element],
+      children: [this.homeButton, this.telemetry.element],
     });
     const right = el('div', {
       className: 'system-header__right',
@@ -102,6 +116,21 @@ export class Header {
   setDrawerExpanded(key: 'tasks' | 'notes', expanded: boolean): void {
     const toggle = key === 'tasks' ? this.tasksToggle : this.notesToggle;
     toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  }
+
+  /**
+   * Apply the Window Controls Overlay graceful-narrowing state (DESIGN.md
+   * §3.1). Each flag, when false, collapses the corresponding element to its
+   * icon-only form so the drag region keeps ≥ 48px of free width.
+   */
+  setWcoNarrowing(narrowing: {
+    profileName: boolean;
+    statusText: boolean;
+    homeLabel: boolean;
+  }): void {
+    this.element.classList.toggle('is-wco-narrow-profile', !narrowing.profileName);
+    this.element.classList.toggle('is-wco-narrow-status', !narrowing.statusText);
+    this.element.classList.toggle('is-wco-narrow-home', !narrowing.homeLabel);
   }
 
   /** Reflect the active profile in the profile control. */

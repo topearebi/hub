@@ -13,6 +13,7 @@
 
 import { DEFAULT_APP_CONFIG } from '../types/schemas';
 import type { AppConfig, DeviceMetrics } from '../types/schemas';
+import type { TokenKeyStore } from './token';
 
 export const DB_NAME = 'hub_local_db';
 export const DB_VERSION = 2;
@@ -268,6 +269,7 @@ interface ConfigRecord<T> {
 
 const APP_CONFIG_KEY = 'app_config';
 const SYNC_METADATA_KEY = 'sync_metadata';
+const TOKEN_KEY_KEY = 'token_key';
 
 /** Local sync bookkeeping (never part of the remote payload). */
 export interface SyncMetadata {
@@ -301,6 +303,36 @@ export async function getSyncMetadata(): Promise<SyncMetadata | undefined> {
 export async function setSyncMetadata(meta: SyncMetadata): Promise<void> {
   await put<ConfigRecord<SyncMetadata>>(STORE.config, { key: SYNC_METADATA_KEY, value: meta });
 }
+
+/* ------------------------------------------------------------------ */
+/* Token key store (encrypted GitHub PAT — SCHEMAS.md §3.5)            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Read the non-extractable AES-GCM key used to encrypt the GitHub token.
+ * IndexedDB structured clone supports `CryptoKey`, so no new store is needed.
+ */
+export async function getTokenKey(): Promise<CryptoKey | undefined> {
+  const record = await get<ConfigRecord<CryptoKey>>(STORE.config, TOKEN_KEY_KEY);
+  return record?.value;
+}
+
+/** Persist the token-encryption key singleton. */
+export async function setTokenKey(key: CryptoKey): Promise<void> {
+  await put<ConfigRecord<CryptoKey>>(STORE.config, { key: TOKEN_KEY_KEY, value: key });
+}
+
+/** Delete the token-encryption key (used by "Reset app data"). */
+export async function deleteTokenKey(): Promise<void> {
+  await remove(STORE.config, TOKEN_KEY_KEY);
+}
+
+/** `TokenKeyStore` implementation backed by the `config` object store. */
+export const tokenKeyStore: TokenKeyStore = {
+  get: getTokenKey,
+  set: setTokenKey,
+  delete: deleteTokenKey,
+};
 
 /* ------------------------------------------------------------------ */
 /* Metrics store helpers (local-only)                                  */

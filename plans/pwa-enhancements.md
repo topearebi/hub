@@ -1,6 +1,6 @@
 # Hub PWA Enhancements — Implementation Plan
 
-**Status:** Complete — **extended by** [`production-readiness.md`](production-readiness.md) Phase 8 (precache of the built shell, user-controlled update flow, install UX, storage persistence, complete manifest/iOS metadata, window-controls-overlay decision, CSP). Requirements are now specified in [`PRD.md`](../PRD.md) §5.9.
+**Status:** Complete — **extended by** [`production-readiness.md`](production-readiness.md) Phase 8, which is now **complete** (build-time precache of the built shell, user-controlled update flow, install UX, storage persistence, complete manifest/iOS metadata/launch images, window-controls-overlay implemented, encrypted GitHub token, CSP authored but enabled in Phase 9). Requirements are specified in [`PRD.md`](../PRD.md) §5.9.
 
 ## Goal
 

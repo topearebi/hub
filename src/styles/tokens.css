@@ -121,6 +121,15 @@
   --header-h: 56px;
   --tab-bar-h: calc(56px + env(safe-area-inset-bottom, 0px));
 
+  /* ---- Responsive tiers (DESIGN.md §3) ---- */
+  --tile-min: 96px; /* tier A/B tile grid minimum column width */
+  --content-max-width: 720px; /* tier C centred column */
+  --content-max-width-wide: 1200px; /* tier E content column */
+  --side-rail-w: 56px; /* tier B landscape tab rail */
+  /* On-screen keyboard height, published by `utils/viewport.ts` from
+     `visualViewport` so sheets and toasts reflow above the keyboard (G-16). */
+  --keyboard-inset: 0px;
+
   /* ---- Z-index scale ---- */
   --z-base: 0;
   --z-sticky: 100; /* omnibar, tab bar */

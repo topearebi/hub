@@ -13,6 +13,7 @@
 
 import { el, svg } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
+import { formatBytes } from '../core/pwa';
 import type { AppConfig } from '../types/schemas';
 import type { ConnectionResult, GitHubConfig } from '../core/sync';
 
@@ -41,12 +42,18 @@ export interface SettingsCallbacks {
   onRegisterLock: () => Promise<void>;
   /** Disable the app lock and clear its credential. */
   onDisableLock: () => Promise<void>;
+  /** Encrypt a newly entered token, returning the `enc1:` envelope to persist. */
+  encryptToken: (plaintext: string) => Promise<string>;
   /** Open the Recently deleted dialog (Data section). */
   onOpenRecentlyDeleted?: () => void;
   /** Open the category manager (Data section). */
   onOpenCategories?: () => void;
   /** Show platform install guidance (Install & updates section). */
   onInstall?: () => void;
+  /** Request durable storage (Data section). */
+  onRequestPersist?: () => Promise<void>;
+  /** Read the current persistence state and storage quota estimate (Data section). */
+  onRefreshStorage?: () => Promise<{ usage: number; quota: number } | null>;
 }
 
 /** Wrap an input in a labelled field. */
@@ -81,6 +88,7 @@ export class SettingsModal {
   private readonly themeSelect: HTMLSelectElement;
   private readonly tokenStatus: HTMLElement;
   private readonly storageStatus: HTMLElement;
+  private readonly quotaStatus: HTMLElement;
   private readonly advancedRegion: HTMLElement;
   private readonly advancedToggle: HTMLButtonElement;
 
@@ -181,6 +189,7 @@ export class SettingsModal {
 
     this.tokenStatus = el('div', { className: 'settings-token-status' });
     this.storageStatus = el('p', { className: 'settings-status' });
+    this.quotaStatus = el('p', { className: 'settings-status' });
 
     this.advancedRegion = el('div', { className: 'settings-advanced__region' });
     this.advancedRegion.hidden = true;
@@ -198,6 +207,7 @@ export class SettingsModal {
   /** Populate the form from config and reveal the modal. */
   open(): void {
     this.render();
+    void this.refreshStorage();
     this.dialog.open();
   }
 
@@ -353,6 +363,15 @@ export class SettingsModal {
     });
     recentlyDeletedButton.addEventListener('click', () => this.callbacks.onOpenRecentlyDeleted?.());
 
+    const persistButton = el('button', {
+      className: 'button',
+      text: 'Request persistent storage',
+      attrs: { type: 'button' },
+    });
+    persistButton.addEventListener('click', () => {
+      void this.handleRequestPersist();
+    });
+
     return this.section('Data', [
       el('div', {
         className: 'settings-actions',
@@ -363,6 +382,8 @@ export class SettingsModal {
         children: [categoriesButton, recentlyDeletedButton],
       }),
       this.storageStatus,
+      this.quotaStatus,
+      el('div', { className: 'settings-actions', children: [persistButton] }),
     ]);
   }
 
@@ -450,6 +471,22 @@ export class SettingsModal {
     this.storageStatus.textContent = config.storage_persisted
       ? 'Storage is persistent — your browser will not clear Hub’s data.'
       : 'Storage is not yet persistent. Your browser may clear Hub’s data when space is low.';
+    this.quotaStatus.textContent = '';
+  }
+
+  /** Refresh the persistence state and quota estimate from the browser. */
+  private async refreshStorage(): Promise<void> {
+    if (!this.callbacks.onRefreshStorage) {
+      return;
+    }
+    try {
+      const estimate = await this.callbacks.onRefreshStorage();
+      if (estimate) {
+        this.setQuota(estimate.usage, estimate.quota);
+      }
+    } catch {
+      // Quota is informational; failure is non-fatal.
+    }
   }
 
   private renderTokenStatus(): void {
@@ -520,9 +557,11 @@ export class SettingsModal {
         github_branch: gh.branch,
         github_file_path: gh.filePath,
       };
-      // Only overwrite the token when the user entered a new one.
+      // Only overwrite the token when the user entered a new one. The token is
+      // encrypted before it is persisted (SCHEMAS.md §3.5); the plaintext never
+      // reaches IndexedDB.
       if (gh.token.length > 0) {
-        patch.github_pat = gh.token;
+        patch.github_pat = await this.callbacks.encryptToken(gh.token);
       }
       await this.store.updateConfig(patch);
       this.callbacks.onSaved();
@@ -564,6 +603,29 @@ export class SettingsModal {
     } catch {
       this.setStatus('Could not remove the token.', 'error');
     }
+  }
+
+  /** Request durable storage and reflect the result (G-52). */
+  private async handleRequestPersist(): Promise<void> {
+    if (!this.callbacks.onRequestPersist) {
+      return;
+    }
+    this.setStatus('Requesting persistent storage…', 'pending');
+    try {
+      await this.callbacks.onRequestPersist();
+      this.render();
+      this.setStatus('Persistent storage requested.', 'ok');
+    } catch {
+      this.setStatus('Could not request persistent storage.', 'error');
+    }
+  }
+
+  /** Show the current storage usage/quota estimate (G-52). */
+  setQuota(usage: number, quota: number): void {
+    this.quotaStatus.textContent =
+      quota > 0
+        ? `Using ${formatBytes(usage)} of ${formatBytes(quota)} available.`
+        : `Using ${formatBytes(usage)}.`;
   }
 
   /** Enable an app lock (register credential) or disable and clear it. */

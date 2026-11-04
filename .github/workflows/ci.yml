@@ -1,10 +1,13 @@
 name: CI
 
+# The gate runs once per change:
+#   - `pull_request` → CI runs directly.
+#   - `workflow_call` → the deploy workflow reuses this job so a push to `main`
+#     is verified exactly once (no duplicate run alongside deploy).
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:
 
 jobs:
   verify:

@@ -1,6 +1,6 @@
 # Hub — Production-Readiness: Gap Analysis & Phased Roadmap
 
-**Status:** In progress — Phases 0–6 complete (baseline, correctness, CSS foundations, dialog/menu primitives, touch parity, safety & feedback UX, first-run & information architecture); Phase 7 next
+**Status:** In progress — Phases 0–8 complete (baseline, correctness, CSS foundations, dialog/menu primitives, touch parity, safety & feedback UX, first-run & information architecture, responsive tiers, PWA hardening); Phase 9 next
 **Parent specs:** [`PRD.md`](../PRD.md) (v1.1.0), [`DESIGN.md`](../DESIGN.md) (v2.0), [`docs/accessibility.md`](../docs/accessibility.md), [`SCHEMAS.md`](../SCHEMAS.md), [`AGENTS.md`](../AGENTS.md)
 **Supersedes:** the "Remaining Work" items in [`remaining-work-phases.md`](remaining-work-phases.md) that overlap with this plan.
 
@@ -308,6 +308,8 @@ Gap: G-56 and verification of everything.
 
 ## 5. Verification procedures
 
+> **Prevention:** new work must pass [`docs/spec-checklist.md`](../docs/spec-checklist.md) before implementation and the pull request template ([`.github/pull_request_template.md`](../.github/pull_request_template.md)) at review, so the defect classes found in this audit are not reintroduced.
+
 ### 5.1 Contrast
 
 A script (to be committed as `scripts/contrast.mjs`) parses `tokens.css`, resolves the light, dark and `prefers-contrast: more` themes, and checks every pair listed in DESIGN.md §2.3. It runs in CI and fails on any text pair < 4.5:1 or control boundary < 3:1.
@@ -353,6 +355,10 @@ The Vite "> 60 kB chunk" warning refers to the **raw** JS size; the enforced bud
 
 **Phase 6 (first-run & information architecture) verification:** all four gate commands exit 0; **243 tests / 28 files** pass (up from 173/20). Gzip bundle **44.95 kB** (JS 37.68 kB + CSS 7.27 kB), still under the 60 kB budget. Delivered: guided empty state + first-run welcome card with optional removable sample set (`onboarding_completed`), category management (create/rename/reorder/delete with move-to-`Links` + Undo), the auto-created category renamed **"Links"**, Settings regrouped into scoped sections with an Advanced disclosure and a never-re-displayed token field ("Token saved" + Replace/Remove), **Settings → Data → Recently deleted** (deleted profiles with item counts + individually deleted items, Restore / Delete now), the profile cascade soft-delete/restore invariant (`SCHEMAS.md` §5.4) with Undo, a global icon+text **status chip** (saved locally / syncing / synced / offline / error), recents removed from the Tab order, and the recurrence chip replaced by a menu. The 60-second first-run usability check (3 participants) remains a manual Phase 11 item.
 
+**Phase 7 (responsive tiers) verification:** all four gate commands exit 0; **261 tests / 30 files** pass (up from 243/28). Gzip bundle **45.72 kB** (JS 38.08 kB + CSS 7.64 kB), still under the 60 kB budget; `node scripts/contrast.mjs` still reports **104/104 pairs passing**. Delivered: the six DESIGN.md §3 tiers in `layout.css` — A compact phone (single pane, sticky omnibar, bottom tab bar), B landscape-short (omnibar scrolls away, tab bar becomes a 56 px side rail with labels hidden but accessible names kept), C tablet (centred 720 px column, header drawer toggles, overlay drawers with a new `.drawer-scrim`), D laptop (pin up to one drawer), E wide (1200 px content column, both drawers pinned), F foldable/spanned (`horizontal-viewport-segments: 2`, launchpad on segment 1, active drawer on segment 2); a container-query tile grid driven by `--tile-min` (96 px A/B, 120 px C+) capped at 8 columns on wide containers (G-10); bottom-sheet dialogs on phones (G-18); `visualViewport`-aware reflow via the new `utils/viewport.ts` publishing `--keyboard-inset`/`--vvh` so sheets and toasts lift above the on-screen keyboard (G-16); and a `maxPinnedDrawers()` tier guard that disables pinning below 1024 px and unpins the second drawer on laptops, reconciled on resize. The larger tiers carry a `min-height: 501px` guard so a modern phone on its side (e.g. 844×390) stays in the landscape-short tier. New tests: `utils/__tests__/viewport.test.ts` (6), `styles/__tests__/layout.test.ts` (9) and `maxPinnedDrawers` cases in `drawer.test.ts`. The per-width visual matrix (320, 360, 390, 430, 568×320, 744, 820, 1024, 1280, 1440, 1920, 2560 px) and the spanned-foldable emulation remain manual Phase 11 items.
+
+**Phase 8 (PWA hardening) verification:** all four gate commands exit 0; **289 tests / 32 files** pass (up from 261/30); `node scripts/contrast.mjs` still reports **104/104 pairs passing**. Gzip bundle **48.51 kB** (JS 40.62 kB + CSS 7.89 kB), still under the 60 kB budget. Delivered: a **build-time precache manifest** injected into `public/sw.js` by a small custom Vite plugin ([`scripts/vite-plugin-precache.ts`](../scripts/vite-plugin-precache.ts)) — no runtime dependency — with a content-hash cache version, **stale-while-revalidate** for the manifest/icons, a **validated shell fallback** (a captive-portal 200 is never cached as the shell), **navigation preload**, and a **user-controlled update flow** (a `waiting` worker raises an "Update available — Reload" toast; `SKIP_WAITING` only on the user's action; no unconditional `skipWaiting()`) (G-48, G-49); install UX via `beforeinstallprompt`/`appinstalled` with a non-intrusive, cool-down-respecting offer and platform guidance (G-50); `navigator.storage.persist()` with the result recorded and a usage/quota readout plus a "Request persistent storage" control in Settings → Data (G-52); a complete manifest (144/256/384 + maskable 192/512 + monochrome + per-shortcut icons, absolute-capable `id`, brand-matched colours, narrow/wide screenshots, `launch_handler`, `note_taking`, `file_handlers`) (G-45, G-47); standalone/iOS metadata and four launch (splash) images, with `theme-color` kept in sync with the in-app theme (G-51); **Window Controls Overlay implemented** — a DOM-free geometry→`--wco-*` helper and narrowing breakpoints in `core/pwa.ts` (unit-tested), a binder in `main.ts`, `@media (display-mode: window-controls-overlay)` layout, `app-region` drag/no-drag, and a standalone Home affordance (G-46); **GitHub token encrypted at rest** with a non-extractable WebCrypto AES-GCM key ([`src/core/token.ts`](../src/core/token.ts), the `enc1:` envelope and `token_key` config record exactly per `SCHEMAS.md` §3.5), one-time plaintext migration, missing-key re-entry path, the token supplied to sync from memory only and encrypted before persistence (G-55); a meta CSP and `referrer` policy **authored** (the CSP is left commented out and enabled in Phase 9) (G-55); and a single CI gate reused by the deploy workflow so a push to `main` is verified exactly once (G-56). New tests: `core/__tests__/token.test.ts` (12), expansion of `core/__tests__/pwa.test.ts` (23) and `components/__tests__/header.test.ts` (3), plus toast `onDismiss` and sync token-override cases. The Lighthouse PWA pass, the fresh-install→airplane-mode test and the two-build update test remain manual Phase 11 items.
+
 ---
 
 ## 7. Decisions and remaining open items
@@ -374,7 +380,11 @@ The Vite "> 60 kB chunk" warning refers to the **raw** JS size; the enforced bud
 
 ### Still open
 
-- **Dev dependency choice:** `vite-plugin-pwa` vs a small custom plugin; choose by bundle impact and maintenance cost in Phase 8.
+_None._
+
+### Resolved in Phase 8
+
+- **Dev dependency choice:** a small custom Vite plugin (`scripts/vite-plugin-precache.ts`) was chosen over `vite-plugin-pwa` — zero added dependencies, no runtime impact, and full control over the injected manifest and cache version, in keeping with the zero-bloat mandate.
 
 ### Resolved in Phase 6
 

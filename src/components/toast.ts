@@ -34,6 +34,8 @@ export interface ToastOptions {
   dismissible?: boolean;
   /** Replace any existing toast with the same key instead of stacking. */
   dedupeKey?: string;
+  /** Invoked when the user dismisses the toast with its dismiss button. */
+  onDismiss?: () => void;
 }
 
 const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
@@ -118,7 +120,10 @@ export function showToast(message: string, options: ToastOptions = {}): () => vo
       attrs: { type: 'button', 'aria-label': 'Dismiss notification' },
     });
     dismissButton.appendChild(svg(ICON_CLOSE, { size: 16 }));
-    dismissButton.addEventListener('click', () => dismiss());
+    dismissButton.addEventListener('click', () => {
+      options.onDismiss?.();
+      dismiss();
+    });
     node.appendChild(dismissButton);
   }
 

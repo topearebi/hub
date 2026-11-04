@@ -1,5 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
+import { precachePlugin } from './scripts/vite-plugin-precache';
+
 /**
  * Vite + Vitest configuration for Hub.
  *
@@ -8,6 +10,7 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   base: './',
+  plugins: [precachePlugin()],
   build: {
     target: 'es2022',
     outDir: 'dist',

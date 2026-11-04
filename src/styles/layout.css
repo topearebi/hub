@@ -1,36 +1,31 @@
 /**
- * Hub Layout
- * ----------
- * Desktop 3-column grid, centered launchpad, off-canvas drawers, and the mobile
- * bottom tab bar (PRD §6.2). All values reference the design tokens
- * (`tokens.css`, source of truth `DESIGN.md` §3).
+ * Hub Layout — responsive tiers
+ * -----------------------------
+ * Mobile-first: the base rules target the compact phone (tier A) and larger
+ * tiers add behaviour through `min-width` queries (DESIGN.md §3).
+ *
+ *   A. Compact (phone portrait)      < 768px
+ *   B. Compact landscape-short       (orientation: landscape) and (max-height: 500px)
+ *   C. Medium (tablet)               768–1023px
+ *   D. Expanded (laptop)             1024–1439px
+ *   E. Wide (desktop/ultrawide)      >= 1440px
+ *   F. Foldable / spanned            (horizontal-viewport-segments: 2)
  *
  * Full-height uses `100dvh` with a `100vh` fallback so the bottom is never cut
  * off behind mobile browser chrome (G-13). Edge-anchored chrome respects
- * `env(safe-area-inset-*)` (G-14).
+ * `env(safe-area-inset-*)` (G-14). All values reference the design tokens
+ * (`tokens.css`, source of truth `DESIGN.md` §2–§3).
  */
 
+/* ================================================================== */
+/* Tier A — compact phone portrait (< 768px)                          */
+/* ================================================================== */
+
 .app-shell {
+  display: block;
   min-height: 100vh;
   min-height: 100dvh;
-  display: grid;
-  grid-template-columns: 1fr;
   background-color: var(--bg-app);
-}
-
-/* Desktop: pinned drawers expand the shell into 2- or 3-column layouts. */
-@media (min-width: 1024px) {
-  .app-shell--tasks-pinned {
-    grid-template-columns: var(--drawer-width) 1fr;
-  }
-
-  .app-shell--notes-pinned {
-    grid-template-columns: 1fr var(--drawer-width);
-  }
-
-  .app-shell--both-pinned {
-    grid-template-columns: var(--drawer-width) 1fr var(--drawer-width);
-  }
 }
 
 .launchpad {
@@ -39,6 +34,8 @@
   min-height: 100vh;
   min-height: 100dvh;
   padding: 0;
+  /* Clear the fixed bottom tab bar. */
+  padding-bottom: var(--tab-bar-h);
 }
 
 /* ---- System header (edge-to-edge) ---- */
@@ -69,8 +66,8 @@
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-xl);
-  padding: var(--space-xl) var(--space-md) var(--space-md);
+  gap: var(--space-lg);
+  padding: var(--space-md) var(--space-3) var(--space-3);
 }
 
 /* ---- Centered brand ---- */
@@ -78,7 +75,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 72px;
+  min-height: 56px;
   text-align: center;
 }
 
@@ -96,13 +93,17 @@
   object-fit: contain;
 }
 
+/* Sticky omnibar with a solid backing so content never bleeds through. */
 .launchpad__omnibar {
   position: sticky;
-  top: var(--space-md);
+  top: var(--space-sm);
   z-index: var(--z-sticky);
+  width: 100%;
+  max-width: var(--omnibar-max-width);
+  margin-inline: auto;
 }
 
-/* ---- Drawers ---- */
+/* ---- Drawers: on phones they are the panes themselves ---- */
 .drawer {
   display: flex;
   flex-direction: column;
@@ -122,101 +123,14 @@
   border-left: 1px solid var(--border-light);
 }
 
-/* Unpinned drawers are off-canvas overlays that slide into view. */
-.drawer[data-pinned='false'] {
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  width: var(--drawer-width);
-  max-width: 90vw;
-  z-index: var(--z-drawer);
-  box-shadow: var(--shadow-3);
+.drawer__body {
+  padding-bottom: var(--tab-bar-h);
 }
 
-.drawer--tasks[data-pinned='false'] {
-  left: 0;
-  transform: translateX(-100%);
-  visibility: hidden;
-}
-
-.drawer--tasks[data-pinned='false'][data-open='true'] {
-  transform: translateX(0);
-  visibility: visible;
-}
-
-.drawer--notes[data-pinned='false'] {
-  right: 0;
-  transform: translateX(100%);
-  visibility: hidden;
-}
-
-.drawer--notes[data-pinned='false'][data-open='true'] {
-  transform: translateX(0);
-  visibility: visible;
-}
-
-/* Pinned drawers live in the grid flow and cannot be closed. */
-.drawer[data-pinned='true'] {
-  position: static;
-  transform: none;
-  visibility: visible;
-  box-shadow: none;
-}
-
-.drawer[data-pinned='true'] .drawer__close {
-  display: none;
-}
-
-/* ---- Mobile tab bar (hidden on desktop) ---- */
-.mobile-tabs {
-  display: none;
-}
-
-/* Mobile / PWA viewport (PRD §6.2). */
-@media (max-width: 768px) {
-  .launchpad {
-    padding: 0;
-    padding-bottom: var(--tab-bar-h);
-  }
-
-  .launchpad__center {
-    padding: var(--space-md) var(--space-3) var(--space-3);
-    gap: var(--space-lg);
-  }
-
-  .brand-area {
-    min-height: 56px;
-  }
-
-  .launchpad__omnibar {
-    top: var(--space-sm);
-  }
-
-  /* Drawer toggles are redundant on mobile (the tab bar handles navigation). */
-  .drawer-toggle {
-    display: none;
-  }
-
-  /* Drawers become full-width panels; only the active view is shown. */
-  .app-shell {
-    display: block;
-  }
-
-  .drawer {
-    position: static;
-    transform: none;
-    visibility: visible;
-    width: auto;
-    max-width: none;
-    max-height: none;
-    box-shadow: none;
-    border: none;
-  }
-
-  .drawer__body {
-    padding-bottom: var(--tab-bar-h);
-  }
-
+/* Only the active view is shown on a phone. Scoped to tier A (and the
+   landscape-short tier B) so a resize to a larger tier — where the tab bar is
+   hidden — never leaves a pane hidden. */
+@media (max-width: 767.98px), (orientation: landscape) and (max-height: 500px) {
   .app-shell[data-view='bookmarks'] .drawer {
     display: none;
   }
@@ -230,16 +144,280 @@
   .app-shell[data-view='notes'] .drawer--tasks {
     display: none;
   }
+}
+
+/* Drawer toggles are redundant on phones (the tab bar handles navigation). */
+.drawer-toggle {
+  display: none;
+}
+
+/* ---- Mobile tab bar (fixed to the bottom) ---- */
+.mobile-tabs {
+  display: flex;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background-color: var(--bg-card);
+  border-top: 1px solid var(--border-light);
+}
+
+/* ================================================================== */
+/* Tier B — compact landscape-short                                   */
+/* (orientation: landscape) and (max-height: 500px)                   */
+/* ================================================================== */
+
+@media (orientation: landscape) and (max-height: 500px) {
+  /* The omnibar scrolls away instead of sticking, freeing vertical space. */
+  .launchpad__omnibar {
+    position: static;
+  }
+
+  /* The tab bar becomes a 56 px side rail; labels are hidden but the
+     accessible name is kept on the button (DESIGN.md §3, tier B). */
+  .mobile-tabs {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: auto;
+    width: var(--side-rail-w);
+    flex-direction: column;
+    padding-bottom: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    border-top: none;
+    border-right: 1px solid var(--border-light);
+  }
+
+  .mobile-tabs__label {
+    display: none;
+  }
+
+  .launchpad {
+    padding-bottom: 0;
+    padding-inline-start: var(--side-rail-w);
+  }
+
+  .drawer__body {
+    padding-bottom: 0;
+  }
+}
+
+/* ================================================================== */
+/* Tier C — medium (tablet) 768–1023px                                */
+/* ================================================================== */
+
+/* `min-height: 501px` keeps the landscape-short tier B (phones on their side)
+   from also matching this tier, since a modern phone is >= 768px wide. */
+@media (min-width: 768px) and (min-height: 501px) {
+  .app-shell {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .launchpad {
+    padding-bottom: 0;
+  }
+
+  .launchpad__center {
+    max-width: var(--content-max-width);
+    gap: var(--space-xl);
+    padding: var(--space-xl) var(--space-md) var(--space-md);
+  }
+
+  .brand-area {
+    min-height: 72px;
+  }
+
+  .launchpad__omnibar {
+    top: var(--space-md);
+  }
+
+  .drawer__body {
+    padding-bottom: var(--space-md);
+  }
+
+  /* Header drawer toggles replace the tab bar. */
+  .drawer-toggle {
+    display: inline-flex;
+  }
 
   .mobile-tabs {
-    display: flex;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: var(--z-sticky);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    background-color: var(--bg-card);
-    border-top: 1px solid var(--border-light);
+    display: none;
   }
+
+  /* Unpinned drawers are off-canvas overlays with a scrim (DESIGN.md §5.2).
+     Pinning is disabled below 1024px, so every drawer is an overlay here. */
+  .drawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: var(--drawer-width);
+    max-width: 90vw;
+    z-index: var(--z-drawer);
+    box-shadow: var(--shadow-3);
+  }
+
+  .drawer--tasks {
+    left: 0;
+    transform: translateX(-100%);
+    visibility: hidden;
+  }
+
+  .drawer--tasks[data-open='true'] {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .drawer--notes {
+    right: 0;
+    transform: translateX(100%);
+    visibility: hidden;
+  }
+
+  .drawer--notes[data-open='true'] {
+    transform: translateX(0);
+    visibility: visible;
+  }
+}
+
+/* ================================================================== */
+/* Tier D — expanded (laptop) 1024–1439px                             */
+/* ================================================================== */
+
+@media (min-width: 1024px) and (min-height: 501px) {
+  /* Pinned drawers live in the grid flow and cannot be closed. */
+  .drawer[data-pinned='true'] {
+    position: static;
+    transform: none;
+    visibility: visible;
+    box-shadow: none;
+  }
+
+  .drawer[data-pinned='true'] .drawer__close {
+    display: none;
+  }
+
+  /* Pin up to one drawer (two-column). */
+  .app-shell--tasks-pinned {
+    grid-template-columns: var(--drawer-width) 1fr;
+  }
+
+  .app-shell--notes-pinned {
+    grid-template-columns: 1fr var(--drawer-width);
+  }
+}
+
+/* ================================================================== */
+/* Tier E — wide (desktop/ultrawide) >= 1440px                        */
+/* ================================================================== */
+
+@media (min-width: 1440px) and (min-height: 501px) {
+  .launchpad__center {
+    max-width: var(--content-max-width-wide);
+  }
+
+  /* Pin both drawers (three-column). */
+  .app-shell--both-pinned {
+    grid-template-columns: var(--drawer-width) 1fr var(--drawer-width);
+  }
+}
+
+/* ================================================================== */
+/* Tier F — foldable / spanned (horizontal-viewport-segments: 2)      */
+/* ================================================================== */
+
+@media (horizontal-viewport-segments: 2) {
+  /* Launchpad on segment 1, the active drawer pinned to segment 2. */
+  .app-shell {
+    display: grid;
+    grid-template-columns:
+      env(viewport-segment-width 0 0, 1fr)
+      env(viewport-segment-width 1 0, 1fr);
+  }
+
+  .launchpad {
+    grid-column: 1;
+  }
+
+  .drawer[data-open='true'] {
+    position: static;
+    grid-column: 2;
+    transform: none;
+    visibility: visible;
+    width: auto;
+    max-width: none;
+    box-shadow: none;
+  }
+}
+
+/* ================================================================== */
+/* Window Controls Overlay (installed desktop apps — DESIGN.md §3.1)  */
+/* ================================================================== */
+
+@media (display-mode: window-controls-overlay) {
+  :root {
+    /* The title bar height is the OS titlebar area, at least 40px. The
+       `--wco-h` value is published by the binder in `main.ts`. */
+    --header-h: max(var(--wco-h, 0px), 40px);
+  }
+
+  .system-header {
+    /* Content lives only inside the usable band between the OS controls, so
+       macOS (controls left) and Windows (controls right) both work and RTL
+       mirrors correctly. */
+    padding-inline-start: calc(env(titlebar-area-x, 0px) + var(--space-md));
+    padding-inline-end: calc(
+      100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%) + var(--space-md)
+    );
+    padding-top: 0;
+    padding-bottom: 0;
+    min-height: var(--header-h);
+    /* The header's empty space is the drag region. */
+    app-region: drag;
+    -webkit-app-region: drag;
+  }
+
+  /* Interactive children must never be draggable. */
+  .system-header button,
+  .system-header a,
+  .system-header input,
+  .system-header select,
+  .system-header [role='button'],
+  .system-header .status-chip,
+  .system-header .profile-button {
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
+  }
+}
+
+/* Graceful narrowing (DESIGN.md §3.1): collapse profile name → status text →
+   Home label as the window narrows, protecting the ≥ 48px drag region. The
+   binder toggles these classes from `wcoNarrowing()`. */
+.system-header.is-wco-narrow-profile .profile-button__name,
+.system-header.is-wco-narrow-status .status-chip__label,
+.system-header.is-wco-narrow-home .header-home__label {
+  display: none;
+}
+
+/* ================================================================== */
+/* Standalone back/home affordance (DESIGN.md §3, §6.1)               */
+/* ================================================================== */
+
+/* The Home control is only meaningful in an installed/standalone window. */
+.header-home {
+  display: none;
+}
+
+@media (display-mode: standalone) {
+  .header-home {
+    display: inline-flex;
+  }
+}
+
+/* iOS standalone reports via `navigator.standalone`; the binder adds this
+   class so the affordance appears there too. */
+html.is-standalone .header-home {
+  display: inline-flex;
 }

@@ -205,13 +205,33 @@
   color: var(--text-sub);
 }
 
+/* The grid is a container so its column count can respond to the available
+   width rather than the viewport (DESIGN.md §3, G-10). */
+.launchpad__bookmarks {
+  container-type: inline-size;
+}
+
 .tile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--tile-min), 1fr));
   gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* Tier C+: larger tiles (the height guard excludes landscape-short phones). */
+@media (min-width: 768px) and (min-height: 501px) {
+  :root {
+    --tile-min: 120px;
+  }
+}
+
+/* Wide containers cap the grid at 8 columns (DESIGN.md §3, tier E). */
+@container (min-width: 1000px) {
+  .tile-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
 }
 
 .tile {
@@ -320,7 +340,8 @@
 .toast-container {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--space-lg) + env(safe-area-inset-bottom, 0px));
+  /* Lift above the tab bar, the safe area and the on-screen keyboard (G-16). */
+  bottom: calc(var(--space-lg) + env(safe-area-inset-bottom, 0px) + var(--keyboard-inset));
   transform: translateX(-50%);
   z-index: var(--z-toast);
   display: flex;
@@ -1900,15 +1921,55 @@
   background-color: color-mix(in srgb, var(--accent-terracotta) 88%, var(--text-main));
 }
 
-/* ---- Bottom-sheet dialogs on phones (DESIGN.md §5.3, §6.7) ---- */
-@media (max-width: 640px) {
-  .modal--sheet {
-    align-self: flex-end;
+/* ---- Bottom-sheet dialogs on phones (DESIGN.md §5.3, §6.7, G-18) ----
+   On compact phones every dialog is a bottom sheet anchored to the bottom,
+   reflowing above the on-screen keyboard (G-16). */
+@media (max-width: 767.98px), (orientation: landscape) and (max-height: 500px) {
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+    padding-bottom: var(--keyboard-inset);
+  }
+
+  .modal {
     width: 100%;
     max-width: none;
-    max-height: 92dvh;
+    max-height: calc(92dvh - var(--keyboard-inset));
     border-end-start-radius: 0;
     border-end-end-radius: 0;
+    border-start-start-radius: var(--radius-lg);
+    border-start-end-radius: var(--radius-lg);
+  }
+}
+
+/* ---- Drawer scrim (tablet+ overlay drawers, DESIGN.md §5.2, G-09) ----
+   Shares the drawer z-index; it is inserted before the drawers in the DOM so
+   the drawer paints above it. Phones use the tab bar, not overlay drawers. */
+.drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-drawer);
+  display: none;
+  background-color: var(--bg-scrim);
+}
+
+.drawer-scrim.is-open {
+  display: block;
+}
+
+@media (max-width: 767.98px), (orientation: landscape) and (max-height: 500px) {
+  /* Phones use the tab bar, not overlay drawers, so the scrim never shows —
+     the `.is-open` variant is listed to out-specify the base rule. */
+  .drawer-scrim,
+  .drawer-scrim.is-open {
+    display: none;
+  }
+}
+
+/* Pinning is disabled below the expanded tier (DESIGN.md §3, tier C). */
+@media (max-width: 1023.98px), (orientation: landscape) and (max-height: 500px) {
+  .drawer__pin {
+    display: none;
   }
 }
 

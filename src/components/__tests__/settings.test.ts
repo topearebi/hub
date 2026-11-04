@@ -22,6 +22,7 @@ function makeSettings(): SettingsModal {
     onSyncNow: () => undefined,
     onRegisterLock: async () => undefined,
     onDisableLock: async () => undefined,
+    encryptToken: async (plaintext) => `enc1:${plaintext}`,
   });
 }
 
