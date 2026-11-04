@@ -8,6 +8,7 @@
 
 import { el, svg } from '../utils/dom';
 import { Dialog } from '../utils/dialog';
+import { t } from '../utils/i18n';
 import { compressImageFile } from '../core/image';
 import type { AppConfig, ProfileItem } from '../types/schemas';
 
@@ -66,22 +67,32 @@ export class ProfileEditor {
     });
 
     this.nameInput = el('input', {
-      attrs: { type: 'text', placeholder: 'Profile name', 'aria-label': 'Profile name' },
+      attrs: {
+        type: 'text',
+        placeholder: t('profileEditor.namePlaceholder'),
+        'aria-label': t('profileEditor.nameAria'),
+      },
     });
     this.titleInput = el('input', {
-      attrs: { type: 'text', placeholder: 'Hub title', 'aria-label': 'Hub title' },
+      attrs: {
+        type: 'text',
+        placeholder: t('profileEditor.hubTitlePlaceholder'),
+        'aria-label': t('profileEditor.hubTitleAria'),
+      },
     });
-    this.engineSelect = el('select', { attrs: { 'aria-label': 'Default search engine' } });
-    this.themeSelect = el('select', { attrs: { 'aria-label': 'Theme' } });
+    this.engineSelect = el('select', { attrs: { 'aria-label': t('profileEditor.engineAria') } });
+    this.themeSelect = el('select', { attrs: { 'aria-label': t('profileEditor.themeAria') } });
     for (const theme of ['auto', 'light', 'dark'] as const) {
-      this.themeSelect.appendChild(el('option', { text: theme, attrs: { value: theme } }));
+      this.themeSelect.appendChild(
+        el('option', { text: t(`theme.${theme}`), attrs: { value: theme } }),
+      );
     }
 
     this.avatarInput = el('input', {
-      attrs: { type: 'file', accept: 'image/*', 'aria-label': 'Upload avatar' },
+      attrs: { type: 'file', accept: 'image/*', 'aria-label': t('profileEditor.uploadAvatarAria') },
     });
     this.logoInput = el('input', {
-      attrs: { type: 'file', accept: 'image/*', 'aria-label': 'Upload logo' },
+      attrs: { type: 'file', accept: 'image/*', 'aria-label': t('profileEditor.uploadLogoAria') },
     });
     this.avatarPreview = el('span', { className: 'profile-editor__preview' });
     this.logoPreview = el('span', { className: 'profile-editor__preview' });
@@ -90,8 +101,8 @@ export class ProfileEditor {
     // only shown while an image is present (see `updateRemoveButtons`).
     this.removeAvatarButton = el('button', {
       className: 'button',
-      text: 'Remove',
-      attrs: { type: 'button', 'aria-label': 'Remove avatar' },
+      text: t('common.remove'),
+      attrs: { type: 'button', 'aria-label': t('profileEditor.removeAvatarAria') },
     });
     this.removeAvatarButton.addEventListener('click', () => {
       this.avatarData = undefined;
@@ -100,8 +111,8 @@ export class ProfileEditor {
     });
     this.removeLogoButton = el('button', {
       className: 'button',
-      text: 'Remove',
-      attrs: { type: 'button', 'aria-label': 'Remove logo' },
+      text: t('common.remove'),
+      attrs: { type: 'button', 'aria-label': t('profileEditor.removeLogoAria') },
     });
     this.removeLogoButton.addEventListener('click', () => {
       this.logoData = undefined;
@@ -142,7 +153,7 @@ export class ProfileEditor {
   private build(): HTMLElement {
     const closeButton = el('button', {
       className: 'icon-button modal__close',
-      attrs: { type: 'button', 'aria-label': 'Close profile editor' },
+      attrs: { type: 'button', 'aria-label': t('profileEditor.closeAria') },
     });
     closeButton.appendChild(svg(ICON_CLOSE));
     closeButton.addEventListener('click', () => this.close());
@@ -150,13 +161,13 @@ export class ProfileEditor {
     const title = el('h2', {
       className: 'modal__title',
       attrs: { id: this.titleId },
-      text: 'Profile settings',
+      text: t('profileEditor.heading'),
     });
     const header = el('header', { className: 'modal__header', children: [title, closeButton] });
 
     const saveButton = el('button', {
       className: 'button button--primary',
-      text: 'Save',
+      text: t('common.save'),
       attrs: { type: 'button' },
     });
     saveButton.addEventListener('click', () => {
@@ -165,7 +176,7 @@ export class ProfileEditor {
 
     const deleteButton = el('button', {
       className: 'button button--danger',
-      text: 'Delete profile',
+      text: t('profileEditor.deleteProfile'),
       attrs: { type: 'button' },
     });
     deleteButton.addEventListener('click', () => {
@@ -180,16 +191,16 @@ export class ProfileEditor {
     const body = el('div', {
       className: 'modal__body',
       children: [
-        field('Profile name', this.nameInput),
-        field('Hub title', this.titleInput),
-        field('Default search engine', this.engineSelect),
-        field('Theme', this.themeSelect),
-        field('Avatar', this.avatarInput),
+        field(t('profileEditor.fieldName'), this.nameInput),
+        field(t('profileEditor.fieldHubTitle'), this.titleInput),
+        field(t('profileEditor.fieldEngine'), this.engineSelect),
+        field(t('profileEditor.fieldTheme'), this.themeSelect),
+        field(t('profileEditor.fieldAvatar'), this.avatarInput),
         el('div', {
           className: 'profile-editor__preview-row',
           children: [this.avatarPreview, this.removeAvatarButton],
         }),
-        field('Custom logo', this.logoInput),
+        field(t('profileEditor.fieldLogo'), this.logoInput),
         el('div', {
           className: 'profile-editor__preview-row',
           children: [this.logoPreview, this.removeLogoButton],
@@ -254,18 +265,18 @@ export class ProfileEditor {
       return;
     }
     try {
-      this.statusEl.textContent = 'Processing image…';
+      this.statusEl.textContent = t('profileEditor.processing');
       const data = await compressImageFile(file);
       apply(data);
-      this.statusEl.textContent = 'Image ready.';
+      this.statusEl.textContent = t('profileEditor.imageReady');
     } catch {
-      this.statusEl.textContent = 'Could not process that image.';
+      this.statusEl.textContent = t('profileEditor.imageError');
     }
   }
 
   private async handleSave(): Promise<void> {
     const patch: Partial<ProfileItem> = {
-      name: this.nameInput.value.trim() || 'Profile',
+      name: this.nameInput.value.trim() || t('profileEditor.defaultName'),
       hub_title: this.titleInput.value.trim(),
       default_search_provider_id: this.engineSelect.value,
       theme: this.themeSelect.value as 'auto' | 'light' | 'dark',
@@ -276,7 +287,7 @@ export class ProfileEditor {
     patch.logo = this.logoData ?? '';
 
     await this.callbacks.onSave(patch);
-    this.statusEl.textContent = 'Profile saved.';
+    this.statusEl.textContent = t('profileEditor.saved');
     this.close();
   }
 }

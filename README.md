@@ -87,11 +87,10 @@ src/
 │   ├── notifications.ts # Local reminders + Web Push subscription
 │   ├── gamepad.ts  # Gamepad -> navigation action mapping
 │   ├── lock.ts     # WebAuthn app lock (screen lock / biometrics)
-│   ├── telemetry.ts# (scheduled for removal — roadmap Phase 9) IP/location/weather lookups
+│   ├── legacy.ts   # One-time cleanup of caches from removed features
 │   └── image.ts    # Canvas scale/compress for avatars & logos
 ├── components/     # Vanilla TS UI components
-│   ├── header.ts   # Edge-to-edge system header (profile controls, drawer toggles)
-│   ├── telemetry-badge.ts # (scheduled for removal — roadmap Phase 9)
+│   ├── header.ts   # Edge-to-edge system header (status chip, profile controls, drawer toggles)
 │   ├── brand.ts    # Centered logo or custom Hub title
 │   ├── profile-popover.ts # Profile switcher / add / settings menu
 │   ├── profile-editor.ts  # Profile name, avatar, logo, engine, theme
@@ -108,12 +107,17 @@ src/
 ├── styles/
 │   ├── tokens.css  # Warm light/dark design tokens
 │   ├── layout.css  # Grid, drawers, responsive breakpoints
-│   └── components.css # Omnibar, cards, drawers, modal, lock, share styles
+│   ├── components.css # Omnibar, cards, drawers, modal, lock, share styles
+│   └── print.css   # Print stylesheet (content only, no chrome)
 ├── types/
 │   └── schemas.ts  # Canonical data contracts (single source of truth)
 ├── utils/
 │   ├── dom.ts      # XSS-safe DOM builders (no innerHTML)
 │   ├── text.ts     # URL linkification for task text
+│   ├── i18n.ts     # Message catalogue, plurals, pseudo-locale, dir/lang
+│   ├── haptics.ts  # Feature-detected navigator.vibrate wrapper
+│   ├── swipe.ts    # Pointer-based horizontal swipe detection
+│   ├── share.ts    # Feature-detected Web Share wrapper
 │   └── crypto.ts   # UUID v4 generation
 └── main.ts         # Application entrypoint & service worker registration
 ```
@@ -141,11 +145,11 @@ src/
 - **Migration:** on first run after upgrading, a default profile is created and
   all legacy (unassigned) records are migrated into it — no data loss. v1 sync
   payloads are migrated to v2 on read.
-- **System header:** an edge-to-edge header holds the active-profile control and
-  drawer toggles. The environment-telemetry cluster (IP / location / weather via
-  ipwho.is + Open-Meteo) is **being removed** (roadmap Phase 9) because it
-  contradicts the zero-telemetry promise; the target header is specified in
-  [`DESIGN.md`](DESIGN.md) §6.1.
+- **System header:** an edge-to-edge header holds the Home affordance and status
+  chip on the left, and the drawer toggles and active-profile control on the
+  right ([`DESIGN.md`](DESIGN.md) §6.1). The former environment-lookup cluster
+  (IP / location / weather) has been **removed** to honour the zero-telemetry
+  promise; a one-time boot cleanup deletes its stale local cache entry.
 - **Search pill:** a centered, pill-shaped search bar with an inline engine
   selector. Press `/` anywhere to focus it and select existing text (ignored
   while typing in a field or when a modal is open).
@@ -201,6 +205,7 @@ Highlights of what the roadmap changes:
 - Safety: Undo toasts, import preview, unsaved-changes guard, error boundary, profile delete with 30-day recovery.
 - PWA: build-time precache, "update available" flow, `storage.persist()`, install prompts, complete manifest and iOS metadata.
 - Privacy: telemetry removed; network limited to same-origin and `api.github.com`.
+- i18n & polish: a dependency-free message catalogue with plurals and a pseudo-locale, logical CSS properties and `dir`/`lang`, locale-aware dates, a print stylesheet, Web Share, Background Sync, and optional swipe/haptics.
 
 ### Use Hub as your homepage or new tab
 
@@ -215,7 +220,7 @@ and setting it as the browser homepage / startup page. A browser-extension
 Every commit is gated locally and in CI:
 
 1. **Pre-commit (husky):** `lint-staged` (ESLint + Prettier) → `typecheck` → `test`.
-2. **CI (`.github/workflows/ci.yml`):** install → typecheck → lint → test → build.
+2. **CI (`.github/workflows/ci.yml`):** install → typecheck → lint → test (incl. axe) → contrast → build → bundle-size, plus a Lighthouse job.
 3. **Deploy (`.github/workflows/deploy.yml`):** the same gate, then publish to Pages.
 
 Enforced negative constraints (AGENTS.md):
@@ -226,9 +231,12 @@ Enforced negative constraints (AGENTS.md):
 - No external CDNs or third-party requests (icons, fonts, and styles are all local).
 - No hover-only controls; ≥ 44 px touch targets; AA contrast (see `AGENTS.md` §2).
 
-Planned additions to the gate (roadmap Phases 2 and 11): token contrast script,
-axe-core accessibility checks, Lighthouse CI (PWA pass, Accessibility ≥ 95), and
-a `< 60 KB` gzip bundle-size budget.
+Enforced in CI (roadmap Phases 2 and 11): the token contrast script
+(`npm run check:contrast`, 104/104 pairs), axe-core accessibility checks
+(`npm run test`, zero serious/critical violations), Lighthouse CI
+(`npm run lighthouse`; PWA pass, Accessibility ≥ 95, Performance ≥ 90 on the
+mobile profile) and a `< 60 KB` gzip bundle-size budget
+(`npm run check:bundle`).
 
 ---
 
@@ -249,7 +257,7 @@ a `< 60 KB` gzip bundle-size budget.
 
 - [x] `npm run typecheck` passes with zero errors.
 - [x] `npm run lint` passes with zero errors.
-- [x] `npm run test` passes (126 tests across 16 suites).
+- [x] `npm run test` passes (333 tests across 39 suites).
 - [x] `npm run build` produces a production bundle under the 60 KB gzip budget.
 - [x] Omnibar auto-focuses; `Enter` navigates the current tab.
 - [x] Drawers slide with a 200ms transition; pinning persists to `AppConfig`.

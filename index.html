@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -48,16 +48,16 @@
     />
 
     <!--
-      Content-Security-Policy (authored in Phase 8, ENABLED in Phase 9).
-      Until the IP/location/weather telemetry fetches are removed, a strict
-      `connect-src` would block them, so this is intentionally left commented
-      out. Phase 9 uncomments it and deletes the telemetry module.
-
-      <meta
-        http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
-      />
+      Content-Security-Policy (authored in Phase 8, enabled in Phase 9 once the
+      environment-lookup fetches were removed). `connect-src` allows only the
+      app's own origin and the GitHub API, enforcing the zero-telemetry promise
+      (PRD §2.2). `img-src` permits `data:` (avatars/logos) and `https:` (remote
+      favicons/avatars the user has chosen).
     -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
     <title>Hub</title>

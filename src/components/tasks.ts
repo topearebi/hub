@@ -11,7 +11,10 @@
 
 import { buildDrawerShell } from './drawer';
 import { clearChildren, el, svg } from '../utils/dom';
+import { haptic } from '../utils/haptics';
+import { formatDate, t } from '../utils/i18n';
 import { Menu, MenuKeyboard } from '../utils/menu';
+import { attachSwipe } from '../utils/swipe';
 import { showToast } from './toast';
 import { newId } from '../utils/crypto';
 import { renderLinkified } from '../utils/text';
@@ -238,17 +241,13 @@ export function formatDue(task: TaskItem): string {
     return '';
   }
   const date = new Date(`${task.due_date}T${task.due_time ?? '00:00'}`);
-  const label = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const label = formatDate(date, { month: 'short', day: 'numeric' });
   return task.due_time ? `${label}, ${task.due_time}` : label;
 }
 
 /** Format a completion timestamp as `Day, Mon DD`. */
 export function formatCompleted(at: number): string {
-  return new Date(at).toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
+  return formatDate(at, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 /**
@@ -324,7 +323,7 @@ export class TasksDrawer {
   ) {
     const shell = buildDrawerShell({
       variant: 'tasks',
-      title: 'My Tasks',
+      title: t('tasks.title'),
       onPinToggle: callbacks.onPinToggle,
       onClose: callbacks.onClose,
     });
@@ -333,19 +332,27 @@ export class TasksDrawer {
     /* ---- Inline creator ---- */
     this.creatorTitle = el('input', {
       className: 'task-creator__title',
-      attrs: { type: 'text', placeholder: 'Add a task', 'aria-label': 'Task title' },
+      attrs: {
+        type: 'text',
+        placeholder: t('tasks.creatorTitlePlaceholder'),
+        'aria-label': t('tasks.creatorTitleAria'),
+      },
     });
     this.creatorDetails = el('textarea', {
       className: 'task-creator__details',
-      attrs: { placeholder: 'Details', 'aria-label': 'Task details', rows: '2' },
+      attrs: {
+        placeholder: t('tasks.creatorDetailsPlaceholder'),
+        'aria-label': t('tasks.creatorDetailsAria'),
+        rows: '2',
+      },
     });
     this.creatorDate = el('input', {
       className: 'task-creator__date',
-      attrs: { type: 'date', 'aria-label': 'Due date' },
+      attrs: { type: 'date', 'aria-label': t('tasks.dueDateAria') },
     });
     this.creatorTime = el('input', {
       className: 'task-creator__time',
-      attrs: { type: 'time', 'aria-label': 'Due time' },
+      attrs: { type: 'time', 'aria-label': t('tasks.dueTimeAria') },
     });
     this.dateRow = el('div', {
       className: 'task-creator__date-row',
@@ -353,13 +360,13 @@ export class TasksDrawer {
     });
     this.dateRow.hidden = true;
 
-    const todayChip = this.chip('Today', () => this.setCreatorDate(todayIso(0)));
-    const tomorrowChip = this.chip('Tomorrow', () => this.setCreatorDate(todayIso(1)));
-    const dateChip = this.chip('Date & Time', () => {
+    const todayChip = this.chip(t('tasks.today'), () => this.setCreatorDate(todayIso(0)));
+    const tomorrowChip = this.chip(t('tasks.tomorrow'), () => this.setCreatorDate(todayIso(1)));
+    const dateChip = this.chip(t('tasks.dateTime'), () => {
       this.dateRow.hidden = !this.dateRow.hidden;
     });
     // Repeat opens a menu of all options rather than cycling (DESIGN.md §6.4).
-    this.recurrenceChip = this.chip('Repeat', () => this.openRecurrenceMenu());
+    this.recurrenceChip = this.chip(t('tasks.repeat'), () => this.openRecurrenceMenu());
     this.recurrenceChip.setAttribute('aria-haspopup', 'menu');
     this.recurrenceChip.setAttribute('aria-expanded', 'false');
 
@@ -370,7 +377,7 @@ export class TasksDrawer {
 
     const saveButton = el('button', {
       className: 'button button--primary',
-      text: 'Save',
+      text: t('common.save'),
       attrs: { type: 'button' },
     });
     saveButton.addEventListener('click', () => {
@@ -378,7 +385,7 @@ export class TasksDrawer {
     });
     const cancelButton = el('button', {
       className: 'button',
-      text: 'Cancel',
+      text: t('common.cancel'),
       attrs: { type: 'button' },
     });
     cancelButton.addEventListener('click', () => this.closeCreator());
@@ -410,7 +417,7 @@ export class TasksDrawer {
       attrs: { type: 'button' },
     });
     addButton.appendChild(svg(ICON_PLUS, { className: 'task-add__icon' }));
-    addButton.appendChild(el('span', { text: 'Add a task' }));
+    addButton.appendChild(el('span', { text: t('tasks.addTask') }));
     addButton.addEventListener('click', () => this.openCreator(null));
 
     this.listEl = el('div', { className: 'task-list' });
@@ -434,7 +441,7 @@ export class TasksDrawer {
       this.listEl.appendChild(
         el('p', {
           className: 'empty-state',
-          text: "All priorities cleared. Add a task to track today's focus.",
+          text: t('tasks.empty'),
         }),
       );
       return;
@@ -519,14 +526,14 @@ export class TasksDrawer {
   /** Open the Repeat menu (DESIGN.md §6.4: a menu, not a cycling chip). */
   private openRecurrenceMenu(): void {
     const options: ReadonlyArray<{ value: Recurrence; label: string }> = [
-      { value: null, label: 'None' },
-      { value: 'daily', label: 'Daily' },
-      { value: 'weekly', label: 'Weekly' },
-      { value: 'monthly', label: 'Monthly' },
-      { value: 'yearly', label: 'Yearly' },
+      { value: null, label: t('tasks.recurrence.none') },
+      { value: 'daily', label: t('tasks.recurrence.daily') },
+      { value: 'weekly', label: t('tasks.recurrence.weekly') },
+      { value: 'monthly', label: t('tasks.recurrence.monthly') },
+      { value: 'yearly', label: t('tasks.recurrence.yearly') },
     ];
     const menu = new Menu({
-      label: 'Repeat',
+      label: t('tasks.repeat'),
       className: 'task-menu',
       itemClassName: 'task-menu__item',
       items: options.map((option) => ({
@@ -547,8 +554,8 @@ export class TasksDrawer {
 
   private updateRecurrenceChip(): void {
     this.recurrenceChip.textContent = this.creatorRecurrence
-      ? `Repeats ${this.creatorRecurrence}`
-      : 'Repeat';
+      ? t('tasks.repeats', { recurrence: this.creatorRecurrence })
+      : t('tasks.repeat');
     this.recurrenceChip.classList.toggle('is-active', this.creatorRecurrence !== null);
   }
 
@@ -609,7 +616,7 @@ export class TasksDrawer {
         type: 'button',
         role: 'checkbox',
         'aria-checked': task.completed ? 'true' : 'false',
-        'aria-label': `Toggle ${task.title}`,
+        'aria-label': t('tasks.toggleAria', { title: task.title }),
       },
     });
     check.appendChild(svg(ICON_CHECK, { className: 'task__check-icon' }));
@@ -645,7 +652,7 @@ export class TasksDrawer {
       className: 'icon-button task__menu-button',
       attrs: {
         type: 'button',
-        'aria-label': `Actions for ${task.title}`,
+        'aria-label': t('common.actionsFor', { name: task.title }),
         'aria-haspopup': 'menu',
         'aria-expanded': 'false',
         'aria-controls': menuId,
@@ -655,43 +662,51 @@ export class TasksDrawer {
 
     const menu = el('div', {
       className: 'task-menu',
-      attrs: { role: 'menu', id: menuId, 'aria-label': `Actions for ${task.title}` },
+      attrs: {
+        role: 'menu',
+        id: menuId,
+        'aria-label': t('common.actionsFor', { name: task.title }),
+      },
     });
     menu.hidden = true;
-    menu.appendChild(this.menuItem('Add subtask', ICON_SUBTASK, () => this.openCreator(task.id)));
     menu.appendChild(
-      this.menuItem('Set date/time', ICON_CALENDAR, () => this.toggleDateEditor(body, task)),
+      this.menuItem(t('tasks.addSubtask'), ICON_SUBTASK, () => this.openCreator(task.id)),
+    );
+    menu.appendChild(
+      this.menuItem(t('tasks.setDateTime'), ICON_CALENDAR, () => this.toggleDateEditor(body, task)),
     );
     // Keyboard-accessible alternatives to dragging (G-24, WCAG 2.5.7).
     menu.appendChild(
       this.menuItem(
-        'Move up',
+        t('tasks.moveUp'),
         ICON_UP,
         () => void this.applyMove(computeMoveUp(this.store.activeTasks, task.id)),
       ),
     );
     menu.appendChild(
       this.menuItem(
-        'Move down',
+        t('tasks.moveDown'),
         ICON_DOWN,
         () => void this.applyMove(computeMoveDown(this.store.activeTasks, task.id)),
       ),
     );
     menu.appendChild(
       this.menuItem(
-        'Indent',
+        t('tasks.indent'),
         ICON_INDENT,
         () => void this.applyMove(computeIndent(this.store.activeTasks, task.id)),
       ),
     );
     menu.appendChild(
       this.menuItem(
-        'Outdent',
+        t('tasks.outdent'),
         ICON_OUTDENT,
         () => void this.applyMove(computeOutdent(this.store.activeTasks, task.id)),
       ),
     );
-    menu.appendChild(this.menuItem('Delete', ICON_TRASH, () => void this.deleteTask(task.id)));
+    menu.appendChild(
+      this.menuItem(t('common.delete'), ICON_TRASH, () => void this.deleteTask(task.id)),
+    );
     menuButton.addEventListener('click', (event) => {
       event.stopPropagation();
       // Close any other open menu first so only one is ever visible, then
@@ -715,7 +730,7 @@ export class TasksDrawer {
     // the Move/Indent menu actions instead, so dragging is never the only path.
     const dragHandle = el('button', {
       className: 'task__drag',
-      attrs: { type: 'button', 'aria-label': 'Drag to reorder' },
+      attrs: { type: 'button', 'aria-label': t('tasks.dragAria') },
     });
     dragHandle.appendChild(svg(ICON_GRIP, { size: 16 }));
     dragHandle.addEventListener('pointerdown', (event) =>
@@ -731,16 +746,52 @@ export class TasksDrawer {
     item.appendChild(body);
     item.appendChild(menuButton);
     item.appendChild(menu);
+
+    // Swipe gestures (touch only, G-25): right completes, left deletes. Both
+    // actions stay reachable by touch and keyboard via the check and the menu.
+    let swiped = false;
+    const resetSwipe = (): void => {
+      window.setTimeout(() => {
+        swiped = false;
+      }, 500);
+    };
+    attachSwipe(item, {
+      ignoreSelector: '.task__drag, .task__menu-button, .task__check',
+      onSwipeRight: () => {
+        swiped = true;
+        resetSwipe();
+        haptic('success');
+        void this.toggleTask(task, true);
+      },
+      onSwipeLeft: () => {
+        swiped = true;
+        resetSwipe();
+        haptic('warning');
+        void this.deleteTask(task.id);
+      },
+    });
+    item.addEventListener(
+      'click',
+      (event) => {
+        if (swiped) {
+          swiped = false;
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      true,
+    );
     return item;
   }
 
   /** Delete a task with an undo affordance (G-40). */
   private async deleteTask(id: string): Promise<void> {
+    haptic('warning');
     await this.store.softDeleteTask(id);
-    showToast('Task deleted.', {
+    showToast(t('tasks.deleted'), {
       variant: 'info',
       action: {
-        label: 'Undo',
+        label: t('common.undo'),
         onSelect: () => {
           void this.store.restoreTask?.(id);
         },
@@ -772,12 +823,12 @@ export class TasksDrawer {
 
     const date = el('input', {
       className: 'task-creator__date',
-      attrs: { type: 'date', 'aria-label': 'Due date' },
+      attrs: { type: 'date', 'aria-label': t('tasks.dueDateAria') },
     });
     date.value = task.due_date ?? '';
     const time = el('input', {
       className: 'task-creator__time',
-      attrs: { type: 'time', 'aria-label': 'Due time' },
+      attrs: { type: 'time', 'aria-label': t('tasks.dueTimeAria') },
     });
     time.value = task.due_time ?? '';
 
@@ -931,7 +982,7 @@ export class TasksDrawer {
       className: 'task-completed__header',
       attrs: { type: 'button', 'aria-expanded': this.completedOpen ? 'true' : 'false' },
     });
-    header.appendChild(el('span', { text: `Completed (${tasks.length})` }));
+    header.appendChild(el('span', { text: t('tasks.completed', { count: tasks.length }) }));
     header.addEventListener('click', () => {
       this.completedOpen = !this.completedOpen;
       this.render();
@@ -961,7 +1012,7 @@ export class TasksDrawer {
         body.appendChild(
           el('div', {
             className: 'task__completed-at',
-            text: `Completed: ${formatCompleted(task.completed_at)}`,
+            text: t('tasks.completedAt', { date: formatCompleted(task.completed_at) }),
           }),
         );
       }
@@ -975,6 +1026,7 @@ export class TasksDrawer {
   }
 
   private async toggleTask(task: TaskItem, completed: boolean): Promise<void> {
+    haptic(completed ? 'success' : 'light');
     const now = Date.now();
     await this.store.upsertTask({
       ...task,

@@ -9,6 +9,7 @@
  */
 
 import { el, svg } from '../utils/dom';
+import { t } from '../utils/i18n';
 
 /** Feather-style pin icon (local inline SVG, no CDN). */
 const ICON_PIN =
@@ -78,14 +79,14 @@ export function maxPinnedDrawers(viewportWidth: number): number {
 export function buildDrawerShell(options: DrawerShellOptions): DrawerShell {
   const pinButton = el('button', {
     className: 'icon-button drawer__pin',
-    attrs: { type: 'button', 'aria-label': `Pin ${options.title}` },
+    attrs: { type: 'button', 'aria-label': t('drawer.pin', { title: options.title }) },
   });
   pinButton.appendChild(svg(ICON_PIN));
   pinButton.addEventListener('click', options.onPinToggle);
 
   const closeButton = el('button', {
     className: 'icon-button drawer__close',
-    attrs: { type: 'button', 'aria-label': `Close ${options.title}` },
+    attrs: { type: 'button', 'aria-label': t('drawer.close', { title: options.title }) },
   });
   closeButton.appendChild(svg(ICON_CLOSE));
   closeButton.addEventListener('click', options.onClose);

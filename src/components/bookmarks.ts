@@ -7,10 +7,13 @@
  */
 
 import { clearChildren, el, svg } from '../utils/dom';
+import { t } from '../utils/i18n';
 import { Menu } from '../utils/menu';
 import type { MenuItemSpec } from '../utils/menu';
+import { canShare, share } from '../utils/share';
 import { hostnameOf } from '../core/fallback';
 import { initialOf } from '../utils/text';
+import { showToast } from './toast';
 
 const ICON_MORE = 'M12 6h.01M12 12h.01M12 18h.01';
 /** Long-press duration (ms) that opens the tile menu on touch (G-23). */
@@ -67,7 +70,7 @@ export class BookmarksView {
 
     const recents = this.store.getRecentBookmarks(6);
     if (recents.length > 0) {
-      this.element.appendChild(this.renderSection('Recently Used', recents, true));
+      this.element.appendChild(this.renderSection(t('bookmarks.recentlyUsed'), recents, true));
     }
 
     const categories = this.store.sortedCategories;
@@ -82,7 +85,9 @@ export class BookmarksView {
 
     const uncategorized = bookmarks.filter((b) => !knownCategoryIds.has(b.category_id));
     if (uncategorized.length > 0) {
-      this.element.appendChild(this.renderSection('Uncategorized', uncategorized, false));
+      this.element.appendChild(
+        this.renderSection(t('bookmarks.uncategorized'), uncategorized, false),
+      );
     }
 
     // Roving tabindex: only the first tile is in the Tab order (G-33).
@@ -109,24 +114,26 @@ export class BookmarksView {
    */
   private renderEmpty(): HTMLElement {
     const wrap = el('div', { className: 'empty-state empty-state--guided' });
-    wrap.appendChild(el('h2', { className: 'empty-state__title', text: 'Nothing here yet.' }));
+    wrap.appendChild(
+      el('h2', { className: 'empty-state__title', text: t('bookmarks.emptyTitle') }),
+    );
     wrap.appendChild(
       el('p', {
         className: 'empty-state__text',
-        text: 'Add your first link, or import your bookmarks.',
+        text: t('bookmarks.emptyText'),
       }),
     );
 
     const add = el('button', {
       className: 'button button--primary',
-      text: 'Add link',
+      text: t('bookmarks.addLink'),
       attrs: { type: 'button' },
     });
     add.addEventListener('click', () => this.callbacks.onAddBookmark());
 
     const importButton = el('button', {
       className: 'button',
-      text: 'Import',
+      text: t('common.import'),
       attrs: { type: 'button' },
     });
     importButton.addEventListener('click', () => this.callbacks.onImport());
@@ -160,7 +167,7 @@ export class BookmarksView {
     // "Recently Used" duplicates are labelled and removed from the Tab order so
     // they do not create double Tab stops (G-42, DESIGN.md §6.3).
     if (isRecents) {
-      open.setAttribute('aria-label', `Recent: ${bookmark.title}`);
+      open.setAttribute('aria-label', t('bookmarks.recentLabel', { title: bookmark.title }));
       open.setAttribute('tabindex', '-1');
     }
     open.appendChild(this.renderIcon(bookmark));
@@ -213,7 +220,7 @@ export class BookmarksView {
       className: 'icon-button tile__more',
       attrs: {
         type: 'button',
-        'aria-label': `Actions for ${bookmark.title}`,
+        'aria-label': t('common.actionsFor', { name: bookmark.title }),
         'aria-haspopup': 'menu',
       },
     });
@@ -323,16 +330,23 @@ export class BookmarksView {
 
     const targets = [bookmark.url, ...(bookmark.alternate_urls ?? [])];
     const items: MenuItemSpec[] = targets.map((url, index) => ({
-      label: index === 0 ? `Open primary (${hostnameOf(url)})` : `Open mirror (${hostnameOf(url)})`,
+      label:
+        index === 0
+          ? t('bookmarks.openPrimary', { host: hostnameOf(url) })
+          : t('bookmarks.openMirror', { host: hostnameOf(url) }),
       onSelect: () => this.callbacks.onOpenAlternate(bookmark, url),
     }));
     items.push({
-      label: 'Edit bookmark',
+      label: t('bookmarks.edit'),
       separatorBefore: true,
       onSelect: () => this.callbacks.onEdit(bookmark),
     });
     items.push({
-      label: 'Delete',
+      label: t('bookmarks.share'),
+      onSelect: () => void this.shareBookmark(bookmark),
+    });
+    items.push({
+      label: t('common.delete'),
       danger: true,
       onSelect: () => this.callbacks.onDelete(bookmark),
     });
@@ -340,7 +354,7 @@ export class BookmarksView {
     // The shared Menu handles roving focus, arrow/Home/End/Escape keys,
     // type-ahead and viewport clamping (DESIGN.md §6.8).
     this.contextMenu = new Menu({
-      label: `Actions for ${bookmark.title}`,
+      label: t('common.actionsFor', { name: bookmark.title }),
       className: 'context-menu',
       itemClassName: 'context-menu__item',
       separatorClassName: 'context-menu__separator',
@@ -355,5 +369,13 @@ export class BookmarksView {
   private closeContextMenu(): void {
     this.contextMenu?.destroy();
     this.contextMenu = null;
+  }
+
+  /** Share a bookmark via the native share sheet, when available (G-53). */
+  private async shareBookmark(bookmark: BookmarkItem): Promise<void> {
+    const shared = await share({ title: bookmark.title, url: bookmark.url });
+    if (!shared && !canShare()) {
+      showToast(t('bookmarks.shareUnavailable'), { variant: 'warning' });
+    }
   }
 }

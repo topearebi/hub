@@ -1,0 +1,23 @@
+{
+  "ci": {
+    "collect": {
+      "startServerCommand": "npm run preview -- --port 4173 --strictPort",
+      "startServerReadyPattern": "Local:",
+      "url": ["http://localhost:4173/"],
+      "numberOfRuns": 1,
+      "settings": {
+        "chromeFlags": "--no-sandbox --hide-scrollbars"
+      }
+    },
+    "assert": {
+      "assertions": {
+        "categories:pwa": ["error", { "minScore": 1 }],
+        "categories:accessibility": ["error", { "minScore": 0.95 }],
+        "categories:performance": ["error", { "minScore": 0.9 }]
+      }
+    },
+    "upload": {
+      "target": "temporary-public-storage"
+    }
+  }
+}

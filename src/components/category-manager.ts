@@ -12,6 +12,7 @@
 
 import { clearChildren, el, svg } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
+import { t } from '../utils/i18n';
 import { showToast } from './toast';
 import { newId } from '../utils/crypto';
 import type { BookmarkItem, CategoryItem } from '../types/schemas';
@@ -65,7 +66,7 @@ export class CategoryManager {
     const title = el('h2', {
       className: 'modal__title',
       attrs: { id: this.titleId },
-      text: 'Manage categories',
+      text: t('categoryManager.heading'),
     });
     const header = el('header', { className: 'modal__header', children: [title] });
 
@@ -73,14 +74,18 @@ export class CategoryManager {
 
     const addInput = el('input', {
       className: 'category-manager__input',
-      attrs: { type: 'text', placeholder: 'New category name', 'aria-label': 'New category name' },
+      attrs: {
+        type: 'text',
+        placeholder: t('categoryManager.newPlaceholder'),
+        'aria-label': t('categoryManager.newAria'),
+      },
     });
     const addButton = el('button', {
       className: 'button',
       attrs: { type: 'button' },
     });
     addButton.appendChild(svg(ICON_PLUS, { size: 16 }));
-    addButton.appendChild(el('span', { text: 'Add' }));
+    addButton.appendChild(el('span', { text: t('common.add') }));
     const addRow = el('div', {
       className: 'category-manager__add',
       children: [addInput, addButton],
@@ -135,7 +140,7 @@ export class CategoryManager {
 
     if (categories.length === 0) {
       this.listEl.appendChild(
-        el('p', { className: 'empty-state', text: 'No categories yet. Add one below.' }),
+        el('p', { className: 'empty-state', text: t('categoryManager.empty') }),
       );
       return;
     }
@@ -150,7 +155,10 @@ export class CategoryManager {
 
     const nameInput = el('input', {
       className: 'category-manager__input',
-      attrs: { type: 'text', 'aria-label': `Rename ${category.name}` },
+      attrs: {
+        type: 'text',
+        'aria-label': t('categoryManager.renameAria', { name: category.name }),
+      },
     });
     nameInput.value = category.name;
     nameInput.addEventListener('change', () => {
@@ -162,14 +170,23 @@ export class CategoryManager {
       void this.store.renameCategory(category.id, name).then(() => this.afterChange());
     });
 
-    const up = this.iconButton(ICON_UP, `Move ${category.name} up`, index === 0, () =>
-      this.move(index, -1),
+    const up = this.iconButton(
+      ICON_UP,
+      t('categoryManager.moveUpAria', { name: category.name }),
+      index === 0,
+      () => this.move(index, -1),
     );
-    const down = this.iconButton(ICON_DOWN, `Move ${category.name} down`, index === total - 1, () =>
-      this.move(index, 1),
+    const down = this.iconButton(
+      ICON_DOWN,
+      t('categoryManager.moveDownAria', { name: category.name }),
+      index === total - 1,
+      () => this.move(index, 1),
     );
-    const remove = this.iconButton(ICON_TRASH, `Delete ${category.name}`, total <= 1, () =>
-      this.deleteCategory(category),
+    const remove = this.iconButton(
+      ICON_TRASH,
+      t('categoryManager.deleteAria', { name: category.name }),
+      total <= 1,
+      () => this.deleteCategory(category),
     );
 
     row.appendChild(nameInput);
@@ -246,16 +263,20 @@ export class CategoryManager {
     const others = this.store.sortedCategories.filter((c) => c.id !== category.id);
     const target = others[0];
     if (!target) {
-      showToast('Hub needs at least one category.', { variant: 'warning' });
+      showToast(t('categoryManager.needsOne'), { variant: 'warning' });
       return;
     }
 
     const count = this.store.getBookmarksByCategory(category.id).length;
     if (count > 0) {
       const confirmed = await confirmDialog({
-        title: 'Delete category?',
-        message: `Delete “${category.name}”? Its ${count} link${count === 1 ? '' : 's'} will move to “${target.name}”.`,
-        confirmLabel: 'Delete category',
+        title: t('categoryManager.deleteTitle'),
+        message: t('categoryManager.deleteMessage', {
+          name: category.name,
+          count,
+          target: target.name,
+        }),
+        confirmLabel: t('categoryManager.deleteConfirm'),
         danger: true,
         nested: true,
       });
@@ -269,10 +290,10 @@ export class CategoryManager {
       return;
     }
     this.afterChange();
-    showToast(`Category “${category.name}” deleted.`, {
+    showToast(t('categoryManager.deleted', { name: category.name }), {
       variant: 'info',
       action: {
-        label: 'Undo',
+        label: t('common.undo'),
         onSelect: () => {
           void this.store.restoreCategory(result.category, result.bookmarks).then(() => {
             this.afterChange();

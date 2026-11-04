@@ -16,11 +16,16 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
+    "check:contrast": "node scripts/contrast.mjs",
+    "check:bundle": "node scripts/check-bundle-size.mjs",
+    "lighthouse": "lhci autorun",
     "prepare": "husky"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
+    "@lhci/cli": "^0.13.0",
     "@types/node": "^22.7.5",
+    "axe-core": "^4.14.0",
     "eslint": "^9.13.0",
     "eslint-config-prettier": "^9.1.0",
     "fake-indexeddb": "^6.0.0",

@@ -8,6 +8,10 @@
 
 import { buildDrawerShell } from './drawer';
 import { clearChildren, el, svg } from '../utils/dom';
+import { haptic } from '../utils/haptics';
+import { t } from '../utils/i18n';
+import { canShare, share } from '../utils/share';
+import { attachSwipe } from '../utils/swipe';
 import { newId } from '../utils/crypto';
 import { showToast } from './toast';
 import { NOTE_COLORS, NoteEditor, normalizeNoteColor } from './note-editor';
@@ -22,6 +26,7 @@ const ICON_PIN =
   'M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z';
 const ICON_PALETTE =
   'M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1.1.9-2 2-2h2.5A4.5 4.5 0 0 0 22 11 9 9 0 0 0 12 2zM6.5 13a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z';
+const ICON_SHARE = 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13';
 
 /* ------------------------------------------------------------------ */
 /* Pure helpers                                                        */
@@ -81,7 +86,7 @@ export class NotesDrawer {
   ) {
     const shell = buildDrawerShell({
       variant: 'notes',
-      title: 'Scratchpad',
+      title: t('notes.title'),
       onPinToggle: callbacks.onPinToggle,
       onClose: callbacks.onClose,
     });
@@ -90,19 +95,27 @@ export class NotesDrawer {
     /* ---- Quick capture ---- */
     this.captureTitle = el('input', {
       className: 'note-capture__title',
-      attrs: { type: 'text', placeholder: 'Title', 'aria-label': 'Note title' },
+      attrs: {
+        type: 'text',
+        placeholder: t('notes.captureTitlePlaceholder'),
+        'aria-label': t('notes.captureTitleAria'),
+      },
     });
     this.captureContent = el('textarea', {
       className: 'note-capture__content',
-      attrs: { placeholder: 'Take a note…', 'aria-label': 'Note content', rows: '3' },
+      attrs: {
+        placeholder: t('notes.captureContentPlaceholder'),
+        'aria-label': t('notes.captureContentAria'),
+        rows: '3',
+      },
     });
     this.captureColors = el('div', {
       className: 'note-capture__colors',
-      attrs: { role: 'radiogroup', 'aria-label': 'Note color' },
+      attrs: { role: 'radiogroup', 'aria-label': t('notes.captureColorAria') },
     });
     this.capturePin = el('button', {
       className: 'icon-button note-capture__pin',
-      attrs: { type: 'button', 'aria-label': 'Pin note', 'aria-pressed': 'false' },
+      attrs: { type: 'button', 'aria-label': t('notes.pinAria'), 'aria-pressed': 'false' },
     });
     this.capturePin.appendChild(svg(ICON_PIN));
     this.capturePin.addEventListener('click', () => {
@@ -113,14 +126,14 @@ export class NotesDrawer {
 
     const closeButton = el('button', {
       className: 'button',
-      text: 'Close',
+      text: t('common.close'),
       attrs: { type: 'button' },
     });
     closeButton.addEventListener('click', () => this.closeCapture());
 
     const saveButton = el('button', {
       className: 'button button--primary',
-      text: 'Save',
+      text: t('common.save'),
       attrs: { type: 'button' },
     });
     saveButton.addEventListener('click', () => {
@@ -140,7 +153,7 @@ export class NotesDrawer {
 
     const captureTrigger = el('button', {
       className: 'note-capture-trigger',
-      text: 'Take a note…',
+      text: t('notes.captureTrigger'),
       attrs: { type: 'button' },
     });
     captureTrigger.addEventListener('click', () => this.openCapture());
@@ -170,7 +183,7 @@ export class NotesDrawer {
       this.listEl.appendChild(
         el('p', {
           className: 'empty-state',
-          text: "Scratchpad is empty. Click 'Take a note…' to capture something.",
+          text: t('notes.empty'),
         }),
       );
       return;
@@ -180,9 +193,9 @@ export class NotesDrawer {
     const others = notes.filter((note) => note.is_pinned !== true);
 
     if (pinned.length > 0) {
-      this.listEl.appendChild(this.renderSection('Pinned', pinned));
+      this.listEl.appendChild(this.renderSection(t('notes.pinned'), pinned));
       if (others.length > 0) {
-        this.listEl.appendChild(this.renderSection('Others', others));
+        this.listEl.appendChild(this.renderSection(t('notes.others'), others));
       }
       return;
     }
@@ -233,7 +246,7 @@ export class NotesDrawer {
           type: 'button',
           role: 'radio',
           'aria-checked': color === this.captureColor ? 'true' : 'false',
-          'aria-label': color,
+          'aria-label': t(`noteColor.${color}`),
         },
       });
       swatch.addEventListener('click', () => {
@@ -272,7 +285,7 @@ export class NotesDrawer {
       created_at: now,
       updated_at: now,
       profile_id: this.store.activeProfileId ?? '',
-      title: title.length > 0 ? title : 'Untitled',
+      title: title.length > 0 ? title : t('common.untitled'),
       content,
       is_pinned: this.capturePinned,
       color_tag: this.captureColor,
@@ -304,7 +317,7 @@ export class NotesDrawer {
     // interactive content is never nested inside another control (G-32).
     const open = el('button', {
       className: 'note__open',
-      attrs: { type: 'button', 'aria-label': `Edit ${note.title}` },
+      attrs: { type: 'button', 'aria-label': t('notes.editAria', { title: note.title }) },
     });
     if (note.title.trim().length > 0) {
       open.appendChild(el('h4', { className: 'note__title', text: note.title }));
@@ -316,31 +329,65 @@ export class NotesDrawer {
 
     const toolbar = el('div', {
       className: 'note__toolbar',
-      attrs: { role: 'group', 'aria-label': `Actions for ${note.title}` },
+      attrs: { role: 'group', 'aria-label': t('common.actionsFor', { name: note.title }) },
     });
     toolbar.appendChild(
-      this.toolbarButton(ICON_PALETTE, 'Change color', () => this.cycleColor(note)),
+      this.toolbarButton(ICON_PALETTE, t('notes.changeColor'), () => this.cycleColor(note)),
     );
     toolbar.appendChild(
-      this.toolbarButton(ICON_PIN, note.is_pinned ? 'Unpin' : 'Pin', () => this.togglePin(note)),
+      this.toolbarButton(ICON_PIN, note.is_pinned ? t('notes.unpin') : t('notes.pin'), () =>
+        this.togglePin(note),
+      ),
     );
-    toolbar.appendChild(this.toolbarButton(ICON_COPY, 'Copy', () => void this.copyNote(note)));
     toolbar.appendChild(
-      this.toolbarButton(ICON_TRASH, 'Delete', () => void this.deleteNote(note.id)),
+      this.toolbarButton(ICON_COPY, t('notes.copy'), () => void this.copyNote(note)),
+    );
+    toolbar.appendChild(
+      this.toolbarButton(ICON_SHARE, t('notes.share'), () => void this.shareNote(note)),
+    );
+    toolbar.appendChild(
+      this.toolbarButton(ICON_TRASH, t('common.delete'), () => void this.deleteNote(note.id)),
     );
 
     card.appendChild(open);
     card.appendChild(toolbar);
+
+    // Swipe left to delete (touch only, G-25). Delete stays reachable by touch
+    // and keyboard via the toolbar button.
+    let swiped = false;
+    attachSwipe(card, {
+      ignoreSelector: '.note__toolbar',
+      onSwipeLeft: () => {
+        swiped = true;
+        window.setTimeout(() => {
+          swiped = false;
+        }, 500);
+        haptic('warning');
+        void this.deleteNote(note.id);
+      },
+    });
+    open.addEventListener(
+      'click',
+      (event) => {
+        if (swiped) {
+          swiped = false;
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      true,
+    );
     return card;
   }
 
   /** Delete a note with an undo affordance (G-40). */
   private async deleteNote(id: string): Promise<void> {
+    haptic('warning');
     await this.store.softDeleteNote(id);
-    showToast('Note deleted.', {
+    showToast(t('notes.deleted'), {
       variant: 'info',
       action: {
-        label: 'Undo',
+        label: t('common.undo'),
         onSelect: () => {
           void this.store.restoreNote?.(id);
         },
@@ -376,17 +423,25 @@ export class NotesDrawer {
     });
   }
 
+  /** Share a note via the native share sheet, when available (G-53). */
+  private async shareNote(note: NoteItem): Promise<void> {
+    const shared = await share({ title: note.title, text: note.content });
+    if (!shared && !canShare()) {
+      showToast(t('notes.shareUnavailable'), { variant: 'warning' });
+    }
+  }
+
   private async copyNote(note: NoteItem): Promise<void> {
     const clipboard = navigator.clipboard;
     if (!clipboard || typeof clipboard.writeText !== 'function') {
-      showToast('Clipboard is unavailable in this browser.', { variant: 'warning' });
+      showToast(t('notes.clipboardUnavailable'), { variant: 'warning' });
       return;
     }
     try {
       await clipboard.writeText(note.content);
-      showToast('Copied to clipboard.', { variant: 'success' });
+      showToast(t('notes.copied'), { variant: 'success' });
     } catch {
-      showToast('Copy failed.', { variant: 'error' });
+      showToast(t('notes.copyFailed'), { variant: 'error' });
     }
   }
 }

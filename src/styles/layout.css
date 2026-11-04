@@ -116,11 +116,11 @@
 }
 
 .drawer--tasks {
-  border-right: 1px solid var(--border-light);
+  border-inline-end: 1px solid var(--border-light);
 }
 
 .drawer--notes {
-  border-left: 1px solid var(--border-light);
+  border-inline-start: 1px solid var(--border-light);
 }
 
 .drawer__body {
@@ -187,7 +187,7 @@
     padding-bottom: 0;
     padding-top: env(safe-area-inset-top, 0px);
     border-top: none;
-    border-right: 1px solid var(--border-light);
+    border-inline-end: 1px solid var(--border-light);
   }
 
   .mobile-tabs__label {

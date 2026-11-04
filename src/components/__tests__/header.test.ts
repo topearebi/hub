@@ -20,6 +20,20 @@ describe('Header', () => {
     expect(header.element.querySelector('.header-home')).not.toBeNull();
   });
 
+  it('places the status chip in the left cluster (DESIGN.md §6.1)', () => {
+    const header = makeHeader();
+    const left = header.element.querySelector('.system-header__left');
+    expect(left?.querySelector('.status-chip')).not.toBeNull();
+    expect(left?.querySelector('.header-home')).not.toBeNull();
+  });
+
+  it('keeps the drawer toggles and profile control in the right cluster', () => {
+    const header = makeHeader();
+    const right = header.element.querySelector('.system-header__right');
+    expect(right?.querySelectorAll('.drawer-toggle')).toHaveLength(2);
+    expect(right?.querySelector('.profile-button')).not.toBeNull();
+  });
+
   it('invokes onHome when the Home button is clicked', () => {
     const onHome = vi.fn();
     const header = makeHeader({ onHome });

@@ -7,6 +7,7 @@
  */
 
 import { clearChildren, el } from '../utils/dom';
+import { t } from '../utils/i18n';
 import type { ProfileItem } from '../types/schemas';
 
 export class Brand {
@@ -24,13 +25,13 @@ export class Brand {
       this.element.appendChild(
         el('img', {
           className: 'brand-area__logo',
-          attrs: { src: profile.logo, alt: profile.name || 'Hub' },
+          attrs: { src: profile.logo, alt: profile.name || t('brand.fallback') },
         }),
       );
       return;
     }
 
-    const title = profile?.hub_title?.trim() || profile?.name?.trim() || 'Hub';
+    const title = profile?.hub_title?.trim() || profile?.name?.trim() || t('brand.fallback');
     this.element.appendChild(el('h1', { className: 'brand-area__title', text: title }));
   }
 }

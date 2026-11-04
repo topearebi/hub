@@ -297,3 +297,39 @@ export function updateAppBadge(count: number): void {
     void badgeNavigator.clearAppBadge().catch(() => undefined);
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Background Sync                                                     */
+/* ------------------------------------------------------------------ */
+
+/** The Background Sync tag the service worker listens for. */
+export const BACKGROUND_SYNC_TAG = 'hub-sync';
+
+/** Feature-detected shape of the Background Sync API on a registration. */
+interface SyncManagerLike {
+  register(tag: string): Promise<void>;
+}
+
+/**
+ * Ask the browser to retry a failed sync when connectivity returns (G-53).
+ *
+ * Background Sync is a progressive enhancement: it is unavailable on iOS
+ * Safari and Firefox, where the app simply retries on the next focus/online
+ * event instead. Returns `true` when a sync was registered.
+ */
+export async function requestBackgroundSync(tag: string = BACKGROUND_SYNC_TAG): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    return false;
+  }
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const sync = (registration as ServiceWorkerRegistration & { sync?: SyncManagerLike }).sync;
+    if (!sync || typeof sync.register !== 'function') {
+      return false;
+    }
+    await sync.register(tag);
+    return true;
+  } catch {
+    return false;
+  }
+}

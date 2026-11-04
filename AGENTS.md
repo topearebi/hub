@@ -66,7 +66,7 @@ src/
 │   ├── sync.ts            # GitHub REST API client & fine-grained timestamp merger
 │   ├── fallback.ts        # Primary URL connectivity checks and mirror resolution
 │   ├── pwa.ts             # Install/update lifecycle, badging, share parsing, storage.persist()
-│   └── notifications.ts · gamepad.ts · lock.ts · image.ts
+│   └── notifications.ts · gamepad.ts · lock.ts · image.ts · legacy.ts
 ├── components/            # UI components (Vanilla TS classes managing DOM nodes)
 │   ├── omnibar.ts         # Search combobox, fuzzy matcher, hotkeys, search provider router
 │   ├── bookmarks.ts       # Categorized tile grid, recents, empty state, tile menu
@@ -80,7 +80,8 @@ src/
 ├── styles/                # CSS architecture
 │   ├── tokens.css         # Tokens exactly per DESIGN.md §2 (single dark definition)
 │   ├── layout.css         # Mobile-first responsive tiers per DESIGN.md §3
-│   └── components.css     # Component styles (tokens only; no raw literals)
+│   ├── components.css     # Component styles (tokens only; no raw literals)
+│   └── print.css          # Print stylesheet (content only, no chrome)
 ├── types/
 │   └── schemas.ts         # Strict import of types defined in SCHEMAS.md
 ├── utils/
@@ -88,6 +89,7 @@ src/
 │   ├── dialog.ts          # Shared dialog / bottom-sheet primitive (trap, inert, restore)
 │   ├── menu.ts            # Shared menu / popover primitive (roving focus, clamping)
 │   ├── i18n.ts            # Message catalogue, plural and format helpers
+│   ├── haptics.ts · swipe.ts · share.ts  # Progressive-enhancement helpers
 │   ├── text.ts · crypto.ts
 └── main.ts                # Entrypoint: bootstrap, error boundary, Service Worker registration
 docs/                      # accessibility.md, homepage.md

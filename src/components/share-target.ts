@@ -11,6 +11,7 @@
 
 import { el } from '../utils/dom';
 import { Dialog } from '../utils/dialog';
+import { t } from '../utils/i18n';
 import type { ShareDraft } from '../core/pwa';
 
 let shareDialogSeq = 0;
@@ -48,11 +49,19 @@ export class ShareTargetPrompt {
 
     this.titleInput = el('input', {
       className: 'drawer__input',
-      attrs: { type: 'text', placeholder: 'Title', 'aria-label': 'Share title' },
+      attrs: {
+        type: 'text',
+        placeholder: t('share.titlePlaceholder'),
+        'aria-label': t('share.titleAria'),
+      },
     });
     this.contentInput = el('textarea', {
       className: 'drawer__textarea',
-      attrs: { placeholder: 'Text', 'aria-label': 'Share content', rows: '4' },
+      attrs: {
+        placeholder: t('share.contentPlaceholder'),
+        'aria-label': t('share.contentAria'),
+        rows: '4',
+      },
     });
     this.statusEl = el('p', {
       className: 'share__status',
@@ -61,7 +70,7 @@ export class ShareTargetPrompt {
 
     const noteButton = el('button', {
       className: 'button button--primary',
-      text: 'Save note',
+      text: t('share.saveNote'),
       attrs: { type: 'button' },
     });
     noteButton.addEventListener('click', () => {
@@ -70,7 +79,7 @@ export class ShareTargetPrompt {
 
     const dismissButton = el('button', {
       className: 'button',
-      text: 'Dismiss',
+      text: t('common.dismiss'),
       attrs: { type: 'button' },
     });
     dismissButton.addEventListener('click', () => {
@@ -86,7 +95,7 @@ export class ShareTargetPrompt {
     const title = el('h2', {
       className: 'modal__title',
       attrs: { id: this.titleId },
-      text: 'Save shared note',
+      text: t('share.heading'),
     });
     const body = el('div', {
       className: 'share__body',
@@ -113,14 +122,14 @@ export class ShareTargetPrompt {
   private async saveNote(): Promise<void> {
     const content = this.contentInput.value.trim();
     if (content.length === 0) {
-      this.statusEl.textContent = 'Enter some text to save a note.';
+      this.statusEl.textContent = t('share.empty');
       return;
     }
     await this.options.onCreateNote({
-      title: this.titleInput.value.trim() || 'Shared note',
+      title: this.titleInput.value.trim() || t('share.defaultTitle'),
       content,
     });
-    this.statusEl.textContent = 'Note saved.';
+    this.statusEl.textContent = t('share.saved');
     this.close();
   }
 }

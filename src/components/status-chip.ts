@@ -14,6 +14,7 @@
  */
 
 import { el, svg } from '../utils/dom';
+import { formatRelativeTime, t } from '../utils/i18n';
 
 const ICON_LOCAL = 'M20 6 9 17l-5-5';
 const ICON_SYNC = 'M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8M3 16v-4h4M21 8V4h-4';
@@ -34,40 +35,29 @@ export interface StatusChipOptions {
 
 /** Human-readable relative time, e.g. "2 min ago". Pure and unit-tested. */
 export function relativeTime(from: number, now: number = Date.now()): string {
-  const seconds = Math.max(0, Math.round((now - from) / 1000));
-  if (seconds < 45) {
-    return 'just now';
-  }
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) {
-    return `${minutes} min ago`;
-  }
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) {
-    return `${hours} h ago`;
-  }
-  const days = Math.round(hours / 24);
-  return `${days} d ago`;
+  return formatRelativeTime(from, now);
 }
 
 /** Compute the chip's visible label for a state. Pure and unit-tested. */
 export function statusChipLabel(state: StatusChipState, options: StatusChipOptions = {}): string {
   switch (state) {
     case 'syncing':
-      return 'Syncing…';
+      return t('status.syncing');
     case 'synced': {
       const base = options.syncedAt
-        ? `Synced ${relativeTime(options.syncedAt, options.now)}`
-        : 'Synced';
-      return options.pending && options.pending > 0 ? `${base} · ${options.pending} waiting` : base;
+        ? t('status.syncedAgo', { time: relativeTime(options.syncedAt, options.now) })
+        : t('status.synced');
+      return options.pending && options.pending > 0
+        ? t('status.waiting', { base, count: options.pending })
+        : base;
     }
     case 'offline':
-      return 'Offline — changes saved locally';
+      return t('status.offline');
     case 'error':
-      return 'Sync failed — Retry';
+      return t('status.error');
     case 'local':
     default:
-      return 'Saved on this device';
+      return t('status.local');
   }
 }
 
@@ -114,7 +104,7 @@ export class StatusChip {
     this.state = state;
     const label = statusChipLabel(state, options);
     this.element.setAttribute('data-state', state);
-    this.element.setAttribute('aria-label', `Status: ${label}`);
+    this.element.setAttribute('aria-label', t('status.aria', { label }));
 
     // Only touch the live region when the text actually changes, so assistive
     // tech is not spammed with identical announcements.

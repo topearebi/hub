@@ -13,6 +13,7 @@
 
 import { el, svg } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
+import { t } from '../utils/i18n';
 import { hostnameOf } from '../core/fallback';
 import { newId } from '../utils/crypto';
 import { isUrlLike, normalizeUrl } from './omnibar';
@@ -97,10 +98,10 @@ export function validateBookmarkForm(
 ): BookmarkValidation {
   const rawUrl = input.url.trim();
   if (rawUrl.length === 0) {
-    return { ok: false, error: 'Enter a URL for this bookmark.' };
+    return { ok: false, error: t('bookmarkEditor.errorUrlRequired') };
   }
   if (!isUrlLike(rawUrl)) {
-    return { ok: false, error: 'That does not look like a valid URL.' };
+    return { ok: false, error: t('bookmarkEditor.errorUrlInvalid') };
   }
 
   const url = normalizeUrl(rawUrl);
@@ -113,7 +114,7 @@ export function validateBookmarkForm(
 
   const hotkey = normalizeHotkey(input.hotkey);
   if (hotkey && isHotkeyTaken(hotkey, context.bookmarks, context.excludeId)) {
-    return { ok: false, error: `Alt + ${hotkey} is already assigned to another bookmark.` };
+    return { ok: false, error: t('bookmarkEditor.errorHotkeyTaken', { key: hotkey }) };
   }
 
   const title = input.title.trim() || hostnameOf(url) || url;
@@ -173,15 +174,19 @@ export class BookmarkEditor {
   ) {
     this.titleInput = el('input', {
       className: 'drawer__input',
-      attrs: { type: 'text', placeholder: 'Title', 'aria-label': 'Bookmark title' },
+      attrs: {
+        type: 'text',
+        placeholder: t('bookmarkEditor.titlePlaceholder'),
+        'aria-label': t('bookmarkEditor.titleAria'),
+      },
     });
     this.urlInput = el('input', {
       className: 'drawer__input',
       attrs: {
         type: 'url',
         inputmode: 'url',
-        placeholder: 'https://…',
-        'aria-label': 'Bookmark URL',
+        placeholder: t('bookmarkEditor.urlPlaceholder'),
+        'aria-label': t('bookmarkEditor.urlAria'),
         required: '',
         autocapitalize: 'none',
         autocorrect: 'off',
@@ -192,21 +197,21 @@ export class BookmarkEditor {
     this.altInput = el('textarea', {
       className: 'drawer__textarea',
       attrs: {
-        placeholder: 'One mirror URL per line',
-        'aria-label': 'Alternate URLs',
+        placeholder: t('bookmarkEditor.altPlaceholder'),
+        'aria-label': t('bookmarkEditor.altAria'),
         rows: '3',
       },
     });
     this.categorySelect = el('select', {
       className: 'drawer__select',
-      attrs: { 'aria-label': 'Category' },
+      attrs: { 'aria-label': t('bookmarkEditor.categoryAria') },
     });
     this.newCategoryInput = el('input', {
       className: 'drawer__input',
       attrs: {
         type: 'text',
-        placeholder: 'New category name',
-        'aria-label': 'New category name',
+        placeholder: t('bookmarkEditor.newCategoryPlaceholder'),
+        'aria-label': t('bookmarkEditor.newCategoryAria'),
       },
     });
     this.newCategoryRow = el('div', {
@@ -216,16 +221,23 @@ export class BookmarkEditor {
     this.newCategoryRow.hidden = true;
     this.iconInput = el('input', {
       className: 'drawer__input',
-      attrs: { type: 'text', placeholder: 'Optional icon URL', 'aria-label': 'Icon URL' },
+      attrs: {
+        type: 'text',
+        placeholder: t('bookmarkEditor.iconPlaceholder'),
+        'aria-label': t('bookmarkEditor.iconAria'),
+      },
     });
     this.hotkeySelect = el('select', {
       className: 'drawer__select',
-      attrs: { 'aria-label': 'Hotkey slot' },
+      attrs: { 'aria-label': t('bookmarkEditor.hotkeyAria') },
     });
-    this.hotkeySelect.appendChild(el('option', { text: 'None', attrs: { value: '' } }));
+    this.hotkeySelect.appendChild(el('option', { text: t('common.none'), attrs: { value: '' } }));
     for (const hotkey of HOTKEYS) {
       this.hotkeySelect.appendChild(
-        el('option', { text: `Alt + ${hotkey}`, attrs: { value: hotkey } }),
+        el('option', {
+          text: t('bookmarkEditor.hotkeyOption', { key: hotkey }),
+          attrs: { value: hotkey },
+        }),
       );
     }
     this.statusId = `bookmark-editor-status-${bookmarkDialogSeq}`;
@@ -237,7 +249,7 @@ export class BookmarkEditor {
 
     this.deleteButton = el('button', {
       className: 'button',
-      text: 'Delete',
+      text: t('common.delete'),
       attrs: { type: 'button' },
     });
     this.deleteButton.addEventListener('click', () => this.handleDelete());
@@ -253,7 +265,7 @@ export class BookmarkEditor {
     this.titleEl = el('h2', {
       className: 'modal__title',
       attrs: { id: this.titleId },
-      text: 'Add bookmark',
+      text: t('bookmarkEditor.addHeading'),
     });
 
     this.element = this.build();
@@ -266,7 +278,9 @@ export class BookmarkEditor {
    */
   open(bookmark?: BookmarkItem, prefill?: { url?: string; title?: string }): void {
     this.editing = bookmark ?? null;
-    this.titleEl.textContent = bookmark ? 'Edit bookmark' : 'Add bookmark';
+    this.titleEl.textContent = bookmark
+      ? t('bookmarkEditor.editHeading')
+      : t('bookmarkEditor.addHeading');
     this.titleInput.value = bookmark?.title ?? prefill?.title ?? '';
     this.urlInput.value = bookmark?.url ?? prefill?.url ?? '';
     this.altInput.value = (bookmark?.alternate_urls ?? []).join('\n');
@@ -306,9 +320,9 @@ export class BookmarkEditor {
       return;
     }
     void confirmDialog({
-      title: 'Discard changes?',
-      message: 'You have unsaved changes. Discard them?',
-      confirmLabel: 'Discard',
+      title: t('common.discardChangesTitle'),
+      message: t('common.discardChangesMessage'),
+      confirmLabel: t('common.discard'),
       danger: true,
     }).then((ok) => {
       if (ok) {
@@ -333,7 +347,7 @@ export class BookmarkEditor {
   private build(): HTMLElement {
     const closeButton = el('button', {
       className: 'icon-button modal__close',
-      attrs: { type: 'button', 'aria-label': 'Close bookmark editor' },
+      attrs: { type: 'button', 'aria-label': t('bookmarkEditor.closeAria') },
     });
     closeButton.appendChild(svg(ICON_CLOSE));
     closeButton.addEventListener('click', () => this.requestClose());
@@ -345,13 +359,15 @@ export class BookmarkEditor {
 
     // Category field: a <select> plus a hidden inline "new category" input.
     const categoryLabel = el('label', { className: 'field' });
-    categoryLabel.appendChild(el('span', { className: 'field__label', text: 'Category' }));
+    categoryLabel.appendChild(
+      el('span', { className: 'field__label', text: t('bookmarkEditor.fieldCategory') }),
+    );
     categoryLabel.appendChild(this.categorySelect);
     categoryLabel.appendChild(this.newCategoryRow);
 
     const saveButton = el('button', {
       className: 'button button--primary',
-      text: 'Save',
+      text: t('common.save'),
       attrs: { type: 'submit' },
     });
     // `type=submit` gives Enter-to-submit; the click handler guarantees a save
@@ -368,12 +384,12 @@ export class BookmarkEditor {
 
     const form = el('form', { className: 'modal__body', attrs: { novalidate: '' } });
     form.append(
-      field('Title', this.titleInput),
-      field('URL', this.urlInput),
-      field('Alternate / mirror URLs', this.altInput),
+      field(t('bookmarkEditor.fieldTitle'), this.titleInput),
+      field(t('bookmarkEditor.fieldUrl'), this.urlInput),
+      field(t('bookmarkEditor.fieldAlt'), this.altInput),
       categoryLabel,
-      field('Icon URL', this.iconInput),
-      field('Hotkey', this.hotkeySelect),
+      field(t('bookmarkEditor.fieldIcon'), this.iconInput),
+      field(t('bookmarkEditor.fieldHotkey'), this.hotkeySelect),
       this.statusEl,
       actions,
     );
@@ -401,7 +417,7 @@ export class BookmarkEditor {
       );
     }
     this.categorySelect.appendChild(
-      el('option', { text: 'New category…', attrs: { value: NEW_CATEGORY } }),
+      el('option', { text: t('bookmarkEditor.newCategoryOption'), attrs: { value: NEW_CATEGORY } }),
     );
     // Fall back to the first category when `selectedId` no longer exists (e.g.
     // its category was deleted) rather than leaving the select blank.
@@ -427,7 +443,7 @@ export class BookmarkEditor {
 
     const name = this.newCategoryInput.value.trim();
     if (name.length === 0) {
-      this.statusEl.textContent = 'Enter a name for the new category.';
+      this.statusEl.textContent = t('bookmarkEditor.errorNewCategoryName');
       this.newCategoryInput.focus();
       return null;
     }
@@ -449,7 +465,7 @@ export class BookmarkEditor {
     );
 
     if (!validation.ok || validation.title === undefined || validation.url === undefined) {
-      this.statusEl.textContent = validation.error ?? 'Check the form and try again.';
+      this.statusEl.textContent = validation.error ?? t('bookmarkEditor.errorGeneric');
       this.urlInput.setAttribute('aria-invalid', 'true');
       this.urlInput.focus();
       return;

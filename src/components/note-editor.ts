@@ -7,6 +7,7 @@
 
 import { el, svg } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
+import { t } from '../utils/i18n';
 import type { NoteItem } from '../types/schemas';
 
 const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
@@ -57,15 +58,23 @@ export class NoteEditor {
 
     this.titleInput = el('input', {
       className: 'note-editor__title',
-      attrs: { type: 'text', placeholder: 'Title', 'aria-label': 'Note title' },
+      attrs: {
+        type: 'text',
+        placeholder: t('noteEditor.titlePlaceholder'),
+        'aria-label': t('noteEditor.titleAria'),
+      },
     });
     this.contentInput = el('textarea', {
       className: 'note-editor__content',
-      attrs: { placeholder: 'Take a note…', 'aria-label': 'Note content', rows: '8' },
+      attrs: {
+        placeholder: t('noteEditor.contentPlaceholder'),
+        'aria-label': t('noteEditor.contentAria'),
+        rows: '8',
+      },
     });
     this.colorRow = el('div', {
       className: 'note-editor__colors',
-      attrs: { role: 'radiogroup', 'aria-label': 'Note color' },
+      attrs: { role: 'radiogroup', 'aria-label': t('noteEditor.colorAria') },
     });
     this.statusId = `note-editor-status-${noteDialogSeq}`;
     this.statusEl = el('p', {
@@ -104,9 +113,9 @@ export class NoteEditor {
       return;
     }
     void confirmDialog({
-      title: 'Discard changes?',
-      message: 'You have unsaved changes. Discard them?',
-      confirmLabel: 'Discard',
+      title: t('common.discardChangesTitle'),
+      message: t('common.discardChangesMessage'),
+      confirmLabel: t('common.discard'),
       danger: true,
     }).then((ok) => {
       if (ok) {
@@ -127,7 +136,7 @@ export class NoteEditor {
   private build(): HTMLElement {
     const closeButton = el('button', {
       className: 'icon-button modal__close',
-      attrs: { type: 'button', 'aria-label': 'Close note editor' },
+      attrs: { type: 'button', 'aria-label': t('noteEditor.closeAria') },
     });
     closeButton.appendChild(svg(ICON_CLOSE));
     closeButton.addEventListener('click', () => this.requestClose());
@@ -135,13 +144,13 @@ export class NoteEditor {
     const title = el('h2', {
       className: 'modal__title',
       attrs: { id: this.titleId },
-      text: 'Edit note',
+      text: t('noteEditor.heading'),
     });
     const header = el('header', { className: 'modal__header', children: [title, closeButton] });
 
     const saveButton = el('button', {
       className: 'button button--primary',
-      text: 'Save',
+      text: t('common.save'),
       attrs: { type: 'submit' },
     });
     // `type=submit` gives Enter-to-submit; the click handler guarantees a save
@@ -153,7 +162,7 @@ export class NoteEditor {
 
     const deleteButton = el('button', {
       className: 'button',
-      text: 'Delete',
+      text: t('common.delete'),
       attrs: { type: 'button' },
     });
     deleteButton.addEventListener('click', () => {
@@ -189,7 +198,7 @@ export class NoteEditor {
           type: 'button',
           role: 'radio',
           'aria-checked': color === this.selectedColor ? 'true' : 'false',
-          'aria-label': color,
+          'aria-label': t(`noteColor.${color}`),
         },
       });
       swatch.addEventListener('click', () => {
@@ -207,14 +216,14 @@ export class NoteEditor {
     const title = this.titleInput.value.trim();
     const content = this.contentInput.value;
     if (title.length === 0 && content.trim().length === 0) {
-      this.statusEl.textContent = 'Add a title or some content first.';
+      this.statusEl.textContent = t('noteEditor.empty');
       this.titleInput.setAttribute('aria-invalid', 'true');
       this.titleInput.focus();
       return;
     }
     await this.callbacks.onSave({
       ...this.note,
-      title: title.length > 0 ? title : 'Untitled',
+      title: title.length > 0 ? title : t('noteEditor.untitled'),
       content,
       color_tag: this.selectedColor,
       updated_at: Date.now(),

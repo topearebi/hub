@@ -7,6 +7,7 @@
  */
 
 import { clearChildren, el } from '../utils/dom';
+import { t } from '../utils/i18n';
 import { MenuKeyboard } from '../utils/menu';
 import { initialOf } from '../utils/text';
 import type { ProfileItem } from '../types/schemas';
@@ -36,7 +37,7 @@ export class ProfilePopover {
   ) {
     this.element = el('div', {
       className: 'profile-popover',
-      attrs: { role: 'menu', 'aria-label': 'Profiles' },
+      attrs: { role: 'menu', 'aria-label': t('profilePopover.aria') },
     });
 
     // Shared roving-tabindex keyboard behaviour (arrow/Home/End/Escape/type-ahead).
@@ -124,19 +125,19 @@ export class ProfilePopover {
 
     this.element.appendChild(el('div', { className: 'profile-popover__divider' }));
     this.element.appendChild(
-      this.action('Add profile', () => {
+      this.action(t('profilePopover.add'), () => {
         this.callbacks.onAdd();
         this.close();
       }),
     );
     this.element.appendChild(
-      this.action('Profile settings', () => {
+      this.action(t('profilePopover.settings'), () => {
         this.callbacks.onEditProfile();
         this.close();
       }),
     );
     this.element.appendChild(
-      this.action('App settings', () => {
+      this.action(t('profilePopover.appSettings'), () => {
         this.callbacks.onOpenSettings();
         this.close();
       }),

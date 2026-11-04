@@ -13,6 +13,7 @@
  */
 
 import { clearChildren, el, on, svg } from '../utils/dom';
+import { t, tp } from '../utils/i18n';
 import { hostnameOf } from '../core/fallback';
 import type { BookmarkItem, SearchProvider } from '../types/schemas';
 import type { LaunchpadStore } from '../core/store';
@@ -289,12 +290,12 @@ export class Omnibar {
       className: 'omnibar__input',
       attrs: {
         type: 'text',
-        placeholder: 'Search bookmarks or enter a URL…',
+        placeholder: t('omnibar.placeholder'),
         autocomplete: 'off',
         autocapitalize: 'off',
         spellcheck: 'false',
         role: 'combobox',
-        'aria-label': 'Search bookmarks or enter a URL',
+        'aria-label': t('omnibar.aria'),
         'aria-autocomplete': 'list',
         'aria-expanded': 'false',
         'aria-controls': 'omnibar-results',
@@ -304,14 +305,14 @@ export class Omnibar {
     // Inline search-engine selector on the left of the pill.
     this.engineSelect = el('select', {
       className: 'omnibar__engine',
-      attrs: { 'aria-label': 'Search engine' },
+      attrs: { 'aria-label': t('omnibar.engineAria') },
     });
     this.engineSelect.addEventListener('change', () => {
       this.selectedProviderId = this.engineSelect.value;
       this.callbacks.onSelectEngine?.(this.selectedProviderId);
     });
 
-    const hint = el('kbd', { className: 'omnibar__hint', text: 'Enter' });
+    const hint = el('kbd', { className: 'omnibar__hint', text: t('omnibar.enterHint') });
     const bar = el('div', {
       className: 'omnibar',
       children: [this.engineSelect, this.input, hint],
@@ -319,7 +320,7 @@ export class Omnibar {
 
     this.resultsEl = el('ul', {
       className: 'omnibar__results',
-      attrs: { id: 'omnibar-results', role: 'listbox', 'aria-label': 'Search results' },
+      attrs: { id: 'omnibar-results', role: 'listbox', 'aria-label': t('omnibar.resultsAria') },
     });
 
     // Polite live region announcing the result count (G-30).
@@ -585,25 +586,29 @@ export class Omnibar {
           item.appendChild(
             el('kbd', {
               className: 'omnibar__result-hotkey',
-              text: `Alt+${action.bookmark.hotkey}`,
+              text: t('omnibar.hotkey', { key: action.bookmark.hotkey }),
             }),
           );
         }
       } else if (action.kind === 'add') {
         item.appendChild(svg(ICON_PLUS, { className: 'omnibar__result-icon' }));
         item.appendChild(
-          el('span', { className: 'omnibar__result-title', text: 'Add to bookmarks' }),
+          el('span', { className: 'omnibar__result-title', text: t('omnibar.addToBookmarks') }),
         );
         item.appendChild(
           el('span', { className: 'omnibar__result-url', text: hostnameOf(action.url) }),
         );
       } else if (action.kind === 'navigate') {
         item.appendChild(svg(ICON_ARROW, { className: 'omnibar__result-icon' }));
-        item.appendChild(el('span', { className: 'omnibar__result-title', text: 'Go to' }));
+        item.appendChild(
+          el('span', { className: 'omnibar__result-title', text: t('omnibar.goTo') }),
+        );
         item.appendChild(el('span', { className: 'omnibar__result-url', text: action.url }));
       } else {
         item.appendChild(svg(ICON_SEARCH, { className: 'omnibar__result-icon' }));
-        item.appendChild(el('span', { className: 'omnibar__result-title', text: 'Search' }));
+        item.appendChild(
+          el('span', { className: 'omnibar__result-title', text: t('omnibar.search') }),
+        );
         item.appendChild(
           el('span', { className: 'omnibar__result-url', text: this.input.value.trim() }),
         );
@@ -619,9 +624,7 @@ export class Omnibar {
       this.resultNodes.push(item);
     });
 
-    this.liveRegion.textContent = open
-      ? `${this.actions.length} result${this.actions.length === 1 ? '' : 's'}`
-      : '';
+    this.liveRegion.textContent = open ? tp('omnibar.resultCount', this.actions.length) : '';
 
     if (this.activeIndex >= 0) {
       this.setActive(this.activeIndex);

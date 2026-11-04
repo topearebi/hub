@@ -13,6 +13,7 @@
 
 import { el, svg } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
+import { t } from '../utils/i18n';
 import { formatBytes } from '../core/pwa';
 import type { AppConfig } from '../types/schemas';
 import type { ConnectionResult, GitHubConfig } from '../core/sync';
@@ -113,7 +114,7 @@ export class SettingsModal {
       attrs: {
         type: 'password',
         autocomplete: 'off',
-        placeholder: 'ghp_…',
+        placeholder: t('settings.placeholderPat'),
         autocapitalize: 'none',
         autocorrect: 'off',
         spellcheck: 'false',
@@ -122,7 +123,7 @@ export class SettingsModal {
     this.ownerInput = el('input', {
       attrs: {
         type: 'text',
-        placeholder: 'username',
+        placeholder: t('settings.placeholderOwner'),
         autocapitalize: 'none',
         autocorrect: 'off',
         spellcheck: 'false',
@@ -131,7 +132,7 @@ export class SettingsModal {
     this.repoInput = el('input', {
       attrs: {
         type: 'text',
-        placeholder: 'my-hub-config',
+        placeholder: t('settings.placeholderRepo'),
         autocapitalize: 'none',
         autocorrect: 'off',
         spellcheck: 'false',
@@ -140,7 +141,7 @@ export class SettingsModal {
     this.branchInput = el('input', {
       attrs: {
         type: 'text',
-        placeholder: 'main',
+        placeholder: t('settings.placeholderBranch'),
         autocapitalize: 'none',
         autocorrect: 'off',
         spellcheck: 'false',
@@ -149,7 +150,7 @@ export class SettingsModal {
     this.pathInput = el('input', {
       attrs: {
         type: 'text',
-        placeholder: '.hub/data.json',
+        placeholder: t('settings.placeholderPath'),
         autocapitalize: 'none',
         autocorrect: 'off',
         spellcheck: 'false',
@@ -164,14 +165,14 @@ export class SettingsModal {
 
     this.notificationsEnabled = el('input', { attrs: { type: 'checkbox' } });
     this.vapidInput = el('input', {
-      attrs: { type: 'text', placeholder: 'BEl62i…', autocomplete: 'off' },
+      attrs: { type: 'text', placeholder: t('settings.placeholderVapid'), autocomplete: 'off' },
     });
     this.gamepadEnabled = el('input', { attrs: { type: 'checkbox' } });
     this.lockEnabled = el('input', { attrs: { type: 'checkbox' } });
     this.lockEnabled.disabled = true;
     this.lockButton = el('button', {
       className: 'button',
-      text: 'Register app lock',
+      text: t('settings.registerLock'),
       attrs: { type: 'button' },
     });
     this.lockButton.addEventListener('click', () => {
@@ -179,12 +180,8 @@ export class SettingsModal {
     });
 
     this.themeSelect = el('select', { className: 'settings-select' });
-    for (const [value, label] of [
-      ['auto', 'Auto (follow system)'],
-      ['light', 'Light'],
-      ['dark', 'Dark'],
-    ] as const) {
-      this.themeSelect.appendChild(el('option', { text: label, attrs: { value } }));
+    for (const value of ['auto', 'light', 'dark'] as const) {
+      this.themeSelect.appendChild(el('option', { text: t(`theme.${value}`), attrs: { value } }));
     }
 
     this.tokenStatus = el('div', { className: 'settings-token-status' });
@@ -198,7 +195,7 @@ export class SettingsModal {
       attrs: { type: 'button', 'aria-expanded': 'false' },
     });
     this.advancedToggle.appendChild(svg(ICON_CHEVRON, { size: 16 }));
-    this.advancedToggle.appendChild(el('span', { text: 'Advanced' }));
+    this.advancedToggle.appendChild(el('span', { text: t('settings.advanced') }));
     this.advancedToggle.addEventListener('click', () => this.toggleAdvanced());
 
     this.element = this.build();
@@ -229,7 +226,7 @@ export class SettingsModal {
   private build(): HTMLElement {
     const closeButton = el('button', {
       className: 'icon-button modal__close',
-      attrs: { type: 'button', 'aria-label': 'Close settings' },
+      attrs: { type: 'button', 'aria-label': t('settings.closeAria') },
     });
     closeButton.appendChild(svg(ICON_CLOSE));
     closeButton.addEventListener('click', () => this.close());
@@ -237,7 +234,7 @@ export class SettingsModal {
     const title = el('h2', {
       className: 'modal__title',
       attrs: { id: this.titleId },
-      text: 'Settings',
+      text: t('settings.heading'),
     });
     const header = el('header', { className: 'modal__header', children: [title, closeButton] });
 
@@ -260,11 +257,11 @@ export class SettingsModal {
   }
 
   private buildGeneral(): HTMLElement {
-    const save = this.saveButton('Save general', () => {
+    const save = this.saveButton(t('settings.saveGeneral'), () => {
       void this.handleSaveGeneral();
     });
-    return this.section('General', [
-      field('Theme', this.themeSelect),
+    return this.section(t('settings.general'), [
+      field(t('settings.theme'), this.themeSelect),
       el('div', { className: 'settings-actions', children: [save] }),
     ]);
   }
@@ -272,35 +269,32 @@ export class SettingsModal {
   private buildSync(): HTMLElement {
     const testButton = el('button', {
       className: 'button',
-      text: 'Test connection',
+      text: t('settings.testConnection'),
       attrs: { type: 'button' },
     });
     testButton.addEventListener('click', () => {
       void this.handleTest();
     });
 
-    const saveButton = this.saveButton('Save sync settings', () => {
+    const saveButton = this.saveButton(t('settings.saveSync'), () => {
       void this.handleSaveSync();
     });
 
     const syncNowButton = el('button', {
       className: 'button',
-      text: 'Sync now',
+      text: t('settings.syncNow'),
       attrs: { type: 'button' },
     });
     syncNowButton.addEventListener('click', () => this.callbacks.onSyncNow());
 
-    const tokenHelp =
-      'Needs Contents: read & write on the sync repository only. Hub stores it encrypted on this device.';
-
-    return this.section('Sync (GitHub)', [
-      field('Enable background sync', this.syncEnabled),
+    return this.section(t('settings.sync'), [
+      field(t('settings.enableSync'), this.syncEnabled),
       this.tokenStatus,
-      field('GitHub token (PAT)', this.patInput, tokenHelp),
-      field('Repository owner', this.ownerInput),
-      field('Repository name', this.repoInput),
-      field('Branch', this.branchInput),
-      field('File path', this.pathInput),
+      field(t('settings.pat'), this.patInput, t('settings.tokenHelp')),
+      field(t('settings.owner'), this.ownerInput),
+      field(t('settings.repo'), this.repoInput),
+      field(t('settings.branch'), this.branchInput),
+      field(t('settings.filePath'), this.pathInput),
       el('div', {
         className: 'settings-actions',
         children: [testButton, saveButton, syncNowButton],
@@ -310,18 +304,18 @@ export class SettingsModal {
   }
 
   private buildNotifications(): HTMLElement {
-    const save = this.saveButton('Save notifications', () => {
+    const save = this.saveButton(t('settings.saveNotifications'), () => {
       void this.handleSaveNotifications();
     });
-    return this.section('Notifications & reminders', [
-      field('Local notifications & reminders', this.notificationsEnabled),
+    return this.section(t('settings.notifications'), [
+      field(t('settings.localNotifications'), this.notificationsEnabled),
       el('div', { className: 'settings-actions', children: [save] }),
     ]);
   }
 
   private buildSecurity(): HTMLElement {
-    return this.section('Security', [
-      field('App lock (device screen lock / biometrics)', this.lockEnabled),
+    return this.section(t('settings.security'), [
+      field(t('settings.appLock'), this.lockEnabled),
       el('div', { className: 'settings-actions', children: [this.lockButton] }),
     ]);
   }
@@ -329,14 +323,14 @@ export class SettingsModal {
   private buildData(): HTMLElement {
     const exportButton = el('button', {
       className: 'button',
-      text: 'Export JSON',
+      text: t('settings.exportJson'),
       attrs: { type: 'button' },
     });
     exportButton.addEventListener('click', () => this.callbacks.onExport());
 
     const importButton = el('button', {
       className: 'button',
-      text: 'Import JSON',
+      text: t('settings.importJson'),
       attrs: { type: 'button' },
     });
     importButton.addEventListener('click', () => this.fileInput.click());
@@ -351,28 +345,28 @@ export class SettingsModal {
 
     const categoriesButton = el('button', {
       className: 'button',
-      text: 'Manage categories',
+      text: t('settings.manageCategories'),
       attrs: { type: 'button' },
     });
     categoriesButton.addEventListener('click', () => this.callbacks.onOpenCategories?.());
 
     const recentlyDeletedButton = el('button', {
       className: 'button',
-      text: 'Recently deleted',
+      text: t('settings.recentlyDeleted'),
       attrs: { type: 'button' },
     });
     recentlyDeletedButton.addEventListener('click', () => this.callbacks.onOpenRecentlyDeleted?.());
 
     const persistButton = el('button', {
       className: 'button',
-      text: 'Request persistent storage',
+      text: t('settings.requestPersist'),
       attrs: { type: 'button' },
     });
     persistButton.addEventListener('click', () => {
       void this.handleRequestPersist();
     });
 
-    return this.section('Data', [
+    return this.section(t('settings.data'), [
       el('div', {
         className: 'settings-actions',
         children: [exportButton, importButton, this.fileInput],
@@ -390,25 +384,25 @@ export class SettingsModal {
   private buildInstall(): HTMLElement {
     const installButton = el('button', {
       className: 'button',
-      text: 'Install Hub',
+      text: t('settings.installHub'),
       attrs: { type: 'button' },
     });
     installButton.addEventListener('click', () => this.callbacks.onInstall?.());
-    return this.section('Install & updates', [
+    return this.section(t('settings.install'), [
       el('p', {
         className: 'settings-help',
-        text: 'Install Hub for one-tap access and offline use.',
+        text: t('settings.installHelp'),
       }),
       el('div', { className: 'settings-actions', children: [installButton] }),
     ]);
   }
 
   private buildAdvanced(): HTMLElement {
-    const save = this.saveButton('Save advanced', () => {
+    const save = this.saveButton(t('settings.saveAdvanced'), () => {
       void this.handleSaveAdvanced();
     });
-    this.advancedRegion.appendChild(field('Web Push public key (VAPID)', this.vapidInput));
-    this.advancedRegion.appendChild(field('Gamepad navigation', this.gamepadEnabled));
+    this.advancedRegion.appendChild(field(t('settings.vapid'), this.vapidInput));
+    this.advancedRegion.appendChild(field(t('settings.gamepad'), this.gamepadEnabled));
     this.advancedRegion.appendChild(el('div', { className: 'settings-actions', children: [save] }));
     return el('section', {
       className: 'settings-section settings-advanced',
@@ -456,8 +450,8 @@ export class SettingsModal {
     this.gamepadEnabled.checked = config.gamepad_enabled;
     this.lockEnabled.checked = config.app_lock_enabled;
     this.lockButton.textContent = config.app_lock_enabled
-      ? 'Re-register app lock'
-      : 'Register app lock';
+      ? t('settings.reregisterLock')
+      : t('settings.registerLock');
     this.themeSelect.value = config.theme;
     this.statusEl.textContent = '';
     this.statusEl.removeAttribute('data-tone');
@@ -469,8 +463,8 @@ export class SettingsModal {
     this.renderTokenStatus();
 
     this.storageStatus.textContent = config.storage_persisted
-      ? 'Storage is persistent — your browser will not clear Hub’s data.'
-      : 'Storage is not yet persistent. Your browser may clear Hub’s data when space is low.';
+      ? t('settings.storagePersistent')
+      : t('settings.storageNotPersistent');
     this.quotaStatus.textContent = '';
   }
 
@@ -500,12 +494,12 @@ export class SettingsModal {
     // Hide only the input; the label and scoped-token help stay visible.
     this.patInput.hidden = true;
     this.tokenStatus.appendChild(
-      el('span', { className: 'settings-token-status__label', text: 'Token saved' }),
+      el('span', { className: 'settings-token-status__label', text: t('settings.tokenSaved') }),
     );
 
     const replace = el('button', {
       className: 'button',
-      text: 'Replace',
+      text: t('common.replace'),
       attrs: { type: 'button' },
     });
     replace.addEventListener('click', () => {
@@ -516,7 +510,7 @@ export class SettingsModal {
 
     const remove = el('button', {
       className: 'button button--danger',
-      text: 'Remove',
+      text: t('common.remove'),
       attrs: { type: 'button' },
     });
     remove.addEventListener('click', () => {
@@ -541,9 +535,9 @@ export class SettingsModal {
     try {
       await this.store.updateConfig({ theme: this.themeSelect.value as AppConfig['theme'] });
       this.callbacks.onSaved();
-      this.setStatus('General settings saved.', 'ok');
+      this.setStatus(t('settings.generalSaved'), 'ok');
     } catch {
-      this.setStatus('Could not save settings. Try again.', 'error');
+      this.setStatus(t('settings.saveFailed'), 'error');
     }
   }
 
@@ -565,10 +559,10 @@ export class SettingsModal {
       }
       await this.store.updateConfig(patch);
       this.callbacks.onSaved();
-      this.setStatus('Sync settings saved.', 'ok');
+      this.setStatus(t('settings.syncSaved'), 'ok');
       this.render();
     } catch {
-      this.setStatus('Could not save settings. Try again.', 'error');
+      this.setStatus(t('settings.saveFailed'), 'error');
     }
   }
 
@@ -576,9 +570,9 @@ export class SettingsModal {
     try {
       await this.store.updateConfig({ notifications_enabled: this.notificationsEnabled.checked });
       this.callbacks.onSaved();
-      this.setStatus('Notification settings saved.', 'ok');
+      this.setStatus(t('settings.notificationsSaved'), 'ok');
     } catch {
-      this.setStatus('Could not save settings. Try again.', 'error');
+      this.setStatus(t('settings.saveFailed'), 'error');
     }
   }
 
@@ -589,9 +583,9 @@ export class SettingsModal {
         gamepad_enabled: this.gamepadEnabled.checked,
       });
       this.callbacks.onSaved();
-      this.setStatus('Advanced settings saved.', 'ok');
+      this.setStatus(t('settings.advancedSaved'), 'ok');
     } catch {
-      this.setStatus('Could not save settings. Try again.', 'error');
+      this.setStatus(t('settings.saveFailed'), 'error');
     }
   }
 
@@ -599,9 +593,9 @@ export class SettingsModal {
     try {
       await this.store.updateConfig({ github_pat: '' });
       this.render();
-      this.setStatus('Token removed.', 'ok');
+      this.setStatus(t('settings.tokenRemoved'), 'ok');
     } catch {
-      this.setStatus('Could not remove the token.', 'error');
+      this.setStatus(t('settings.tokenRemoveFailed'), 'error');
     }
   }
 
@@ -610,13 +604,13 @@ export class SettingsModal {
     if (!this.callbacks.onRequestPersist) {
       return;
     }
-    this.setStatus('Requesting persistent storage…', 'pending');
+    this.setStatus(t('settings.requestingPersist'), 'pending');
     try {
       await this.callbacks.onRequestPersist();
       this.render();
-      this.setStatus('Persistent storage requested.', 'ok');
+      this.setStatus(t('settings.persistRequested'), 'ok');
     } catch {
-      this.setStatus('Could not request persistent storage.', 'error');
+      this.setStatus(t('settings.persistFailed'), 'error');
     }
   }
 
@@ -624,8 +618,8 @@ export class SettingsModal {
   setQuota(usage: number, quota: number): void {
     this.quotaStatus.textContent =
       quota > 0
-        ? `Using ${formatBytes(usage)} of ${formatBytes(quota)} available.`
-        : `Using ${formatBytes(usage)}.`;
+        ? t('settings.quota', { usage: formatBytes(usage), quota: formatBytes(quota) })
+        : t('settings.quotaNoTotal', { usage: formatBytes(usage) });
   }
 
   /** Enable an app lock (register credential) or disable and clear it. */
@@ -638,18 +632,18 @@ export class SettingsModal {
       }
       this.render();
     } catch {
-      this.setStatus('Could not update the app lock.', 'error');
+      this.setStatus(t('settings.lockFailed'), 'error');
     }
   }
 
   private async handleTest(): Promise<void> {
     const gh = this.readConfig();
     if (!gh.token || !gh.owner || !gh.repo) {
-      this.setStatus('Enter a token, owner, and repository first.', 'error');
+      this.setStatus(t('settings.enterDetails'), 'error');
       return;
     }
 
-    this.setStatus('Testing connection…', 'pending');
+    this.setStatus(t('settings.testing'), 'pending');
     try {
       const result = await this.callbacks.onTestConnection(gh);
       this.setStatus(result.message, result.ok && result.canWrite ? 'ok' : 'error');
@@ -663,18 +657,18 @@ export class SettingsModal {
       }
 
       const confirmed = await this.confirm(
-        'Target file not found in the remote repository. Do you want Hub to initialize it with your current local data?',
-        'Confirm & Initialize',
+        t('settings.confirmInit'),
+        t('settings.confirmInitLabel'),
       );
       if (!confirmed) {
         return;
       }
 
-      this.setStatus('Initializing remote file…', 'pending');
+      this.setStatus(t('settings.initRemote'), 'pending');
       await this.callbacks.onInitialize(gh);
-      this.setStatus('Remote file initialized.', 'ok');
+      this.setStatus(t('settings.remoteInitialized'), 'ok');
     } catch {
-      this.setStatus('Connection test failed. Check your details.', 'error');
+      this.setStatus(t('settings.testFailed'), 'error');
     }
   }
 

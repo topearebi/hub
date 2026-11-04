@@ -14,6 +14,7 @@
  */
 
 import { el, svg } from '../utils/dom';
+import { t } from '../utils/i18n';
 
 export type ToastVariant = 'info' | 'success' | 'warning' | 'error';
 
@@ -49,7 +50,7 @@ function getContainer(): HTMLElement {
   if (!container || !container.isConnected) {
     container = el('div', {
       className: 'toast-container',
-      attrs: { role: 'region', 'aria-label': 'Notifications' },
+      attrs: { role: 'region', 'aria-label': t('toast.region') },
     });
     document.body.appendChild(container);
   }
@@ -117,7 +118,7 @@ export function showToast(message: string, options: ToastOptions = {}): () => vo
   if (options.dismissible ?? true) {
     const dismissButton = el('button', {
       className: 'toast__dismiss',
-      attrs: { type: 'button', 'aria-label': 'Dismiss notification' },
+      attrs: { type: 'button', 'aria-label': t('toast.dismiss') },
     });
     dismissButton.appendChild(svg(ICON_CLOSE, { size: 16 }));
     dismissButton.addEventListener('click', () => {

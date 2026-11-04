@@ -12,6 +12,7 @@
 
 import { clearChildren, el } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
+import { t, tp } from '../utils/i18n';
 import { showToast } from './toast';
 import { TOMBSTONE_GRACE_MS } from '../core/store';
 import type { DeletedItems, DeletedProfileEntry } from '../core/store';
@@ -68,7 +69,7 @@ export class RecentlyDeleted {
     const title = el('h2', {
       className: 'modal__title',
       attrs: { id: this.titleId },
-      text: 'Recently deleted',
+      text: t('recentlyDeleted.heading'),
     });
     const header = el('header', { className: 'modal__header', children: [title] });
     this.bodyEl = el('div', { className: 'modal__body' });
@@ -110,7 +111,7 @@ export class RecentlyDeleted {
       this.bodyEl.appendChild(
         el('p', {
           className: 'empty-state',
-          text: 'Nothing here. Deleted items are kept for 30 days before they are removed.',
+          text: t('recentlyDeleted.empty'),
         }),
       );
       return;
@@ -119,19 +120,25 @@ export class RecentlyDeleted {
     if (profiles.length > 0) {
       this.bodyEl.appendChild(
         this.section(
-          'Profiles',
+          t('recentlyDeleted.profiles'),
           profiles.map((p) => this.profileRow(p)),
         ),
       );
     }
 
     const itemRows: HTMLElement[] = [
-      ...items.bookmarks.map((b) => this.itemRow('bookmarks', b.id, b.title, 'Link', b.updated_at)),
-      ...items.tasks.map((t) => this.itemRow('tasks', t.id, t.title, 'Task', t.updated_at)),
-      ...items.notes.map((n) => this.itemRow('notes', n.id, n.title, 'Note', n.updated_at)),
+      ...items.bookmarks.map((b) =>
+        this.itemRow('bookmarks', b.id, b.title, t('recentlyDeleted.kind.link'), b.updated_at),
+      ),
+      ...items.tasks.map((task) =>
+        this.itemRow('tasks', task.id, task.title, t('recentlyDeleted.kind.task'), task.updated_at),
+      ),
+      ...items.notes.map((n) =>
+        this.itemRow('notes', n.id, n.title, t('recentlyDeleted.kind.note'), n.updated_at),
+      ),
     ];
     if (itemRows.length > 0) {
-      this.bodyEl.appendChild(this.section('Items', itemRows));
+      this.bodyEl.appendChild(this.section(t('recentlyDeleted.items'), itemRows));
     }
   }
 
@@ -150,29 +157,33 @@ export class RecentlyDeleted {
 
     const info = el('div', { className: 'recently-deleted__info' });
     info.appendChild(el('span', { className: 'recently-deleted__name', text: profile.name }));
-    const summary =
-      `${counts.bookmarks} link${counts.bookmarks === 1 ? '' : 's'}, ` +
-      `${counts.tasks} task${counts.tasks === 1 ? '' : 's'}, ` +
-      `${counts.notes} note${counts.notes === 1 ? '' : 's'}`;
+    const summary = t('recentlyDeleted.summary', {
+      links: tp('recentlyDeleted.linkCount', counts.bookmarks),
+      tasks: tp('recentlyDeleted.taskCount', counts.tasks),
+      notes: tp('recentlyDeleted.noteCount', counts.notes),
+    });
     info.appendChild(el('span', { className: 'recently-deleted__meta', text: summary }));
     info.appendChild(
       el('span', {
         className: 'recently-deleted__meta',
-        text: `Deleted ${daysSince(profile.updated_at)} days ago · permanently removed in ${daysRemaining(profile.updated_at)} days`,
+        text: t('recentlyDeleted.deletedAgo', {
+          days: daysSince(profile.updated_at),
+          remaining: daysRemaining(profile.updated_at),
+        }),
       }),
     );
     row.appendChild(info);
 
     const actions = el('div', { className: 'recently-deleted__actions' });
     actions.appendChild(
-      this.button('Restore', 'button', () => {
+      this.button(t('common.restore'), 'button', () => {
         void this.store.restoreProfile(profile.id).then(() => this.afterChange());
       }),
     );
     actions.appendChild(
-      this.button('Delete now', 'button button--danger', () => {
+      this.button(t('recentlyDeleted.deleteNow'), 'button button--danger', () => {
         void this.confirmPermanent(
-          `Permanently delete “${profile.name}” and its ${summary}? This cannot be undone.`,
+          t('recentlyDeleted.confirmProfile', { name: profile.name, summary }),
           () => this.store.permanentlyDeleteProfile(profile.id),
         );
       }),
@@ -192,26 +203,31 @@ export class RecentlyDeleted {
 
     const info = el('div', { className: 'recently-deleted__info' });
     info.appendChild(
-      el('span', { className: 'recently-deleted__name', text: title || 'Untitled' }),
+      el('span', { className: 'recently-deleted__name', text: title || t('common.untitled') }),
     );
     info.appendChild(
       el('span', {
         className: 'recently-deleted__meta',
-        text: `${kind} · deleted ${daysSince(updatedAt)} days ago · permanently removed in ${daysRemaining(updatedAt)} days`,
+        text: t('recentlyDeleted.itemMeta', {
+          kind,
+          days: daysSince(updatedAt),
+          remaining: daysRemaining(updatedAt),
+        }),
       }),
     );
     row.appendChild(info);
 
     const actions = el('div', { className: 'recently-deleted__actions' });
     actions.appendChild(
-      this.button('Restore', 'button', () => {
+      this.button(t('common.restore'), 'button', () => {
         void this.restoreItem(storeName, id).then(() => this.afterChange());
       }),
     );
     actions.appendChild(
-      this.button('Delete now', 'button button--danger', () => {
-        void this.confirmPermanent(`Permanently delete “${title || 'Untitled'}”?`, () =>
-          this.store.permanentlyDeleteItem(storeName, id),
+      this.button(t('recentlyDeleted.deleteNow'), 'button button--danger', () => {
+        void this.confirmPermanent(
+          t('recentlyDeleted.confirmItem', { name: title || t('common.untitled') }),
+          () => this.store.permanentlyDeleteItem(storeName, id),
         );
       }),
     );
@@ -237,9 +253,9 @@ export class RecentlyDeleted {
 
   private async confirmPermanent(message: string, action: () => Promise<void>): Promise<void> {
     const confirmed = await confirmDialog({
-      title: 'Delete permanently?',
+      title: t('common.deletePermanentlyTitle'),
       message,
-      confirmLabel: 'Delete permanently',
+      confirmLabel: t('common.deletePermanently'),
       danger: true,
       nested: true,
     });
@@ -247,7 +263,7 @@ export class RecentlyDeleted {
       return;
     }
     await action();
-    showToast('Permanently deleted.', { variant: 'info' });
+    showToast(t('common.permanentlyDeleted'), { variant: 'info' });
     this.afterChange();
   }
 

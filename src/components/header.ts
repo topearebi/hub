@@ -1,16 +1,16 @@
 /**
  * Hub System Header
  * -----------------
- * Edge-to-edge header with two clusters:
- *   - Left: environment telemetry (IP / location / weather).
- *   - Right: sync status, drawer toggles, and the active-profile control.
+ * Edge-to-edge header with two clusters (DESIGN.md §6.1):
+ *   - Left: the Home affordance (standalone only) and the status chip.
+ *   - Right: drawer toggles and the active-profile control.
  *
  * The profile control opens the profile popover (wired by `main.ts`).
  */
 
 import { el, svg } from '../utils/dom';
+import { t } from '../utils/i18n';
 import { initialOf, safeCssUrl } from '../utils/text';
-import { TelemetryBadge } from './telemetry-badge';
 import { StatusChip } from './status-chip';
 import type { StatusChipState } from './status-chip';
 import type { ProfileItem } from '../types/schemas';
@@ -33,7 +33,6 @@ export interface HeaderCallbacks {
 
 export class Header {
   readonly element: HTMLElement;
-  readonly telemetry: TelemetryBadge;
   readonly statusChip: StatusChip;
 
   private readonly tasksToggle: HTMLButtonElement;
@@ -44,21 +43,23 @@ export class Header {
   private readonly profileButton: HTMLButtonElement;
 
   constructor(private readonly callbacks: HeaderCallbacks) {
-    this.telemetry = new TelemetryBadge();
-
     // A single icon + text status chip replaces the colour-only dot (G-44).
     this.statusChip = new StatusChip({ onActivate: () => this.callbacks.onOpenSync() });
 
     this.tasksToggle = el('button', {
       className: 'icon-button drawer-toggle',
-      attrs: { type: 'button', 'aria-label': 'Toggle tasks', 'aria-expanded': 'false' },
+      attrs: { type: 'button', 'aria-label': t('header.toggleTasks'), 'aria-expanded': 'false' },
     });
     this.tasksToggle.appendChild(svg(ICON_TASKS));
     this.tasksToggle.addEventListener('click', () => this.callbacks.onToggleTasks());
 
     this.notesToggle = el('button', {
       className: 'icon-button drawer-toggle',
-      attrs: { type: 'button', 'aria-label': 'Toggle scratchpad', 'aria-expanded': 'false' },
+      attrs: {
+        type: 'button',
+        'aria-label': t('header.toggleScratchpad'),
+        'aria-expanded': 'false',
+      },
     });
     this.notesToggle.appendChild(svg(ICON_NOTES));
     this.notesToggle.addEventListener('click', () => this.callbacks.onToggleNotes());
@@ -67,17 +68,19 @@ export class Header {
     // app is installed/standalone (see `layout.css`).
     this.homeButton = el('button', {
       className: 'icon-button header-home',
-      attrs: { type: 'button', 'aria-label': 'Home' },
+      attrs: { type: 'button', 'aria-label': t('header.home') },
     });
     this.homeButton.appendChild(svg(ICON_HOME));
-    this.homeButton.appendChild(el('span', { className: 'header-home__label', text: 'Home' }));
+    this.homeButton.appendChild(
+      el('span', { className: 'header-home__label', text: t('header.home') }),
+    );
     this.homeButton.addEventListener('click', () => this.callbacks.onHome());
 
     this.avatar = el('span', { className: 'profile-button__avatar' });
-    this.profileName = el('span', { className: 'profile-button__name', text: 'Profile' });
+    this.profileName = el('span', { className: 'profile-button__name', text: t('common.profile') });
     this.profileButton = el('button', {
       className: 'profile-button',
-      attrs: { type: 'button', 'aria-label': 'Profile menu', 'aria-haspopup': 'menu' },
+      attrs: { type: 'button', 'aria-label': t('header.profileMenu'), 'aria-haspopup': 'menu' },
       children: [this.avatar, this.profileName],
     });
     this.profileButton.addEventListener('click', () =>
@@ -86,11 +89,11 @@ export class Header {
 
     const left = el('div', {
       className: 'system-header__left',
-      children: [this.homeButton, this.telemetry.element],
+      children: [this.homeButton, this.statusChip.element],
     });
     const right = el('div', {
       className: 'system-header__right',
-      children: [this.statusChip.element, this.tasksToggle, this.notesToggle, this.profileButton],
+      children: [this.tasksToggle, this.notesToggle, this.profileButton],
     });
 
     this.element = el('header', { className: 'system-header', children: [left, right] });
@@ -135,7 +138,7 @@ export class Header {
 
   /** Reflect the active profile in the profile control. */
   renderProfile(profile: ProfileItem | null): void {
-    this.profileName.textContent = profile?.name?.trim() || 'Profile';
+    this.profileName.textContent = profile?.name?.trim() || t('common.profile');
 
     // Validate/escape the avatar before interpolating it into a `url("…")`
     // token so a crafted value can never break out of the CSS string (G-55).

@@ -10,6 +10,7 @@
 import './styles/tokens.css';
 import './styles/layout.css';
 import './styles/components.css';
+import './styles/print.css';
 
 import { store } from './core/store';
 import { resolveBookmarkUrl } from './core/fallback';
@@ -43,6 +44,7 @@ import { ProfileEditor } from './components/profile-editor';
 import { showToast } from './components/toast';
 import { el, svg } from './utils/dom';
 import { confirmDialog, Dialog } from './utils/dialog';
+import { applyDocumentLocale, t } from './utils/i18n';
 import { bindVisualViewport } from './utils/viewport';
 import { newId } from './utils/crypto';
 import {
@@ -50,6 +52,7 @@ import {
   estimateStorage,
   isStoragePersisted,
   parseLaunchIntent,
+  requestBackgroundSync,
   requestPersistentStorage,
   shouldShowInstallPrompt,
   updateAppBadge,
@@ -61,7 +64,7 @@ import { tokenKeyStore } from './core/db';
 import { NotificationManager } from './core/notifications';
 import { GamepadNavigator, isGamepadSupported } from './core/gamepad';
 import type { GamepadAction } from './core/gamepad';
-import { TelemetryService } from './core/telemetry';
+import { purgeLegacyEnvironmentCache } from './core/legacy';
 import {
   isWebAuthnAvailable,
   registerAppLock,
@@ -117,7 +120,7 @@ async function activateBookmark(bookmark: BookmarkItem): Promise<void> {
   }
 
   // Busy feedback while probing the primary URL and its mirrors (G-41).
-  const dismissBusy = showToast('Opening…', {
+  const dismissBusy = showToast(t('app.opening'), {
     variant: 'info',
     persistent: true,
     dismissible: false,
@@ -129,13 +132,13 @@ async function activateBookmark(bookmark: BookmarkItem): Promise<void> {
     result = await resolveBookmarkUrl(bookmark);
   } catch {
     dismissBusy();
-    showToast('Could not open that bookmark.', { variant: 'error' });
+    showToast(t('app.openFailed'), { variant: 'error' });
     return;
   }
   dismissBusy();
 
   if (result.usedAlternate) {
-    showToast(`Primary URL unreachable. Routed to mirror: ${result.hostname}`, {
+    showToast(t('app.mirrorRouted', { host: result.hostname }), {
       variant: 'warning',
     });
   }
@@ -160,7 +163,7 @@ function exportJson(): void {
   anchor.remove();
   URL.revokeObjectURL(url);
 
-  showToast('Exported hub-data.json.', { variant: 'success' });
+  showToast(t('app.exported'), { variant: 'success' });
 }
 
 /** Import a JSON backup, previewing and confirming before replacing data (G-40). */
@@ -170,17 +173,16 @@ async function importJson(file: File): Promise<void> {
     const text = await file.text();
     payload = parsePayload(text);
   } catch {
-    showToast('Import failed: invalid file.', { variant: 'error' });
+    showToast(t('app.importInvalid'), { variant: 'error' });
     return;
   }
 
   const confirmed = await confirmDialog({
-    title: 'Replace local data?',
-    message:
-      `This import contains ${payload.bookmarks.length} bookmarks, ` +
-      `${payload.tasks.length} tasks and ${payload.notes.length} notes. ` +
-      'It will replace your current local data.',
-    confirmLabel: 'Replace data',
+    title: t('app.replaceTitle'),
+    message: t('app.replaceMessage', {
+      count: payload.bookmarks.length + payload.tasks.length + payload.notes.length,
+    }),
+    confirmLabel: t('app.replaceConfirm'),
     danger: true,
   });
   if (!confirmed) {
@@ -189,9 +191,9 @@ async function importJson(file: File): Promise<void> {
 
   try {
     await store.applyPayload(payload);
-    showToast('Import complete.', { variant: 'success' });
+    showToast(t('app.importComplete'), { variant: 'success' });
   } catch {
-    showToast('Import failed while saving.', { variant: 'error' });
+    showToast(t('app.importSaveFailed'), { variant: 'error' });
   }
 }
 
@@ -251,7 +253,7 @@ async function seedSampleSet(): Promise<void> {
       category_id: category.id,
     });
   }
-  showToast('Sample links added. Remove the “Sample links” category to clear them.', {
+  showToast(t('app.sampleAdded'), {
     variant: 'info',
   });
 }
@@ -269,23 +271,23 @@ async function createNote(title: string, content: string): Promise<void> {
     color_tag: 'terracotta',
   };
   await store.upsertNote(note);
-  showToast('Note saved.', { variant: 'success' });
+  showToast(t('app.noteSaved'), { variant: 'success' });
 }
 
 /** Render a friendly, actionable screen when startup fails (G-41). */
 function renderBootstrapError(root: HTMLElement): void {
   const card = el('div', { className: 'error-boundary' });
-  card.appendChild(el('h1', { className: 'error-boundary__title', text: 'Hub could not start' }));
+  card.appendChild(
+    el('h1', { className: 'error-boundary__title', text: t('app.startFailedTitle') }),
+  );
   card.appendChild(
     el('p', {
-      text:
-        'Your browser blocked local storage. Private browsing or a disabled IndexedDB can ' +
-        'cause this. Your data has not been changed.',
+      text: t('app.startFailedMessage'),
     }),
   );
   const retry = el('button', {
     className: 'button button--primary',
-    text: 'Retry',
+    text: t('common.retry'),
     attrs: { type: 'button' },
   });
   retry.addEventListener('click', () => window.location.reload());
@@ -330,27 +332,23 @@ async function showInstallGuidance(): Promise<void> {
     await prompt.prompt();
     const choice = await prompt.userChoice;
     if (choice.outcome === 'accepted') {
-      showToast('Installing Hub…', { variant: 'info' });
+      showToast(t('app.installing'), { variant: 'info' });
     }
     return;
   }
 
   const dialog = new Dialog({
-    label: 'Install Hub',
+    label: t('app.installHub'),
     onRequestClose: () => dialog.close(),
   });
-  const title = el('h2', { className: 'modal__title', text: 'Install Hub' });
+  const title = el('h2', { className: 'modal__title', text: t('app.installHub') });
   const body = el('div', { className: 'modal__body' });
   body.appendChild(title);
 
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const steps = isIos
-    ? ['Tap the Share button in Safari.', 'Choose “Add to Home Screen”.', 'Tap “Add”.']
-    : [
-        'Open your browser menu.',
-        'Choose “Install app” or “Add to Home screen”.',
-        'Confirm to install.',
-      ];
+    ? [t('app.installStepIos1'), t('app.installStepIos2'), t('app.installStepIos3')]
+    : [t('app.installStepOther1'), t('app.installStepOther2'), t('app.installStepOther3')];
   const list = el('ol', { className: 'install-steps' });
   for (const step of steps) {
     list.appendChild(el('li', { text: step }));
@@ -359,7 +357,7 @@ async function showInstallGuidance(): Promise<void> {
 
   const close = el('button', {
     className: 'button button--primary',
-    text: 'Got it',
+    text: t('app.gotIt'),
     attrs: { type: 'button' },
   });
   close.addEventListener('click', () => dialog.close());
@@ -380,12 +378,12 @@ function offerInstall(): void {
   if (!shouldShowInstallPrompt(store.appConfig.install_prompt_dismissed_at, Date.now())) {
     return;
   }
-  showToast('Install Hub for one-tap access and offline use.', {
+  showToast(t('app.installTip'), {
     variant: 'info',
     persistent: true,
     dedupeKey: 'install-prompt',
     action: {
-      label: 'Install',
+      label: t('app.install'),
       onSelect: () => {
         void showInstallGuidance();
       },
@@ -402,9 +400,15 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
+  // One-time cleanup of caches written by removed features (SCHEMAS.md §3.4).
+  purgeLegacyEnvironmentCache();
+
+  // Reflect the active locale on <html lang> / <html dir> (G-38).
+  applyDocumentLocale();
+
   // Loading skeleton while IndexedDB opens (G-41).
   const skeleton = el('div', { className: 'skeleton', attrs: { 'aria-busy': 'true' } });
-  skeleton.appendChild(el('span', { className: 'sr-only', text: 'Loading your data' }));
+  skeleton.appendChild(el('span', { className: 'sr-only', text: t('app.loading') }));
   root.replaceChildren(skeleton);
 
   // Hydrate RAM from IndexedDB before the first render.
@@ -431,14 +435,11 @@ async function bootstrap(): Promise<void> {
   ) {
     // The key record is missing/undecryptable (G-55): treat sync as "not
     // configured" and ask the user to re-enter the token. No data is lost.
-    showToast(
-      'Your saved GitHub token could not be read on this device. Re-enter it in Settings → Sync.',
-      {
-        variant: 'warning',
-        persistent: true,
-        dedupeKey: 'token-reentry',
-      },
-    );
+    showToast(t('app.tokenReentry'), {
+      variant: 'warning',
+      persistent: true,
+      dedupeKey: 'token-reentry',
+    });
   }
 
   /* ---- Standalone detection (back/home affordance — DESIGN.md §3) ---- */
@@ -464,7 +465,7 @@ async function bootstrap(): Promise<void> {
   /* ---- Shell ---- */
   const shell = el('div', { className: 'app-shell', attrs: { 'data-view': 'bookmarks' } });
 
-  /* ---- System header (telemetry + profile controls) ---- */
+  /* ---- System header (status chip + profile controls) ---- */
   const header = new Header({
     onToggleTasks: () => setOpen('tasks', !openState.tasks),
     onToggleNotes: () => setOpen('notes', !openState.notes),
@@ -509,13 +510,16 @@ async function bootstrap(): Promise<void> {
 
   /* ---- Mobile tab bar (icon + label + open-task count) ---- */
   const tabDefs: ReadonlyArray<{ key: ViewKey; label: string; icon: string }> = [
-    { key: 'bookmarks', label: 'Bookmarks', icon: ICON_TAB_BOOKMARKS },
-    { key: 'tasks', label: 'Tasks', icon: ICON_TAB_TASKS },
-    { key: 'notes', label: 'Notes', icon: ICON_TAB_NOTES },
+    { key: 'bookmarks', label: t('app.tabBookmarks'), icon: ICON_TAB_BOOKMARKS },
+    { key: 'tasks', label: t('app.tabTasks'), icon: ICON_TAB_TASKS },
+    { key: 'notes', label: t('app.tabNotes'), icon: ICON_TAB_NOTES },
   ];
   const tabButtons = new Map<ViewKey, HTMLButtonElement>();
   const tabCounts = new Map<ViewKey, HTMLElement>();
-  const mobileTabs = el('nav', { className: 'mobile-tabs', attrs: { 'aria-label': 'Primary' } });
+  const mobileTabs = el('nav', {
+    className: 'mobile-tabs',
+    attrs: { 'aria-label': t('app.primaryNav') },
+  });
   for (const tab of tabDefs) {
     const button = el('button', {
       className: 'mobile-tabs__button',
@@ -535,7 +539,7 @@ async function bootstrap(): Promise<void> {
   }
 
   root.appendChild(
-    el('a', { className: 'skip-link', text: 'Skip to content', attrs: { href: '#main' } }),
+    el('a', { className: 'skip-link', text: t('app.skipToContent'), attrs: { href: '#main' } }),
   );
   root.appendChild(shell);
   root.appendChild(mobileTabs);
@@ -588,7 +592,7 @@ async function bootstrap(): Promise<void> {
   const bookmarkEditor = new BookmarkEditor(store, {
     onSave: async (bookmark) => {
       await store.upsertBookmark(bookmark);
-      showToast('Bookmark saved.', { variant: 'success' });
+      showToast(t('app.bookmarkSaved'), { variant: 'success' });
     },
     onDelete: (id) => {
       const bookmark = store.getBookmark(id);
@@ -616,10 +620,10 @@ async function bootstrap(): Promise<void> {
 
   const addBookmarkButton = el('button', {
     className: 'button launchpad__add-bookmark',
-    attrs: { type: 'button', 'aria-label': 'Add bookmark' },
+    attrs: { type: 'button', 'aria-label': t('app.addBookmark') },
   });
   addBookmarkButton.appendChild(svg(ICON_PLUS, { size: 16 }));
-  addBookmarkButton.appendChild(el('span', { text: 'Add bookmark' }));
+  addBookmarkButton.appendChild(el('span', { text: t('app.addBookmark') }));
   addBookmarkButton.addEventListener('click', () => {
     void openBookmarkEditor();
   });
@@ -671,19 +675,19 @@ async function bootstrap(): Promise<void> {
   /** Confirm and soft-delete a bookmark. */
   async function deleteBookmark(bookmark: BookmarkItem): Promise<void> {
     const confirmed = await confirmDialog({
-      title: 'Delete bookmark?',
-      message: `Delete "${bookmark.title}"?`,
-      confirmLabel: 'Delete',
+      title: t('app.deleteBookmarkTitle'),
+      message: t('app.deleteBookmarkMessage', { title: bookmark.title }),
+      confirmLabel: t('common.delete'),
       danger: true,
     });
     if (!confirmed) {
       return;
     }
     await store.softDeleteBookmark(bookmark.id);
-    showToast('Bookmark deleted.', {
+    showToast(t('app.bookmarkDeleted'), {
       variant: 'info',
       action: {
-        label: 'Undo',
+        label: t('common.undo'),
         onSelect: () => {
           void store.restoreBookmark(bookmark.id);
         },
@@ -718,7 +722,10 @@ async function bootstrap(): Promise<void> {
       header.setSyncStatus(status);
     }
     if (status === 'error') {
-      showToast('Sync failed. Check your GitHub settings.', { variant: 'error' });
+      showToast(t('app.syncFailed'), { variant: 'error' });
+      // Ask the browser to retry when connectivity returns (G-53). A no-op
+      // where Background Sync is unsupported (iOS Safari, Firefox).
+      void requestBackgroundSync();
     }
   }
 
@@ -755,6 +762,16 @@ async function bootstrap(): Promise<void> {
     },
   });
 
+  // Background Sync wake-up (G-53): the service worker relays the browser's
+  // retry after a failed push while offline, and the page runs the sync.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if ((event.data as { type?: string } | null)?.type === 'HUB_BACKGROUND_SYNC') {
+        void syncEngine.pullNow();
+      }
+    });
+  }
+
   // Pull remote data on boot when sync is enabled, so a normal load shows the
   // latest data without requiring a manual refresh.
   if (store.appConfig.sync_enabled && hasGitHubConfig(store.appConfig, tokenVault.token)) {
@@ -778,15 +795,15 @@ async function bootstrap(): Promise<void> {
     onRegisterLock: async () => {
       const credentialId = await registerAppLock('hub-user');
       if (!credentialId) {
-        showToast('App lock could not be registered on this device.', { variant: 'warning' });
+        showToast(t('app.lockRegisterFailed'), { variant: 'warning' });
         return;
       }
       await store.updateConfig({ app_lock_enabled: true, app_lock_credential_id: credentialId });
-      showToast('App lock enabled.', { variant: 'success' });
+      showToast(t('app.lockEnabled'), { variant: 'success' });
     },
     onDisableLock: async () => {
       await store.updateConfig({ app_lock_enabled: false, app_lock_credential_id: '' });
-      showToast('App lock disabled.', { variant: 'info' });
+      showToast(t('app.lockDisabled'), { variant: 'info' });
     },
     /** Encrypt a newly entered token before it is persisted (SCHEMAS.md §3.5). */
     encryptToken: (plaintext) => tokenVault.setToken(plaintext),
@@ -865,7 +882,7 @@ async function bootstrap(): Promise<void> {
       // Guard: never delete the last live profile (G-40).
       const live = store.profiles.filter((profile) => profile.is_deleted !== true);
       if (live.length <= 1) {
-        showToast('Hub needs at least one profile.', { variant: 'warning' });
+        showToast(t('app.needsOneProfile'), { variant: 'warning' });
         return;
       }
       const counts = {
@@ -874,12 +891,12 @@ async function bootstrap(): Promise<void> {
         notes: store.activeNotes.length,
       };
       const confirmed = await confirmDialog({
-        title: 'Delete profile?',
-        message:
-          `Delete profile “${current.name}”? Its ${counts.bookmarks} links, ` +
-          `${counts.tasks} tasks and ${counts.notes} notes will be removed. ` +
-          'You can restore it from Settings → Data → Recently deleted for 30 days.',
-        confirmLabel: 'Delete profile',
+        title: t('app.deleteProfileTitle'),
+        message: t('app.deleteProfileMessage', {
+          name: current.name,
+          count: counts.bookmarks + counts.tasks + counts.notes,
+        }),
+        confirmLabel: t('app.deleteProfileConfirm'),
         danger: true,
       });
       if (!confirmed) {
@@ -887,10 +904,10 @@ async function bootstrap(): Promise<void> {
       }
       await store.softDeleteProfile(current.id);
       applyProfile();
-      showToast(`Profile “${current.name}” deleted.`, {
+      showToast(t('app.profileDeleted', { name: current.name }), {
         variant: 'info',
         action: {
-          label: 'Undo',
+          label: t('common.undo'),
           onSelect: () => {
             void store.restoreProfile(current.id).then(() => applyProfile());
           },
@@ -899,9 +916,6 @@ async function bootstrap(): Promise<void> {
     },
   });
   document.body.appendChild(profileEditor.element);
-
-  /* ---- Environment telemetry (non-blocking) ---- */
-  const telemetry = new TelemetryService();
 
   /* ---- Drawer state helpers ---- */
   const openState: Record<DrawerKey, boolean> = { tasks: false, notes: false };
@@ -1069,8 +1083,8 @@ async function bootstrap(): Promise<void> {
       id: newId(),
       created_at: now,
       updated_at: now,
-      name: `Profile ${store.profiles.length + 1}`,
-      hub_title: 'Hub',
+      name: t('app.defaultProfileName', { n: store.profiles.length + 1 }),
+      hub_title: t('common.hub'),
     };
     await store.upsertProfile(profile);
     await store.setActiveProfile(profile.id);
@@ -1128,7 +1142,7 @@ async function bootstrap(): Promise<void> {
   const notifications = new NotificationManager({
     getTasks: () => store.activeTasks,
     onFire: (reminder) => {
-      showToast(`Reminder: ${reminder.title}`, { variant: 'info' });
+      showToast(t('app.reminder', { title: reminder.title }), { variant: 'info' });
     },
   });
 
@@ -1275,7 +1289,7 @@ async function bootstrap(): Promise<void> {
   if (lockPhase === 'locked') {
     lockScreen.open();
   } else if (lockPhase === 'unsupported') {
-    showToast('App lock is on, but this device has no WebAuthn support.', { variant: 'warning' });
+    showToast(t('app.lockUnsupported'), { variant: 'warning' });
   }
 
   // Launch intent: app shortcuts and the Web Share Target.
@@ -1313,7 +1327,7 @@ async function bootstrap(): Promise<void> {
   });
   window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
-    showToast('Hub installed. Launch it from your home screen or app list.', {
+    showToast(t('app.installed'), {
       variant: 'success',
       dedupeKey: 'app-installed',
     });
@@ -1339,17 +1353,17 @@ async function bootstrap(): Promise<void> {
   /* ---- Keyboard shortcuts overlay + non-Alt pinned shortcut (G-26) ---- */
   function showShortcuts(): void {
     const dialog = new Dialog({
-      label: 'Keyboard shortcuts',
+      label: t('app.shortcuts'),
       onRequestClose: () => dialog.close(),
     });
-    const title = el('h2', { className: 'modal__title', text: 'Keyboard shortcuts' });
+    const title = el('h2', { className: 'modal__title', text: t('app.shortcuts') });
     const list = el('ul', { className: 'shortcuts-list' });
     const rows: ReadonlyArray<[string, string]> = [
-      ['/', 'Focus the search bar'],
-      ['Alt+1–9 or g then 1–9', 'Open a pinned bookmark'],
-      ['t / m', 'Toggle Tasks / Notes'],
-      ['Esc', 'Close the current layer'],
-      ['?', 'Show this help'],
+      ['/', t('app.shortcutFocusSearch')],
+      ['Alt+1–9 or g then 1–9', t('app.shortcutPinned')],
+      ['t / m', t('app.shortcutTogglePanes')],
+      ['Esc', t('app.shortcutCloseLayer')],
+      ['?', t('app.shortcutShowHelp')],
     ];
     for (const [keys, description] of rows) {
       const item = el('li', { className: 'shortcuts-list__item' });
@@ -1404,9 +1418,6 @@ async function bootstrap(): Promise<void> {
     }
   });
 
-  // Load environment telemetry without blocking the UI.
-  void telemetry.load().then((data) => header.telemetry.render(data));
-
   // Instant typing: focus the omnibar on boot, unless locked or on a coarse
   // pointer (auto-focus would raise the phone keyboard — G-27).
   if (!isLockScreenOpen() && !window.matchMedia('(pointer: coarse)').matches) {
@@ -1416,12 +1427,12 @@ async function bootstrap(): Promise<void> {
 
 /** Offer the user-controlled "Update available — Reload" flow (G-49). */
 function promptUpdate(worker: ServiceWorker): void {
-  showToast('A new version of Hub is ready.', {
+  showToast(t('app.updateReady'), {
     variant: 'info',
     persistent: true,
     dedupeKey: 'sw-update',
     action: {
-      label: 'Reload',
+      label: t('app.reload'),
       // Only the user's explicit action activates the new worker.
       onSelect: () => worker.postMessage({ type: 'SKIP_WAITING' }),
     },

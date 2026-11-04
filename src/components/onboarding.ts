@@ -11,6 +11,7 @@
  */
 
 import { el, svg } from '../utils/dom';
+import { t } from '../utils/i18n';
 
 const ICON_PLUS = 'M12 5v14M5 12h14';
 const ICON_IMPORT = 'M12 3v12M7 10l5 5 5-5M5 21h14';
@@ -67,26 +68,26 @@ export class OnboardingCard {
       el('h2', {
         className: 'onboarding__title',
         attrs: { id: 'onboarding-title' },
-        text: 'Welcome to Hub',
+        text: t('onboarding.title'),
       }),
     );
     card.appendChild(
       el('p', {
         className: 'onboarding__lead',
-        text: 'Your links, tasks and notes — saved on this device, available offline.',
+        text: t('onboarding.lead'),
       }),
     );
 
-    const primary = this.action('Add your first link', ICON_PLUS, 'button--primary', () =>
+    const primary = this.action(t('onboarding.addFirst'), ICON_PLUS, 'button--primary', () =>
       this.callbacks.onAddBookmark(),
     );
-    const importButton = this.action('Import links', ICON_IMPORT, '', () =>
+    const importButton = this.action(t('onboarding.import'), ICON_IMPORT, '', () =>
       this.callbacks.onImport(),
     );
-    const syncButton = this.action('Connect sync', ICON_SYNC, '', () =>
+    const syncButton = this.action(t('onboarding.connectSync'), ICON_SYNC, '', () =>
       this.callbacks.onConnectSync(),
     );
-    const sampleButton = this.action('Try a sample set', ICON_SPARKLE, '', () =>
+    const sampleButton = this.action(t('onboarding.trySample'), ICON_SPARKLE, '', () =>
       this.callbacks.onTrySample(),
     );
 
@@ -98,20 +99,20 @@ export class OnboardingCard {
 
     const installButton = el('button', {
       className: 'onboarding__link',
-      text: 'How to install',
+      text: t('onboarding.howToInstall'),
       attrs: { type: 'button' },
     });
     installButton.addEventListener('click', () => this.callbacks.onInstall());
 
     const skipButton = el('button', {
       className: 'onboarding__link',
-      text: 'Skip',
+      text: t('onboarding.skip'),
       attrs: { type: 'button' },
     });
     skipButton.addEventListener('click', () => this.complete());
 
     const tip = el('div', { className: 'onboarding__tip' });
-    tip.appendChild(el('span', { text: 'Tip: Install Hub for one-tap access.' }));
+    tip.appendChild(el('span', { text: t('onboarding.tip') }));
     tip.appendChild(installButton);
     tip.appendChild(skipButton);
     card.appendChild(tip);

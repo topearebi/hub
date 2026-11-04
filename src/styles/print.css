@@ -1,0 +1,75 @@
+/**
+ * Hub print stylesheet (G-38)
+ * ---------------------------
+ * Printing should show the user's content, not the app chrome. Hide the header,
+ * drawers, tab bar, toasts, dialogs and interactive affordances; expand the
+ * launchpad to full width and force an ink-friendly light palette.
+ */
+
+@media print {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  .system-header,
+  .mobile-tabs,
+  .drawer,
+  .drawer-scrim,
+  .toast-container,
+  .modal-overlay,
+  .lock-overlay,
+  .skip-link,
+  .launchpad__add-bookmark,
+  .tile__more,
+  .note__toolbar,
+  .task__drag,
+  .task__menu-button,
+  .task-add,
+  .task-creator,
+  .note-capture,
+  .note-capture-trigger,
+  .omnibar-wrap,
+  .brand-area__logo {
+    display: none !important;
+  }
+
+  .app-shell,
+  .launchpad,
+  .launchpad__center {
+    display: block !important;
+    max-width: none !important;
+    width: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .tile-grid {
+    display: block !important;
+  }
+
+  .tile,
+  .note,
+  .task {
+    break-inside: avoid;
+    border: 1px solid #999 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  a {
+    color: #000 !important;
+    text-decoration: underline;
+  }
+
+  /* Reveal link targets so a printed page is useful on paper. */
+  .tile__open::after {
+    content: ' (' attr(title) ')';
+    font-size: 0.8em;
+  }
+}

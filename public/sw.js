@@ -239,6 +239,28 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Background Sync (G-53)                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * When the browser fires a Background Sync (after a failed push while offline),
+ * wake every open client and ask it to run a sync. The page owns the GitHub
+ * token and merge logic, so the worker only relays the wake-up.
+ */
+self.addEventListener('sync', (event) => {
+  if (event.tag !== 'hub-sync') {
+    return;
+  }
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        client.postMessage({ type: 'HUB_BACKGROUND_SYNC' });
+      }
+    }),
+  );
+});
+
+/* ------------------------------------------------------------------ */
 /* Page <-> SW messaging                                               */
 /* ------------------------------------------------------------------ */
 

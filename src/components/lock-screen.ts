@@ -8,6 +8,7 @@
 
 import { el, svg } from '../utils/dom';
 import { setBackgroundInert, trapFocus } from '../utils/dialog';
+import { t } from '../utils/i18n';
 
 const ICON_LOCK =
   'M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2zM8 11V7a4 4 0 0 1 8 0v4';
@@ -38,10 +39,10 @@ export class LockScreen {
 
   constructor(private readonly options: LockScreenOptions) {
     const icon = svg(ICON_LOCK, { className: 'lock__icon', size: 40 });
-    const title = el('h2', { className: 'lock__title', text: 'Hub is locked' });
+    const title = el('h2', { className: 'lock__title', text: t('lock.title') });
     const hint = el('p', {
       className: 'lock__hint',
-      text: 'Unlock with your device screen lock or biometrics.',
+      text: t('lock.hint'),
     });
     this.statusEl = el('p', {
       className: 'lock__status',
@@ -49,7 +50,7 @@ export class LockScreen {
     });
     this.button = el('button', {
       className: 'button button--primary',
-      text: 'Unlock',
+      text: t('lock.unlock'),
       attrs: { type: 'button' },
     });
     this.button.addEventListener('click', () => {
@@ -62,7 +63,7 @@ export class LockScreen {
     });
     this.element = el('div', {
       className: 'lock-overlay',
-      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'App locked' },
+      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': t('lock.aria') },
       children: [card],
     });
   }
@@ -91,7 +92,7 @@ export class LockScreen {
     }
     this.busy = true;
     this.button.disabled = true;
-    this.statusEl.textContent = 'Verifying…';
+    this.statusEl.textContent = t('lock.verifying');
 
     try {
       const unlocked = await this.options.verify();
@@ -100,7 +101,7 @@ export class LockScreen {
         this.close();
         this.options.onUnlocked();
       } else {
-        this.statusEl.textContent = 'Not verified. Try again.';
+        this.statusEl.textContent = t('lock.notVerified');
       }
     } finally {
       this.busy = false;

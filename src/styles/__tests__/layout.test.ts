@@ -76,4 +76,33 @@ describe('components.css responsive behaviour', () => {
     expect(COMPONENTS).toContain('.drawer-scrim');
     expect(COMPONENTS).toContain('var(--bg-scrim)');
   });
+
+  it('collapses the profile control to avatar-only on phones (G-56)', () => {
+    // Regression: the header overflowed the viewport by 12px on a 412px phone,
+    // failing Lighthouse `content-width`. DESIGN.md §6.1 requires the profile
+    // name to collapse below 480px.
+    const phone = COMPONENTS.slice(COMPONENTS.indexOf('@media (max-width: 479px)'));
+    expect(phone).toContain('.profile-button__name');
+    expect(phone).toContain('display: none');
+  });
+
+  it('lets the status chip and profile name truncate so the header fits (G-56)', () => {
+    const chip = COMPONENTS.slice(
+      COMPONENTS.indexOf('.status-chip {'),
+      COMPONENTS.indexOf('.status-chip__icon'),
+    );
+    expect(chip).toContain('min-width: 0');
+
+    const label = COMPONENTS.slice(
+      COMPONENTS.indexOf('.status-chip__label {'),
+      COMPONENTS.indexOf(".status-chip[data-state='synced']"),
+    );
+    expect(label).toContain('min-width: 0');
+
+    const name = COMPONENTS.slice(
+      COMPONENTS.indexOf('.profile-button__name {'),
+      COMPONENTS.indexOf('@media (max-width: 479px)'),
+    );
+    expect(name).toContain('min-width: 0');
+  });
 });
