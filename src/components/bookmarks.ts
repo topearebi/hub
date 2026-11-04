@@ -8,6 +8,7 @@
 
 import { clearChildren, el, on } from '../utils/dom';
 import { hostnameOf } from '../core/fallback';
+import { initialOf } from '../utils/text';
 import type { BookmarkItem, CategoryItem } from '../types/schemas';
 
 export interface BookmarksStore {
@@ -160,7 +161,7 @@ export class BookmarksView {
   }
 
   private renderLetterAvatar(title: string): HTMLElement {
-    const letter = (title.trim().charAt(0) || '?').toUpperCase();
+    const letter = initialOf(title, '?');
     return el('span', { className: 'tile__icon tile__icon--fallback', text: letter });
   }
 

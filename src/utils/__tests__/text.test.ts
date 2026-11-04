@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { linkify } from '../text';
+import { initialOf, linkify, safeCssUrl } from '../text';
 
 describe('linkify', () => {
   it('splits surrounding text from URLs', () => {
@@ -28,5 +28,52 @@ describe('linkify', () => {
 
   it('returns an empty array for empty input', () => {
     expect(linkify('')).toEqual([]);
+  });
+});
+
+describe('initialOf', () => {
+  it('returns the first character, uppercased', () => {
+    expect(initialOf('github')).toBe('G');
+    expect(initialOf('  spaced  ')).toBe('S');
+  });
+
+  it('treats emoji/surrogate pairs as a single character (G-59)', () => {
+    expect(initialOf('😀 party')).toBe('😀');
+    expect(initialOf('🚀 launch')).toBe('🚀');
+  });
+
+  it('falls back when the input is empty or missing', () => {
+    expect(initialOf('', 'H')).toBe('H');
+    expect(initialOf('   ', 'H')).toBe('H');
+    expect(initialOf(null, 'H')).toBe('H');
+    expect(initialOf(undefined)).toBe('?');
+  });
+});
+
+describe('safeCssUrl', () => {
+  it('allows http, https, data:image and relative paths', () => {
+    expect(safeCssUrl('https://cdn.test/a.png')).toBe('https://cdn.test/a.png');
+    expect(safeCssUrl('http://cdn.test/a.png')).toBe('http://cdn.test/a.png');
+    expect(safeCssUrl('data:image/png;base64,AAAA')).toBe('data:image/png;base64,AAAA');
+    expect(safeCssUrl('/avatar.png')).toBe('/avatar.png');
+  });
+
+  it('escapes double quotes and backslashes (G-55)', () => {
+    expect(safeCssUrl('/a"b.png')).toBe('/a\\"b.png');
+    expect(safeCssUrl('/a\\b.png')).toBe('/a\\\\b.png');
+  });
+
+  it('strips line breaks that could break out of the token', () => {
+    expect(safeCssUrl('/a\nb.png')).toBe('/ab.png');
+  });
+
+  it('rejects dangerous or unexpected schemes', () => {
+    expect(safeCssUrl('javascript:alert(1)')).toBe('');
+    expect(safeCssUrl('data:text/html,<script>')).toBe('');
+    expect(safeCssUrl('vbscript:msgbox')).toBe('');
+  });
+
+  it('returns an empty string for blank input', () => {
+    expect(safeCssUrl('   ')).toBe('');
   });
 });

@@ -52,6 +52,32 @@ describe('isUrlLike', () => {
     expect(isUrlLike('justtext')).toBe(false);
     expect(isUrlLike('')).toBe(false);
   });
+
+  it('accepts localhost, IP literals and intranet hosts (G-58)', () => {
+    expect(isUrlLike('localhost')).toBe(true);
+    expect(isUrlLike('localhost:3000')).toBe(true);
+    expect(isUrlLike('192.168.1.1')).toBe(true);
+    expect(isUrlLike('192.168.1.1:8080/path')).toBe(true);
+    expect(isUrlLike('[::1]:3000')).toBe(true);
+    expect(isUrlLike('intranet:8080')).toBe(true);
+  });
+
+  it('accepts IDN (Unicode) domains (G-58)', () => {
+    expect(isUrlLike('münchen.de')).toBe(true);
+    expect(isUrlLike('例え.jp')).toBe(true);
+    expect(isUrlLike('sub.münchen.de/path')).toBe(true);
+  });
+
+  it('still rejects dangerous schemes (G-58)', () => {
+    expect(isUrlLike('javascript:alert(1)')).toBe(false);
+    expect(isUrlLike('data:text/html,<h1>x</h1>')).toBe(false);
+    expect(isUrlLike('vbscript:msgbox(1)')).toBe(false);
+  });
+
+  it('does not misclassify decimals or email addresses as URLs', () => {
+    expect(isUrlLike('3.14')).toBe(false);
+    expect(isUrlLike('user@example.com')).toBe(false);
+  });
 });
 
 describe('normalizeUrl', () => {

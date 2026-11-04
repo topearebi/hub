@@ -27,19 +27,50 @@ const ICON_SEARCH = 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35';
 /* ------------------------------------------------------------------ */
 
 const URL_SCHEME_RE = /^https?:\/\//i;
-/** PRD §5.1 Step 2: common TLD detection for scheme-less input. */
-const DOMAIN_RE = /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\S*)?$/;
-
-/** True when the query should be treated as a navigable URL, not a search. */
+/**
+ * Schemes that must never be treated as navigable URLs. `javascript:` and
+ * `data:` are XSS/exec vectors; the rest have no meaningful same-window target.
+ */
+const BLOCKED_SCHEME_RE = /^(?:javascript|data|vbscript|file|blob|about):/i;
+/**
+ * PRD §5.1 Step 2: dotted host with a 2+ letter TLD. Labels are
+ * letters/digits/hyphens and the TLD must be letters, which keeps `3.14` and
+ * email addresses out while allowing non-ASCII (IDN) labels such as
+ * `münchen.de` or `例え.jp` (G-58).
+ */
+const DOMAIN_RE = /^[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.[\p{L}]{2,}(\S*)?$/u;
+/** IPv4 literal, optionally with a port and/or path. */
+const IPV4_RE = /^\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?(?:\/\S*)?$/;
+/** Bracketed IPv6 literal, optionally with a port and/or path. */
+const IPV6_RE = /^\[[0-9a-fA-F:]+\](?::\d{1,5})?(?:\/\S*)?$/;
+/** `localhost`, optionally with a port and/or path. */
+const LOCALHOST_RE = /^localhost(?::\d{1,5})?(?:\/\S*)?$/i;
+/** A single-label intranet host with an explicit port, e.g. `intranet:8080`. */
+const HOST_PORT_RE = /^[a-zA-Z0-9-]+:\d{1,5}(?:\/\S*)?$/;
+/**
+ * True when the query should be treated as a navigable URL, not a search.
+ *
+ * Beyond explicit `http(s)` schemes and dotted TLDs, this accepts the hosts a
+ * self-hoster types in practice: `localhost:3000`, IPv4/IPv6 literals with
+ * optional ports, single-label intranet names with a port, and IDN domains.
+ * Dangerous schemes (`javascript:`, `data:`, …) are always rejected (G-58).
+ */
 export function isUrlLike(query: string): boolean {
   const trimmed = query.trim();
   if (trimmed.length === 0) {
     return false;
   }
-  if (URL_SCHEME_RE.test(trimmed)) {
-    return true;
+  if (BLOCKED_SCHEME_RE.test(trimmed)) {
+    return false;
   }
-  return DOMAIN_RE.test(trimmed);
+  return (
+    URL_SCHEME_RE.test(trimmed) ||
+    LOCALHOST_RE.test(trimmed) ||
+    IPV4_RE.test(trimmed) ||
+    IPV6_RE.test(trimmed) ||
+    HOST_PORT_RE.test(trimmed) ||
+    DOMAIN_RE.test(trimmed)
+  );
 }
 
 /** Ensure a scheme-less URL is navigable by defaulting to HTTPS. */

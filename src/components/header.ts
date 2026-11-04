@@ -9,6 +9,7 @@
  */
 
 import { el, svg } from '../utils/dom';
+import { initialOf, safeCssUrl } from '../utils/text';
 import { TelemetryBadge } from './telemetry-badge';
 import type { ProfileItem } from '../types/schemas';
 import type { SyncStatus } from '../core/sync';
@@ -87,14 +88,18 @@ export class Header {
   renderProfile(profile: ProfileItem | null): void {
     this.profileName.textContent = profile?.name?.trim() || 'Profile';
 
-    if (profile?.avatar) {
+    // Validate/escape the avatar before interpolating it into a `url("…")`
+    // token so a crafted value can never break out of the CSS string (G-55).
+    const avatarUrl = profile?.avatar ? safeCssUrl(profile.avatar) : '';
+
+    if (avatarUrl) {
       this.avatar.textContent = '';
-      this.avatar.style.backgroundImage = `url("${profile.avatar}")`;
+      this.avatar.style.backgroundImage = `url("${avatarUrl}")`;
       this.avatar.classList.add('profile-button__avatar--image');
     } else {
       this.avatar.style.backgroundImage = '';
       this.avatar.classList.remove('profile-button__avatar--image');
-      this.avatar.textContent = (profile?.name?.trim().charAt(0) || 'H').toUpperCase();
+      this.avatar.textContent = initialOf(profile?.name, 'H');
     }
   }
 }

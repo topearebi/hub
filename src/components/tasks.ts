@@ -194,10 +194,19 @@ export function formatCompleted(at: number): string {
   });
 }
 
-function todayIso(offsetDays = 0): string {
+/**
+ * Today's date (optionally offset by whole days) as a local `YYYY-MM-DD`
+ * string. Built from the local calendar fields rather than `toISOString()`,
+ * which would return the UTC day and so report the wrong date near midnight
+ * outside UTC (G-57).
+ */
+export function todayIso(offsetDays = 0): string {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /* ------------------------------------------------------------------ */

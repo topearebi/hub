@@ -7,6 +7,7 @@
  */
 
 import { clearChildren, el } from '../utils/dom';
+import { initialOf } from '../utils/text';
 import type { ProfileItem } from '../types/schemas';
 
 export interface ProfilePopoverStore {
@@ -90,7 +91,7 @@ export class ProfilePopover {
       item.appendChild(
         el('span', {
           className: 'profile-popover__avatar',
-          text: (profile.name.trim().charAt(0) || 'H').toUpperCase(),
+          text: initialOf(profile.name, 'H'),
         }),
       );
       item.appendChild(el('span', { className: 'profile-popover__name', text: profile.name }));

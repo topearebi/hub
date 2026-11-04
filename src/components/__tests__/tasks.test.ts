@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   TasksDrawer,
@@ -7,6 +7,7 @@ import {
   computeTaskMove,
   isDescendantOf,
   sortTasks,
+  todayIso,
 } from '../tasks';
 import type { TaskItem } from '../../types/schemas';
 
@@ -21,6 +22,80 @@ function makeTask(
     ...overrides,
   };
 }
+
+describe('todayIso (G-57)', () => {
+  const RealDate = Date;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * A `Date` stand-in whose *local* calendar fields (2023-12-31) differ from the
+   * UTC day (2024-01-01), reproducing "just after midnight" in a negative-offset
+   * timezone. `setDate` rolls over using UTC maths so `+1 day` crosses the
+   * month/year boundary. A `toISOString()`-based implementation would wrongly
+   * return 2024-01-01 for the un-offset call.
+   */
+  class FakeDate {
+    private y = 2023;
+    private m = 11;
+    private d = 31;
+    getFullYear(): number {
+      return this.y;
+    }
+    getMonth(): number {
+      return this.m;
+    }
+    getDate(): number {
+      return this.d;
+    }
+    setDate(day: number): number {
+      const rolled = new RealDate(RealDate.UTC(this.y, this.m, day));
+      this.y = rolled.getUTCFullYear();
+      this.m = rolled.getUTCMonth();
+      this.d = rolled.getUTCDate();
+      return this.d;
+    }
+    toISOString(): string {
+      return '2024-01-01T01:30:00.000Z';
+    }
+  }
+
+  it('returns the local calendar date rather than the UTC day', () => {
+    vi.stubGlobal('Date', FakeDate);
+    expect(todayIso()).toBe('2023-12-31');
+  });
+
+  it('rolls over month/year boundaries for day offsets', () => {
+    vi.stubGlobal('Date', FakeDate);
+    expect(todayIso(1)).toBe('2024-01-01');
+  });
+
+  it('pads single-digit months and days', () => {
+    const real = new RealDate(2024, 0, 5); // 5 Jan 2024, local
+    class FixedDate {
+      getFullYear(): number {
+        return real.getFullYear();
+      }
+      getMonth(): number {
+        return real.getMonth();
+      }
+      getDate(): number {
+        return real.getDate();
+      }
+      setDate(day: number): number {
+        real.setDate(day);
+        return real.getDate();
+      }
+      toISOString(): string {
+        return real.toISOString();
+      }
+    }
+    vi.stubGlobal('Date', FixedDate);
+    expect(todayIso()).toBe('2024-01-05');
+  });
+});
 
 describe('sortTasks', () => {
   it('places pending tasks before completed ones', () => {
