@@ -60,7 +60,9 @@ function toBase64Url(bytes: Uint8Array): string {
 }
 
 function fromBase64Url(value: string): ArrayBuffer {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/');
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  // Restore the stripped padding so `atob` accepts the input on every engine.
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
   const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) {

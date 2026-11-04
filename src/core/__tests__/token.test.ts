@@ -1,3 +1,10 @@
+// @vitest-environment node
+//
+// `core/token.ts` is headless (no DOM). Running its tests in the Node
+// environment keeps the injected `node:crypto` WebCrypto and the global
+// `Uint8Array`/`ArrayBuffer`/`atob` in the same realm: WebCrypto brand-checks
+// its `BufferSource` arguments, so a jsdom-realm buffer would be rejected on
+// some Node versions.
 import { webcrypto } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
