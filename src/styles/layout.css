@@ -2,14 +2,20 @@
  * Hub Layout
  * ----------
  * Desktop 3-column grid, centered launchpad, off-canvas drawers, and the mobile
- * bottom tab bar (PRD §6.2).
+ * bottom tab bar (PRD §6.2). All values reference the design tokens
+ * (`tokens.css`, source of truth `DESIGN.md` §3).
+ *
+ * Full-height uses `100dvh` with a `100vh` fallback so the bottom is never cut
+ * off behind mobile browser chrome (G-13). Edge-anchored chrome respects
+ * `env(safe-area-inset-*)` (G-14).
  */
 
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   grid-template-columns: 1fr;
-  background-color: var(--bg-primary);
+  background-color: var(--bg-app);
 }
 
 /* Desktop: pinned drawers expand the shell into 2- or 3-column layouts. */
@@ -31,6 +37,7 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 0;
 }
 
@@ -41,7 +48,8 @@
   justify-content: space-between;
   gap: var(--space-3);
   width: 100%;
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-sm) var(--space-md);
+  padding-top: calc(var(--space-sm) + env(safe-area-inset-top, 0px));
   border-bottom: 1px solid var(--border-light);
   background-color: var(--bg-app);
 }
@@ -50,7 +58,7 @@
 .system-header__right {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-sm);
   min-width: 0;
 }
 
@@ -61,8 +69,8 @@
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-  padding: var(--space-6) var(--space-4) var(--space-4);
+  gap: var(--space-xl);
+  padding: var(--space-xl) var(--space-md) var(--space-md);
 }
 
 /* ---- Centered brand ---- */
@@ -76,7 +84,7 @@
 
 .brand-area__title {
   margin: 0;
-  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-size: var(--font-size-brand);
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-main);
@@ -90,8 +98,8 @@
 
 .launchpad__omnibar {
   position: sticky;
-  top: var(--space-4);
-  z-index: var(--z-omnibar);
+  top: var(--space-md);
+  z-index: var(--z-sticky);
 }
 
 /* ---- Drawers ---- */
@@ -99,18 +107,19 @@
   display: flex;
   flex-direction: column;
   max-height: 100vh;
-  background-color: var(--bg-surface);
+  max-height: 100dvh;
+  background-color: var(--bg-card);
   transition:
-    transform var(--transition-speed) ease,
-    visibility var(--transition-speed) ease;
+    transform var(--dur) var(--ease),
+    visibility var(--dur) var(--ease);
 }
 
 .drawer--tasks {
-  border-right: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-light);
 }
 
 .drawer--notes {
-  border-left: 1px solid var(--border-subtle);
+  border-left: 1px solid var(--border-light);
 }
 
 /* Unpinned drawers are off-canvas overlays that slide into view. */
@@ -121,7 +130,7 @@
   width: var(--drawer-width);
   max-width: 90vw;
   z-index: var(--z-drawer);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-3);
 }
 
 .drawer--tasks[data-pinned='false'] {
@@ -167,12 +176,12 @@
 @media (max-width: 768px) {
   .launchpad {
     padding: 0;
-    padding-bottom: 80px;
+    padding-bottom: var(--tab-bar-h);
   }
 
   .launchpad__center {
-    padding: var(--space-4) var(--space-3) var(--space-3);
-    gap: var(--space-5);
+    padding: var(--space-md) var(--space-3) var(--space-3);
+    gap: var(--space-lg);
   }
 
   .brand-area {
@@ -180,7 +189,7 @@
   }
 
   .launchpad__omnibar {
-    top: var(--space-2);
+    top: var(--space-sm);
   }
 
   /* Drawer toggles are redundant on mobile (the tab bar handles navigation). */
@@ -205,7 +214,7 @@
   }
 
   .drawer__body {
-    padding-bottom: 80px;
+    padding-bottom: var(--tab-bar-h);
   }
 
   .app-shell[data-view='bookmarks'] .drawer {
@@ -228,8 +237,9 @@
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: var(--z-drawer);
-    background-color: var(--bg-surface);
-    border-top: 1px solid var(--border-subtle);
+    z-index: var(--z-sticky);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background-color: var(--bg-card);
+    border-top: 1px solid var(--border-light);
   }
 }

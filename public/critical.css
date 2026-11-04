@@ -1,0 +1,23 @@
+/**
+ * Hub — critical pre-paint styles
+ * -------------------------------
+ * Loaded synchronously before the hashed bundle so the very first paint already
+ * uses the correct background. This prevents a light flash for dark-theme users
+ * (G-51). Kept deliberately tiny; the full palette lives in `src/styles/tokens.css`.
+ *
+ * Inline `<style>` blocks are forbidden by AGENTS.md, hence an external file.
+ * Values mirror `--bg-app` from DESIGN.md §2.2.
+ */
+:root {
+  color-scheme: light dark;
+}
+
+html {
+  background-color: #faf7f2;
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    background-color: #181716;
+  }
+}

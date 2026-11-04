@@ -1,39 +1,58 @@
 /**
  * Hub Design Tokens
  * -----------------
- * Warm, low-strain palette exposed as CSS custom properties.
+ * Warm, low-strain palette. Source of truth: `DESIGN.md` §2.
  *
- * Source of truth: `DESIGN.md` §2. The canonical token names below match that
- * spec exactly. Legacy aliases (kept for `layout.css` compatibility) map the
- * older names onto the canonical ones, so both resolve to the same values.
- *
- * Layering strategy:
- *   1. `:root`            -> warm light defaults
- *   2. prefers-color-scheme: dark -> warm charcoal overrides (auto theme)
- *   3. [data-theme="..."] -> explicit user override (wins over media query)
+ * Structure (DESIGN.md §2.1):
+ *   - One definition per token; light values live in `:root`.
+ *   - Dark values are declared **twice** — once inside
+ *     `@media (prefers-color-scheme: dark)` for the auto theme, and once under
+ *     `[data-theme='dark']` for the explicit override. Plain CSS cannot share a
+ *     single block between a media query and an attribute selector, so the two
+ *     declaration sets are kept identical and enforced by
+ *     `src/styles/__tests__/tokens.test.ts`.
+ *   - `color-scheme` follows the effective theme so native controls, scrollbars
+ *     and autofill match the in-app theme.
+ *   - No legacy aliases and no raw literals in consumers: only these names.
  *
  * No external fonts or CDNs: the font stack is system-native only.
  */
 
 :root {
-  /* ---- Canvas & Surfaces (DESIGN.md §2) ---- */
-  --bg-app: #faf7f2; /* Warm off-white page background */
-  --bg-card: #ffffff; /* Pure card surface */
-  --bg-subtle: #f2ede4; /* Inputs, active hovers, drawer backs */
+  color-scheme: light dark;
 
-  /* ---- Borders & Dividers ---- */
-  --border-light: #e8e2d8;
-  --border-focus: #c86d51; /* Accent glow */
+  /* ---- Canvas & surfaces ---- */
+  --bg-app: #faf7f2; /* page background */
+  --bg-card: #ffffff; /* cards, modals, menus */
+  --bg-subtle: #f2ede4; /* inputs, hover fills, drawer backs */
+  --bg-scrim: rgba(24, 23, 22, 0.5); /* behind dialogs and overlay drawers */
 
-  /* ---- Text & Contrast ---- */
-  --text-main: #2c2825; /* Primary readability */
-  --text-sub: #706b65; /* Labels, metadata */
-  --text-faint: #a09890; /* Hotkey hints, empty states */
+  /* ---- Borders ---- */
+  --border-light: #e8e2d8; /* decorative dividers only (exempt from 3:1) */
+  --border-control: #8c847a; /* input/button/checkbox/chip boundaries (>= 3:1) */
 
-  /* ---- Accents ---- */
-  --accent-terracotta: #c86d51;
-  --accent-sage: #6b8e7d;
-  --accent-amber: #d99b43;
+  /* ---- Text (all >= 4.5:1 on app/card/subtle) ---- */
+  --text-main: #2c2825;
+  --text-sub: #5f5a54; /* labels, metadata */
+  --text-faint: #6e6760; /* placeholders, hints, empty states, done tasks */
+
+  /* ---- Accents: "fill" tokens carry `--on-accent`; "-text" tokens are text ---- */
+  --accent-terracotta: #b04a2e; /* primary button / active chip fill */
+  --accent-terracotta-text: #a8472c; /* links, due dates, danger text */
+  --accent-sage: #4f7565; /* checked fill */
+  --accent-sage-text: #44695a;
+  --accent-amber: #d99b43; /* decorative only — never text */
+  --accent-amber-text: #8a5a12; /* reminders, warnings (text) */
+  --on-accent: #ffffff; /* text/icon colour placed on an accent fill */
+
+  /* ---- Focus ---- */
+  --focus-color: #a8472c; /* >= 3:1 against all adjacent surfaces */
+  --focus-ring: 2px solid var(--focus-color);
+  --focus-offset: 2px;
+
+  /* ---- State overlays (hover/pressed) — color-mix, never filter ---- */
+  --state-hover: color-mix(in srgb, var(--text-main) 6%, transparent);
+  --state-pressed: color-mix(in srgb, var(--text-main) 12%, transparent);
 
   /* ---- Note pastel surfaces (light) ---- */
   --note-default-bg: var(--bg-card);
@@ -49,101 +68,99 @@
   --note-slate-bg: #e6e9ef;
   --note-slate-fg: #333a49;
 
-  /* ---- Spacing Scale ---- */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-
-  /* ---- Radii & Shadows ---- */
-  --radius-card: 10px;
-  --radius-input: 8px;
-  --shadow-subtle: 0 1px 3px rgba(44, 40, 37, 0.05);
-  --shadow-elevated: 0 4px 12px rgba(44, 40, 37, 0.08);
-
-  /* ---- Legacy aliases (layout.css compatibility) ---- */
-  --bg-primary: var(--bg-app);
-  --bg-surface: var(--bg-card);
-  --bg-surface-elevated: var(--bg-subtle);
-  --border-subtle: var(--border-light);
-  --border-active: #d4cabe;
-  --text-primary: var(--text-main);
-  --text-secondary: var(--text-sub);
-  --text-muted: var(--text-faint);
-  --accent-warm: var(--accent-terracotta);
-
   /* ---- Typography ---- */
   --font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue',
+    Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-  --font-size-xs: 0.75rem;
+  --font-size-xs: 0.75rem; /* non-essential metadata only */
   --font-size-sm: 0.875rem;
-  --font-size-md: 1rem;
+  --font-size-md: 1rem; /* body and all inputs */
   --font-size-lg: 1.25rem;
   --font-size-xl: 1.75rem;
+  --font-size-brand: clamp(2rem, 6vw, 3.5rem);
   --line-height-tight: 1.25;
   --line-height-normal: 1.5;
 
-  /* ---- Radii (legacy names) ---- */
+  /* ---- Spacing scale (the only spacing literals allowed) ---- */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-3: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* ---- Sizing & hit areas (fine-pointer defaults; coarse overrides below) ---- */
+  --hit-min: 32px;
+  --control-h: 36px;
+  --control-h-lg: 52px;
+
+  /* ---- Radii ---- */
   --radius-sm: 6px;
-  --radius-md: var(--radius-card);
+  --radius-md: 10px;
   --radius-lg: 16px;
   --radius-pill: 999px;
 
-  /* ---- Spacing (legacy names) ---- */
-  --space-1: var(--space-xs);
-  --space-2: var(--space-sm);
-  --space-3: 12px;
-  --space-4: var(--space-md);
-  --space-5: var(--space-lg);
-  --space-6: var(--space-xl);
-  --space-7: 48px;
+  /* ---- Elevation ---- */
+  --shadow-1: 0 1px 3px rgba(44, 40, 37, 0.05);
+  --shadow-2: 0 4px 12px rgba(44, 40, 37, 0.08);
+  --shadow-3: 0 12px 32px rgba(44, 40, 37, 0.16);
+
+  /* ---- Motion ---- */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.4, 0, 1, 1);
 
   /* ---- Layout ---- */
-  --drawer-width: 340px;
-  --omnibar-max-width: 640px; /* DESIGN.md §3.1 */
-  --transition-speed: 200ms;
-
-  /* ---- Elevation (legacy names) ---- */
-  --shadow-sm: var(--shadow-subtle);
-  --shadow-md: var(--shadow-elevated);
-  --shadow-lg: 0 12px 32px rgba(44, 40, 37, 0.16);
-
-  /* ---- Focus ring (accessibility) ---- */
-  --focus-ring: 0 0 0 3px rgba(200, 109, 81, 0.35);
+  --drawer-width: min(340px, 90vw);
+  --omnibar-max-width: 640px;
+  --header-h: 56px;
+  --tab-bar-h: calc(56px + env(safe-area-inset-bottom, 0px));
 
   /* ---- Z-index scale ---- */
   --z-base: 0;
-  --z-drawer: 100;
-  --z-omnibar: 200;
-  --z-toast: 300;
+  --z-sticky: 100; /* omnibar, tab bar */
+  --z-results: 150; /* omnibar results */
+  --z-drawer: 200; /* drawers + scrim */
+  --z-popover: 300; /* menus, profile popover */
   --z-modal: 400;
+  --z-nested: 410; /* confirm over modal */
+  --z-lock: 500;
+  --z-toast: 600; /* above everything, including modals and the lock screen */
 }
 
+/*
+ * Dark theme (auto). Declarations below are duplicated verbatim in the
+ * `[data-theme='dark']` block further down; `tokens.test.ts` fails the build if
+ * the two ever drift.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
-    /* ---- Warm Charcoal / Low-Strain Dark Mode (DESIGN.md §2) ---- */
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
     --bg-app: #181716;
     --bg-card: #22201e;
     --bg-subtle: #2b2825;
+    --bg-scrim: rgba(0, 0, 0, 0.6);
     --border-light: #36322e;
+    --border-control: #7d766d;
     --text-main: #ede8e1;
-    --text-sub: #ada59b;
-    --text-faint: #736d66;
+    --text-sub: #b4ada3;
+    --text-faint: #9a938a;
     --accent-terracotta: #e07a5f;
-
-    /* Completions for tokens DESIGN.md leaves unspecified in dark mode. */
+    --accent-terracotta-text: #ee9a82;
     --accent-sage: #81a492;
+    --accent-sage-text: #98bcaa;
     --accent-amber: #e5a955;
-    --border-focus: #e07a5f;
-    --border-active: #4a453f;
-    --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.4);
-    --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
-    --focus-ring: 0 0 0 3px rgba(224, 122, 95, 0.4);
-
-    /* ---- Note pastel surfaces (dark) ---- */
+    --accent-amber-text: #e5a955;
+    --on-accent: #1a1210;
+    --focus-color: #f0a28b;
+    --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.6);
     --note-default-bg: var(--bg-card);
     --note-default-fg: var(--text-main);
     --note-burgundy-bg: #4a2029;
@@ -159,47 +176,33 @@
   }
 }
 
-/* Explicit user overrides take precedence over the media query. */
+/* Explicit theme overrides (win over the media query by source order). */
 [data-theme='light'] {
-  --bg-app: #faf7f2;
-  --bg-card: #ffffff;
-  --bg-subtle: #f2ede4;
-  --border-light: #e8e2d8;
-  --border-focus: #c86d51;
-  --text-main: #2c2825;
-  --text-sub: #706b65;
-  --text-faint: #a09890;
-  --accent-terracotta: #c86d51;
-  --accent-sage: #6b8e7d;
-  --accent-amber: #d99b43;
-  --border-active: #d4cabe;
-  --note-default-bg: var(--bg-card);
-  --note-default-fg: var(--text-main);
-  --note-burgundy-bg: #f6e3e6;
-  --note-burgundy-fg: #5c1324;
-  --note-amber-bg: #fbeccb;
-  --note-amber-fg: #614a00;
-  --note-terracotta-bg: #f7e1d8;
-  --note-terracotta-fg: #7a3b25;
-  --note-sage-bg: #e2ece5;
-  --note-sage-fg: #2f4a3a;
-  --note-slate-bg: #e6e9ef;
-  --note-slate-fg: #333a49;
+  color-scheme: light;
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
   --bg-app: #181716;
   --bg-card: #22201e;
   --bg-subtle: #2b2825;
+  --bg-scrim: rgba(0, 0, 0, 0.6);
   --border-light: #36322e;
-  --border-focus: #e07a5f;
+  --border-control: #7d766d;
   --text-main: #ede8e1;
-  --text-sub: #ada59b;
-  --text-faint: #736d66;
+  --text-sub: #b4ada3;
+  --text-faint: #9a938a;
   --accent-terracotta: #e07a5f;
+  --accent-terracotta-text: #ee9a82;
   --accent-sage: #81a492;
+  --accent-sage-text: #98bcaa;
   --accent-amber: #e5a955;
-  --border-active: #4a453f;
+  --accent-amber-text: #e5a955;
+  --on-accent: #1a1210;
+  --focus-color: #f0a28b;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.6);
   --note-default-bg: var(--bg-card);
   --note-default-fg: var(--text-main);
   --note-burgundy-bg: #4a2029;
@@ -212,6 +215,42 @@
   --note-sage-fg: #cfe3d6;
   --note-slate-bg: #2a2f3a;
   --note-slate-fg: #d5dae6;
+}
+
+/* ---- Coarse pointers: larger hit areas and control heights (DESIGN.md §4.1) ---- */
+@media (pointer: coarse) {
+  :root {
+    --hit-min: 44px;
+    --control-h: 44px;
+  }
+}
+
+/*
+ * ---- High contrast (DESIGN.md §2.4) ----
+ * Placed last so it overrides both the light `:root` and the dark blocks.
+ */
+@media (prefers-contrast: more) {
+  :root {
+    --text-faint: var(--text-sub);
+    --border-light: var(--border-control);
+    --shadow-1: none;
+    --shadow-2: none;
+    --shadow-3: none;
+  }
+
+  :root:not([data-theme='light']),
+  [data-theme='dark'] {
+    --text-faint: var(--text-sub);
+    --border-light: var(--border-control);
+  }
+}
+
+/* ---- Forced colours: never rely on box-shadow or background alone ---- */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: var(--focus-offset);
+  }
 }
 
 /* ---- Base reset (minimal, framework-free) ---- */
@@ -227,19 +266,24 @@ body {
   padding: 0;
 }
 
+html {
+  scroll-padding-top: var(--header-h);
+}
+
 body {
   background-color: var(--bg-app);
   color: var(--text-main);
   font-family: var(--font-family);
   font-size: var(--font-size-md);
   line-height: var(--line-height-normal);
-  -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
 }
 
+/* Solid focus indicator with offset (DESIGN.md §2.2, §2.4). */
 :focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
 
 @media (prefers-reduced-motion: reduce) {
