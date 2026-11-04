@@ -1,12 +1,14 @@
 # `schemas.md` — Hub Data Specifications & Contracts
 
-**Document Version:** 1.0.0
+**Document Version:** 1.4.0
 
-**Target Release:** v1.0 (PWA & Static Deploy)
+**Target Release:** v1.0 (PWA & Static Deploy) — production-readiness revision
 
-**Parent Document:** `prd.md`
+**Parent Document:** `PRD.md` (v1.1.0)
 
-**Status:** Approved for Implementation
+**Status:** Approved — remote payload `version: 2` (profiles); production-readiness additions approved by the owner (§3.3, §3.5, §3.6)
+
+**Changelog:** 1.4.0 — owner **approved** the encrypted-token storage shape (§3.5) and the `single_key_shortcuts_enabled` field (§3.6); both are now part of the contract and must be transcribed verbatim into `src/types/schemas.ts` when implemented. 1.3.0 — records the decided profile-deletion semantics (§5.4), the token-encryption approach and the hotkey scheme. 1.2.0 — documents the v2 multi-profile storage (`profiles` store, `profile_id` partitioning, IndexedDB v2), approves three local-only `AppConfig` fields, and records the removal of telemetry. 1.1.0 — local feature toggles. 1.0.0 — initial.
 
 ---
 
@@ -31,10 +33,13 @@ Hub enforces a strict separation between **three distinct data tiers**:
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      Local IndexedDB                        │
-│ ┌───────────────────┬───────────────────┬─────────────────┐ │
-│ │  entities_store   │   metrics_store   │  config_store   │ │
-│ │  (SyncableEntity) │   (DeviceMetrics) │  (AppConfig)    │ │
-│ └───────────────────┴───────────────────┴─────────────────┘ │
+│ ┌───────────────────────────────────────────────────────┐   │
+│ │ Syncable stores (each record carries `profile_id`):   │   │
+│ │ profiles · bookmarks · categories · tasks · notes     │   │
+│ ├───────────────────────────┬───────────────────────────┤   │
+│ │  metrics (DeviceMetrics)  │  config (AppConfig, sync  │   │
+│ │  local-only, per device   │  metadata) — local-only   │   │
+│ └───────────────────────────┴───────────────────────────┘   │
 └──────────────────────────────▲──────────────────────────────┘
                                │  Async IDB Transaction
                                ▼
@@ -143,7 +148,7 @@ export interface BookmarkItem extends SyncableEntity {
 
   /**
    * Single-character numeric hotkey ('1' through '9').
-   * Triggered in the browser using the `Alt + [1-9]` key combination.
+   * Triggered in the browser using the modifier-free chord `g` then `[1-9]`, or the optional `Alt + [1-9]` combination (see DESIGN.md §4.5).
    */
   hotkey?: '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
 }
@@ -340,8 +345,70 @@ export interface AppConfig {
 
   /** Base64url credential id of the registered platform authenticator */
   app_lock_credential_id?: string;
+
+  /* ---- Production-readiness additions (local-only, never synced; approved v1.2) ---- */
+
+  /** True once the first-run welcome card has been completed or dismissed */
+  onboarding_completed?: boolean;
+
+  /** ISO-8601 timestamp of the last time the user dismissed the install prompt/card */
+  install_prompt_dismissed_at?: string;
+
+  /** Result of the last `navigator.storage.persist()` request (true = durable storage granted) */
+  storage_persisted?: boolean;
 }
 ```
+
+### 3.3 Production-Readiness `AppConfig` Additions (approved)
+
+The owner approved exactly the three optional, local-only fields below (plus the two further approved additions in §3.5 and §3.6). They are **never** part of `HubStoragePayload`, default to `undefined` (treated as `false`/"never"), require no IndexedDB migration (the `config` store is a key/value singleton), and must be added to `src/types/schemas.ts` verbatim.
+
+| Field                         | Type                 | Written by                              | Read by                                                 |
+| ----------------------------- | -------------------- | --------------------------------------- | ------------------------------------------------------- |
+| `onboarding_completed`        | `boolean?`           | Onboarding card (complete/skip)         | Launchpad boot — show/hide welcome card                 |
+| `install_prompt_dismissed_at` | `string?` (ISO-8601) | Install card dismiss                    | Install UX — suppress the prompt for a cool-down period |
+| `storage_persisted`           | `boolean?`           | PWA lifecycle after `storage.persist()` | Settings → Data; durability warning                     |
+
+Two further additions required by decisions already taken were **approved by the owner** and are specified in §3.5 (encrypted token storage) and §3.6 (shortcut switch). Anything beyond these five items is **not** approved and needs separate authorization per `AGENTS.md` prime directive 2.
+
+### 3.4 Removed: Telemetry
+
+v1.1 of the product removes IP/location/weather telemetry. No telemetry field ever existed in `AppConfig` or `HubStoragePayload`. The only artefact is a `localStorage` cache entry (`hub.telemetry`) written by the removed `core/telemetry.ts`; the application deletes that key once on boot after upgrading (`localStorage.removeItem('hub.telemetry')`). No schema change is required.
+
+---
+
+### 3.5 APPROVED: Encrypted GitHub token at rest
+
+**Decision taken:** protect the GitHub personal access token (PAT) with encryption at rest using the native WebCrypto API and a **non-extractable** AES-GCM key. Not tied to the app-lock credential (so background/unattended sync keeps working). Combined with in-app guidance to use a fine-grained token limited to the single sync repository with _Contents: read & write_.
+
+**Schema changes (approved):**
+
+1. `AppConfig.github_pat` keeps its name and type (`string | undefined`) but its **content changes**: instead of the raw token it holds a versioned envelope string, `"enc1:" + base64url(iv) + "." + base64url(ciphertext)`. A value without the `enc1:` prefix is treated as legacy plaintext and is encrypted in place on next boot (one-time migration; the plaintext is overwritten).
+2. One new **singleton record** in the existing `config` object store (keyPath `"key"`): `{ key: "token_key", value: CryptoKey }`, holding the non-extractable key (IndexedDB structured clone supports `CryptoKey`). No new object store, no new index, **no `DB_VERSION` bump**, and it is never part of `HubStoragePayload`.
+
+**Requirements.**
+
+- The raw token exists only in memory for the duration of a request; it is never logged, never written to export JSON, never in the sync payload, and the settings field never re-displays it.
+- Removing the token deletes the envelope; "Reset app data" deletes the key record.
+- If the key record is missing or undecryptable (site data partially cleared, restored backup, new device) the app treats sync as "not configured", asks the user to re-enter the token, and loses no bookmarks, tasks or notes.
+- Import must ignore any `github_pat` present in a file.
+
+**Honest threat model (document this to the user).** This raises the bar against casual inspection (DevTools → Application → IndexedDB shows ciphertext, not a usable token) and against accidental exposure through screenshots, copy/paste of config dumps and plaintext-searching tools. It does **not** protect against code executing inside the Hub page (XSS or a malicious extension with page access can still ask the page to decrypt), nor against an attacker who copies the browser profile directory (browsers may persist the key material alongside the data). Defence in depth comes from CSP, no `innerHTML`, scoped tokens and the ability to revoke the token on GitHub.
+
+**Test notes.** `fake-indexeddb` and Node's WebCrypto may not round-trip a `CryptoKey` through IndexedDB identically to browsers; tests must inject a key store abstraction and cover the migration and missing-key paths, with a manual check in real browsers.
+
+### 3.6 APPROVED: Single-key shortcut switch
+
+**Decision taken:** the primary pinned-bookmark shortcut is the modifier-free chord `g` then `1…9` (DESIGN.md §4.5). WCAG 2.1.4 requires single-character-key shortcuts to be turn-off-able (or remappable), so the setting must persist.
+
+**Approved field (local-only, never synced):**
+
+```typescript
+  /** When false, single-key shortcuts (/ ? g n t m) are disabled. Undefined = true. Alt+digit is unaffected. */
+  single_key_shortcuts_enabled?: boolean;
+```
+
+Default `undefined` behaves as enabled. No IndexedDB migration is needed (`config` is a key/value singleton). This field is a **hard dependency** of the single-key shortcut feature: the shortcuts and the Settings switch ship together.
 
 ---
 
@@ -350,27 +417,33 @@ export interface AppConfig {
 Hub uses a single IndexedDB database named `hub_local_db` with native transactions.
 
 - **Database Name:** `hub_local_db`
-- **Current Version:** `1`
+- **Current Version:** `2` (v2 added the `profiles` store and the `idx_profile_id` index on every syncable entity store; legacy v1 records are migrated into a default profile with no data loss)
 
 ### 4.1 Object Store Definitions
 
 ```
-hub_local_db (v1)
+hub_local_db (v2)
+│
+├── [ObjectStore] profiles (keyPath: "id")          # v2
 │
 ├── [ObjectStore] bookmarks (keyPath: "id")
 │   ├── [Index] idx_category_id   → "category_id" (unique: false)
 │   ├── [Index] idx_updated_at    → "updated_at"  (unique: false)
-│   └── [Index] idx_is_deleted    → "is_deleted"  (unique: false)
+│   ├── [Index] idx_is_deleted    → "is_deleted"  (unique: false)
+│   └── [Index] idx_profile_id    → "profile_id"  (unique: false)   # v2
 │
 ├── [ObjectStore] categories (keyPath: "id")
-│   └── [Index] idx_order         → "order"       (unique: false)
+│   ├── [Index] idx_order         → "order"       (unique: false)
+│   └── [Index] idx_profile_id    → "profile_id"  (unique: false)   # v2
 │
 ├── [ObjectStore] tasks (keyPath: "id")
 │   ├── [Index] idx_completed     → "completed"   (unique: false)
-│   └── [Index] idx_updated_at    → "updated_at"  (unique: false)
+│   ├── [Index] idx_updated_at    → "updated_at"  (unique: false)
+│   └── [Index] idx_profile_id    → "profile_id"  (unique: false)   # v2
 │
 ├── [ObjectStore] notes (keyPath: "id")
-│   └── [Index] idx_updated_at    → "updated_at"  (unique: false)
+│   ├── [Index] idx_updated_at    → "updated_at"  (unique: false)
+│   └── [Index] idx_profile_id    → "profile_id"  (unique: false)   # v2
 │
 ├── [ObjectStore] metrics (keyPath: "bookmark_id")
 │   ├── [Index] idx_click_count   → "click_count" (unique: false)
@@ -477,6 +550,16 @@ To prevent soft-deleted records (`is_deleted: true`) from growing indefinitely i
 
 - An entity with `is_deleted: true` is retained in sync payloads for a **grace period of 30 days** (`now - updated_at <= 30 * 86,400,000`).
 - Any entity exceeding 30 days past its deletion timestamp is permanently culled during the merge routine before writing the final payload.
+
+### 5.4 Profile Deletion Semantics (decided)
+
+Deleting a profile is a **cascading soft delete with a 30-day recovery window**; it uses only existing fields.
+
+1. **Delete.** In one operation, take a single timestamp `T = now`. Set `is_deleted = true` and `updated_at = T` on the profile **and on every not-already-deleted** category, bookmark, task and note whose `profile_id` equals the profile's `id`. (Items that were individually deleted earlier keep their own, older `updated_at`.) If the deleted profile was active, `active_profile_id` moves to the first remaining non-deleted profile. Deleting the last remaining non-deleted profile is rejected.
+2. **Restore.** Set `is_deleted = false` and `updated_at = now'` (a newer timestamp, so last-write-wins propagates it) on the profile and on exactly those child records with `is_deleted = true` and `updated_at === T`. Items deleted individually before the profile (different `updated_at`) stay deleted.
+3. **Cull.** The 30-day rule in §5.3 applies unchanged. Because the profile and its cascaded children share `T`, they expire together; a profile must never be culled while children that depend on it remain, and children are never culled while their profile is restorable.
+4. **Sync.** Tombstones propagate like any other deletion; another device that edits a child after `T` produces a newer `updated_at` and the merge keeps that edit — on restore it is simply visible again. Devices on a payload that lacks the cascade (older clients) will see the profile hidden and orphaned children, which is harmless.
+5. **Invariant for tests.** After delete + restore with no intervening edits the dataset is identical to the original except for `updated_at`.
 
 ---
 

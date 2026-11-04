@@ -3,7 +3,7 @@
 **Project:** Hub
 **Phase:** 2 of 5 — Core Launchpad & Omnibar
 **Parent Specs:** [`PRD.md`](../PRD.md), [`SCHEMAS.md`](../SCHEMAS.md), [`AGENTS.md`](../AGENTS.md)
-**Status:** In progress
+**Status:** Complete
 
 ---
 

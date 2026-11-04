@@ -3,7 +3,7 @@
 **Project:** Hub
 **Phase:** 1 of 5 — Foundation & Data Layer
 **Parent Specs:** [`PRD.md`](../PRD.md), [`SCHEMAS.md`](../SCHEMAS.md), [`AGENTS.md`](../AGENTS.md)
-**Status:** Proposed — awaiting approval
+**Status:** Complete
 
 ---
 

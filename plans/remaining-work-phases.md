@@ -1,6 +1,6 @@
 # Hub — Remaining Work: Phased Plan & Progress Review
 
-**Status:** Proposed — awaiting approval
+**Status:** Superseded by [`production-readiness.md`](production-readiness.md). The items below remain valid as inputs: gaps 1 (profile mutations must schedule a sync push — now a requirement in PRD §5.8), 2 (documentation drift — resolved by the v1.1/v2.0 doc revision), 3 (plan statuses — resolved), 4 (component test coverage — folded into each roadmap phase), 5 (profile-delete semantics — decided: cascading soft delete with 30-day recovery, `SCHEMAS.md` §5.4) and 6 (PWA/offline verification — Phase 8 and 11). Telemetry references in this file describe the pre-removal state.
 **Parent Specs:** [`PRD.md`](../PRD.md), [`SCHEMAS.md`](../SCHEMAS.md), [`AGENTS.md`](../AGENTS.md)
 
 ---

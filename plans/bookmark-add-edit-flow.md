@@ -2,7 +2,7 @@
 
 **Project:** Hub
 **Parent Specs:** [`PRD.md`](../PRD.md), [`SCHEMAS.md`](../SCHEMAS.md), [`AGENTS.md`](../AGENTS.md)
-**Status:** Proposed
+**Status:** Complete
 
 ---
 

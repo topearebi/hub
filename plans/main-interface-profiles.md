@@ -1,5 +1,7 @@
 # Hub Main Interface Refactor & Multi-Profile Architecture — Plan
 
+**Status:** Complete — **partially superseded.** The environment-telemetry feature in this plan (IP/location via `ipwho.is`, weather via Open-Meteo, the `telemetry.ts` / `telemetry-badge.ts` files and the header's left cluster) is **removed from the product** by the owner's decision (PRD v1.1.0 §2.2) and scheduled in [`production-readiness.md`](production-readiness.md) Phase 9. The target header is specified in [`DESIGN.md`](../DESIGN.md) §6.1. Profile, brand and search-pill requirements remain in force.
+
 ## Goal
 
 Refactor Hub's landing experience into a clean, full-width start-page layout

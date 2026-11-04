@@ -2,11 +2,28 @@
 
 A zero-telemetry, local-first browser launchpad and Progressive Web App (PWA).
 Hub unifies quick-launch links, transient daily tasks, and a plain-text
-scratchpad into one keyboard-driven home base — fully operational offline, with
-optional Bring-Your-Own-Storage (BYOS) sync via the GitHub REST API.
+scratchpad into one fast home base — built **mobile-first** for quick access to
+key information on the go, fully operational offline, with optional
+Bring-Your-Own-Storage (BYOS) sync via the GitHub REST API.
 
-> **Status:** All five phases complete — installable, offline-capable, and
-> deployable to GitHub Pages.
+> **Status:** The five original build phases are complete — installable,
+> offline-capable, and deployable to GitHub Pages. Hub is now in a
+> **production-readiness programme** (touch parity, accessibility, safety UX,
+> PWA hardening). See [Production Readiness](#production-readiness) below.
+
+---
+
+## Documentation
+
+| Document                                                         | Purpose                                                                                              |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| [`PRD.md`](PRD.md)                                               | Product requirements (v1.1.0): scope, functional requirements, verification matrix, release criteria |
+| [`DESIGN.md`](DESIGN.md)                                         | UI/UX design system (v2.0): tokens, responsive tiers, touch rules, components, content               |
+| [`docs/accessibility.md`](docs/accessibility.md)                 | WCAG 2.2 AA conformance spec, keyboard map, ARIA patterns, test procedure                            |
+| [`SCHEMAS.md`](SCHEMAS.md)                                       | Data contracts: entities, IndexedDB layout, sync payload, `AppConfig`                                |
+| [`AGENTS.md`](AGENTS.md)                                         | Rules for AI agents and contributors: constraints, directory map, Definition of Done                 |
+| [`plans/production-readiness.md`](plans/production-readiness.md) | Gap analysis (current → ideal) and the phased roadmap to production                                  |
+| [`plans/`](plans/)                                               | Historical phase plans                                                                               |
 
 ---
 
@@ -69,11 +86,11 @@ src/
 │   ├── notifications.ts # Local reminders + Web Push subscription
 │   ├── gamepad.ts  # Gamepad -> navigation action mapping
 │   ├── lock.ts     # WebAuthn app lock (screen lock / biometrics)
-│   ├── telemetry.ts# IP/location (ipwho.is) + weather (Open-Meteo), TTL cache
+│   ├── telemetry.ts# (scheduled for removal — roadmap Phase 9) IP/location/weather lookups
 │   └── image.ts    # Canvas scale/compress for avatars & logos
 ├── components/     # Vanilla TS UI components
-│   ├── header.ts   # Edge-to-edge system header (telemetry + profile controls)
-│   ├── telemetry-badge.ts # IP / location / weather badge with offline fallback
+│   ├── header.ts   # Edge-to-edge system header (profile controls, drawer toggles)
+│   ├── telemetry-badge.ts # (scheduled for removal — roadmap Phase 9)
 │   ├── brand.ts    # Centered logo or custom Hub title
 │   ├── profile-popover.ts # Profile switcher / add / settings menu
 │   ├── profile-editor.ts  # Profile name, avatar, logo, engine, theme
@@ -123,9 +140,11 @@ src/
 - **Migration:** on first run after upgrading, a default profile is created and
   all legacy (unassigned) records are migrated into it — no data loss. v1 sync
   payloads are migrated to v2 on read.
-- **System header:** an edge-to-edge header shows environment telemetry
-  (IP / location / weather via ipwho.is + Open-Meteo, cached for 30 minutes with
-  an offline fallback) on the left and the active-profile control on the right.
+- **System header:** an edge-to-edge header holds the active-profile control and
+  drawer toggles. The environment-telemetry cluster (IP / location / weather via
+  ipwho.is + Open-Meteo) is **being removed** (roadmap Phase 9) because it
+  contradicts the zero-telemetry promise; the target header is specified in
+  [`DESIGN.md`](DESIGN.md) §6.1.
 - **Search pill:** a centered, pill-shaped search bar with an inline engine
   selector. Press `/` anywhere to focus it and select existing text (ignored
   while typing in a field or when a modal is open).
@@ -163,6 +182,33 @@ src/
 
 ---
 
+## Production Readiness
+
+A source-level audit found Hub's architecture sound but its experience
+desktop-first. The owner-approved target is a **mobile-first** product with
+full touch parity, WCAG 2.2 AA accessibility, undo-based safety UX, first-run
+onboarding, and a hardened PWA (precached shell, user-controlled updates,
+persistent storage, install UX, CSP). The audit, the gap list (`G-01…G-60`), and
+the 11-phase roadmap live in
+[`plans/production-readiness.md`](plans/production-readiness.md). Release
+criteria are in [`PRD.md`](PRD.md) Appendix A.
+
+Highlights of what the roadmap changes:
+
+- Touch: visible "⋯" menus, ≥ 44 px targets, no hover-only controls, Pointer-Events drag with Move/Indent alternatives.
+- Accessibility: shared dialog/menu primitives, full combobox pattern, AA contrast, forced-colors support.
+- Safety: Undo toasts, import preview, unsaved-changes guard, error boundary, profile delete with 30-day recovery.
+- PWA: build-time precache, "update available" flow, `storage.persist()`, install prompts, complete manifest and iOS metadata.
+- Privacy: telemetry removed; network limited to same-origin and `api.github.com`.
+
+### Use Hub as your homepage or new tab
+
+See `docs/homepage.md` (added in roadmap Phase 8) for installing Hub as an app
+and setting it as the browser homepage / startup page. A browser-extension
+`newtab` override is planned for v2.
+
+---
+
 ## Quality Gates
 
 Every commit is gated locally and in CI:
@@ -176,7 +222,12 @@ Enforced negative constraints (AGENTS.md):
 - No `any` types.
 - No `innerHTML` / `outerHTML` (XSS).
 - No UI framework imports (React, Vue, Svelte, Preact).
-- No external CDNs (icons, fonts, and styles are all local).
+- No external CDNs or third-party requests (icons, fonts, and styles are all local).
+- No hover-only controls; ≥ 44 px touch targets; AA contrast (see `AGENTS.md` §2).
+
+Planned additions to the gate (roadmap Phases 2 and 11): token contrast script,
+axe-core accessibility checks, Lighthouse CI (PWA pass, Accessibility ≥ 95), and
+a `< 60 KB` gzip bundle-size budget.
 
 ---
 
@@ -189,10 +240,11 @@ Enforced negative constraints (AGENTS.md):
 | 3     | Productivity Panes (Tasks & Notes) | [`plans/phase-3-productivity-panes.md`](plans/phase-3-productivity-panes.md) |
 | 4     | BYOS Sync Engine & Settings        | [`plans/phase-4-sync-settings.md`](plans/phase-4-sync-settings.md)           |
 | 5     | PWA Caching & Deployment           | [`plans/phase-5-pwa-deploy.md`](plans/phase-5-pwa-deploy.md)                 |
+| 6+    | Production readiness (11 phases)   | [`plans/production-readiness.md`](plans/production-readiness.md)             |
 
 ---
 
-## Final Audit
+## Final Audit (original five phases)
 
 - [x] `npm run typecheck` passes with zero errors.
 - [x] `npm run lint` passes with zero errors.

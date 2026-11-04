@@ -3,7 +3,7 @@
 **Project:** Hub
 **Phase:** 4 of 5 — Sync & Settings
 **Parent Specs:** [`PRD.md`](../PRD.md), [`SCHEMAS.md`](../SCHEMAS.md), [`AGENTS.md`](../AGENTS.md)
-**Status:** In progress
+**Status:** Complete
 
 ---
 

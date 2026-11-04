@@ -3,7 +3,7 @@
 **Project:** Hub
 **Phase:** 3 of 5 — Productivity Panes
 **Parent Specs:** [`PRD.md`](../PRD.md), [`SCHEMAS.md`](../SCHEMAS.md), [`AGENTS.md`](../AGENTS.md)
-**Status:** In progress
+**Status:** Complete
 
 ---
 

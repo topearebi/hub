@@ -3,7 +3,7 @@
 **Project:** Hub
 **Phase:** 5 of 5 — PWA, Responsive Polish & Final Audit
 **Parent Specs:** [`PRD.md`](../PRD.md), [`SCHEMAS.md`](../SCHEMAS.md), [`AGENTS.md`](../AGENTS.md)
-**Status:** In progress
+**Status:** Complete
 
 ---
 

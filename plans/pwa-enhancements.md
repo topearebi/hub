@@ -1,5 +1,7 @@
 # Hub PWA Enhancements — Implementation Plan
 
+**Status:** Complete — **extended by** [`production-readiness.md`](production-readiness.md) Phase 8 (precache of the built shell, user-controlled update flow, install UX, storage persistence, complete manifest/iOS metadata, window-controls-overlay decision, CSP). Requirements are now specified in [`PRD.md`](../PRD.md) §5.9.
+
 ## Goal
 
 Extend the existing local-first Hub PWA with: full PWA support (manifest + SW),
