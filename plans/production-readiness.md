@@ -1,6 +1,6 @@
 # Hub — Production-Readiness: Gap Analysis & Phased Roadmap
 
-**Status:** In progress — Phases 0–2 complete (baseline gate, correctness fixes, CSS foundations); Phase 3 next
+**Status:** In progress — Phases 0–6 complete (baseline, correctness, CSS foundations, dialog/menu primitives, touch parity, safety & feedback UX, first-run & information architecture); Phase 7 next
 **Parent specs:** [`PRD.md`](../PRD.md) (v1.1.0), [`DESIGN.md`](../DESIGN.md) (v2.0), [`docs/accessibility.md`](../docs/accessibility.md), [`SCHEMAS.md`](../SCHEMAS.md), [`AGENTS.md`](../AGENTS.md)
 **Supersedes:** the "Remaining Work" items in [`remaining-work-phases.md`](remaining-work-phases.md) that overlap with this plan.
 
@@ -351,6 +351,8 @@ The Vite "> 60 kB chunk" warning refers to the **raw** JS size; the enforced bud
 
 **Phase 2 (CSS foundations) verification:** `node scripts/contrast.mjs` reports **104/104 pairs passing** across `light`, `dark`, `light-contrast` and `dark-contrast` (text ≥ 4.5:1, control/focus ≥ 3:1). `tokens.test.ts` guards the duplicated dark declaration sets and the absence of legacy aliases. Manual forced-colors / `prefers-contrast: more` screenshot review and the 320/390/768/1280 px regression check remain to be done on a device/browser (Phase 11 matrix).
 
+**Phase 6 (first-run & information architecture) verification:** all four gate commands exit 0; **243 tests / 28 files** pass (up from 173/20). Gzip bundle **44.95 kB** (JS 37.68 kB + CSS 7.27 kB), still under the 60 kB budget. Delivered: guided empty state + first-run welcome card with optional removable sample set (`onboarding_completed`), category management (create/rename/reorder/delete with move-to-`Links` + Undo), the auto-created category renamed **"Links"**, Settings regrouped into scoped sections with an Advanced disclosure and a never-re-displayed token field ("Token saved" + Replace/Remove), **Settings → Data → Recently deleted** (deleted profiles with item counts + individually deleted items, Restore / Delete now), the profile cascade soft-delete/restore invariant (`SCHEMAS.md` §5.4) with Undo, a global icon+text **status chip** (saved locally / syncing / synced / offline / error), recents removed from the Tab order, and the recurrence chip replaced by a menu. The 60-second first-run usability check (3 participants) remains a manual Phase 11 item.
+
 ---
 
 ## 7. Decisions and remaining open items
@@ -372,6 +374,9 @@ The Vite "> 60 kB chunk" warning refers to the **raw** JS size; the enforced bud
 
 ### Still open
 
-- **Sample data policy:** the optional sample set must be clearly labelled and removable in one action.
 - **Dev dependency choice:** `vite-plugin-pwa` vs a small custom plugin; choose by bundle impact and maintenance cost in Phase 8.
-- **Recently deleted scope for individual items:** profiles are required; listing individually deleted bookmarks/tasks/notes is included in the spec but may be trimmed if Phase 6 is tight.
+
+### Resolved in Phase 6
+
+- **Sample data policy:** the optional sample set is a clearly-labelled "Sample links" category; removing the category removes the samples in one action. Nothing is seeded silently.
+- **Recently deleted scope for individual items:** implemented — Settings → Data → Recently deleted lists deleted profiles (with item counts) **and** individually deleted bookmarks/tasks/notes inside the 30-day window, each with Restore and Delete now.

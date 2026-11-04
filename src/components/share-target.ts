@@ -10,7 +10,10 @@
  */
 
 import { el } from '../utils/dom';
+import { Dialog } from '../utils/dialog';
 import type { ShareDraft } from '../core/pwa';
+
+let shareDialogSeq = 0;
 
 export interface NoteDraft {
   title: string;
@@ -25,11 +28,24 @@ export interface ShareTargetPromptOptions {
 export class ShareTargetPrompt {
   readonly element: HTMLElement;
 
+  private readonly dialog: Dialog;
+  private readonly titleId: string;
   private readonly titleInput: HTMLInputElement;
   private readonly contentInput: HTMLTextAreaElement;
   private readonly statusEl: HTMLElement;
 
   constructor(private readonly options: ShareTargetPromptOptions) {
+    shareDialogSeq += 1;
+    this.titleId = `share-title-${shareDialogSeq}`;
+    this.dialog = new Dialog({
+      labelledBy: this.titleId,
+      sheet: true,
+      onRequestClose: () => {
+        this.options.onDismiss();
+        this.close();
+      },
+    });
+
     this.titleInput = el('input', {
       className: 'drawer__input',
       attrs: { type: 'text', placeholder: 'Title', 'aria-label': 'Share title' },
@@ -67,25 +83,19 @@ export class ShareTargetPrompt {
       children: [dismissButton, noteButton],
     });
 
-    const title = el('h2', { className: 'modal__title', text: 'Save shared note' });
+    const title = el('h2', {
+      className: 'modal__title',
+      attrs: { id: this.titleId },
+      text: 'Save shared note',
+    });
     const body = el('div', {
       className: 'share__body',
       children: [this.titleInput, this.contentInput, this.statusEl, actions],
     });
-    const dialog = el('div', {
-      className: 'modal',
-      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Save shared note' },
-      children: [title, body],
-    });
-    const overlay = el('div', { className: 'modal-overlay share-overlay', children: [dialog] });
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) {
-        this.options.onDismiss();
-        this.close();
-      }
-    });
+    this.dialog.content.appendChild(title);
+    this.dialog.content.appendChild(body);
 
-    this.element = overlay;
+    this.element = this.dialog.overlay;
   }
 
   /** Prefill the form from a draft and reveal the modal. */
@@ -93,12 +103,11 @@ export class ShareTargetPrompt {
     this.titleInput.value = draft.title;
     this.contentInput.value = draft.content;
     this.statusEl.textContent = '';
-    this.element.classList.add('is-open');
-    this.contentInput.focus();
+    this.dialog.open(this.contentInput);
   }
 
   close(): void {
-    this.element.classList.remove('is-open');
+    this.dialog.close();
   }
 
   private async saveNote(): Promise<void> {

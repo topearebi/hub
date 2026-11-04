@@ -7,10 +7,13 @@
  */
 
 import { el, svg } from '../utils/dom';
+import { Dialog } from '../utils/dialog';
 import { compressImageFile } from '../core/image';
 import type { AppConfig, ProfileItem } from '../types/schemas';
 
 const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
+
+let profileDialogSeq = 0;
 
 export interface ProfileEditorStore {
   readonly activeProfile: ProfileItem | null;
@@ -33,6 +36,8 @@ function field(labelText: string, input: HTMLElement): HTMLElement {
 export class ProfileEditor {
   readonly element: HTMLElement;
 
+  private readonly dialog: Dialog;
+  private readonly titleId: string;
   private readonly nameInput: HTMLInputElement;
   private readonly titleInput: HTMLInputElement;
   private readonly engineSelect: HTMLSelectElement;
@@ -52,6 +57,14 @@ export class ProfileEditor {
     private readonly store: ProfileEditorStore,
     private readonly callbacks: ProfileEditorCallbacks,
   ) {
+    profileDialogSeq += 1;
+    this.titleId = `profile-editor-title-${profileDialogSeq}`;
+    this.dialog = new Dialog({
+      labelledBy: this.titleId,
+      sheet: true,
+      onRequestClose: () => this.close(),
+    });
+
     this.nameInput = el('input', {
       attrs: { type: 'text', placeholder: 'Profile name', 'aria-label': 'Profile name' },
     });
@@ -119,12 +132,11 @@ export class ProfileEditor {
 
   open(): void {
     this.render();
-    this.element.classList.add('is-open');
-    this.nameInput.focus();
+    this.dialog.open(this.nameInput);
   }
 
   close(): void {
-    this.element.classList.remove('is-open');
+    this.dialog.close();
   }
 
   private build(): HTMLElement {
@@ -135,7 +147,11 @@ export class ProfileEditor {
     closeButton.appendChild(svg(ICON_CLOSE));
     closeButton.addEventListener('click', () => this.close());
 
-    const title = el('h2', { className: 'modal__title', text: 'Profile settings' });
+    const title = el('h2', {
+      className: 'modal__title',
+      attrs: { id: this.titleId },
+      text: 'Profile settings',
+    });
     const header = el('header', { className: 'modal__header', children: [title, closeButton] });
 
     const saveButton = el('button', {
@@ -148,13 +164,12 @@ export class ProfileEditor {
     });
 
     const deleteButton = el('button', {
-      className: 'button',
+      className: 'button button--danger',
       text: 'Delete profile',
       attrs: { type: 'button' },
     });
     deleteButton.addEventListener('click', () => {
-      void this.callbacks.onDelete();
-      this.close();
+      void this.handleDelete();
     });
 
     const actions = el('div', {
@@ -184,18 +199,9 @@ export class ProfileEditor {
       ],
     });
 
-    const dialog = el('div', {
-      className: 'modal',
-      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Profile settings' },
-      children: [header, body],
-    });
-    const overlay = el('div', { className: 'modal-overlay', children: [dialog] });
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) {
-        this.close();
-      }
-    });
-    return overlay;
+    this.dialog.content.appendChild(header);
+    this.dialog.content.appendChild(body);
+    return this.dialog.overlay;
   }
 
   private render(): void {
@@ -230,6 +236,12 @@ export class ProfileEditor {
   private updateRemoveButtons(): void {
     this.removeAvatarButton.hidden = !this.avatarData;
     this.removeLogoButton.hidden = !this.logoData;
+  }
+
+  /** Delete the profile (the host confirms + guards the last profile), then close. */
+  private async handleDelete(): Promise<void> {
+    await this.callbacks.onDelete();
+    this.close();
   }
 
   private async handleUpload(

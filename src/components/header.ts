@@ -11,6 +11,8 @@
 import { el, svg } from '../utils/dom';
 import { initialOf, safeCssUrl } from '../utils/text';
 import { TelemetryBadge } from './telemetry-badge';
+import { StatusChip } from './status-chip';
+import type { StatusChipState } from './status-chip';
 import type { ProfileItem } from '../types/schemas';
 import type { SyncStatus } from '../core/sync';
 
@@ -22,13 +24,17 @@ export interface HeaderCallbacks {
   onToggleTasks: () => void;
   onToggleNotes: () => void;
   onOpenProfile: (anchor: HTMLElement) => void;
+  /** Open sync details / retry (status chip activation). */
+  onOpenSync: () => void;
 }
 
 export class Header {
   readonly element: HTMLElement;
   readonly telemetry: TelemetryBadge;
+  readonly statusChip: StatusChip;
 
-  private readonly syncStatus: HTMLElement;
+  private readonly tasksToggle: HTMLButtonElement;
+  private readonly notesToggle: HTMLButtonElement;
   private readonly avatar: HTMLElement;
   private readonly profileName: HTMLElement;
   private readonly profileButton: HTMLButtonElement;
@@ -36,24 +42,22 @@ export class Header {
   constructor(private readonly callbacks: HeaderCallbacks) {
     this.telemetry = new TelemetryBadge();
 
-    this.syncStatus = el('span', {
-      className: 'sync-status',
-      attrs: { 'data-status': 'idle', title: 'Sync: idle', 'aria-label': 'Sync status' },
-    });
+    // A single icon + text status chip replaces the colour-only dot (G-44).
+    this.statusChip = new StatusChip({ onActivate: () => this.callbacks.onOpenSync() });
 
-    const tasksToggle = el('button', {
+    this.tasksToggle = el('button', {
       className: 'icon-button drawer-toggle',
-      attrs: { type: 'button', 'aria-label': 'Toggle tasks' },
+      attrs: { type: 'button', 'aria-label': 'Toggle tasks', 'aria-expanded': 'false' },
     });
-    tasksToggle.appendChild(svg(ICON_TASKS));
-    tasksToggle.addEventListener('click', () => this.callbacks.onToggleTasks());
+    this.tasksToggle.appendChild(svg(ICON_TASKS));
+    this.tasksToggle.addEventListener('click', () => this.callbacks.onToggleTasks());
 
-    const notesToggle = el('button', {
+    this.notesToggle = el('button', {
       className: 'icon-button drawer-toggle',
-      attrs: { type: 'button', 'aria-label': 'Toggle scratchpad' },
+      attrs: { type: 'button', 'aria-label': 'Toggle scratchpad', 'aria-expanded': 'false' },
     });
-    notesToggle.appendChild(svg(ICON_NOTES));
-    notesToggle.addEventListener('click', () => this.callbacks.onToggleNotes());
+    this.notesToggle.appendChild(svg(ICON_NOTES));
+    this.notesToggle.addEventListener('click', () => this.callbacks.onToggleNotes());
 
     this.avatar = el('span', { className: 'profile-button__avatar' });
     this.profileName = el('span', { className: 'profile-button__name', text: 'Profile' });
@@ -72,16 +76,32 @@ export class Header {
     });
     const right = el('div', {
       className: 'system-header__right',
-      children: [this.syncStatus, tasksToggle, notesToggle, this.profileButton],
+      children: [this.statusChip.element, this.tasksToggle, this.notesToggle, this.profileButton],
     });
 
     this.element = el('header', { className: 'system-header', children: [left, right] });
   }
 
-  /** Update the sync status indicator. */
+  /** Update the status chip from a sync status (icon + text cue — G-44). */
   setSyncStatus(status: SyncStatus): void {
-    this.syncStatus.setAttribute('data-status', status);
-    this.syncStatus.setAttribute('title', `Sync: ${status}`);
+    const map: Record<SyncStatus, StatusChipState> = {
+      idle: 'local',
+      syncing: 'syncing',
+      synced: 'synced',
+      error: 'error',
+    };
+    this.statusChip.setState(map[status] ?? 'local');
+  }
+
+  /** Set the chip directly (e.g. the offline state, which sync does not emit). */
+  setStatusState(state: StatusChipState, options?: { syncedAt?: number; pending?: number }): void {
+    this.statusChip.setState(state, options);
+  }
+
+  /** Reflect a drawer's open state on its toggle (G-31). */
+  setDrawerExpanded(key: 'tasks' | 'notes', expanded: boolean): void {
+    const toggle = key === 'tasks' ? this.tasksToggle : this.notesToggle;
+    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   }
 
   /** Reflect the active profile in the profile control. */

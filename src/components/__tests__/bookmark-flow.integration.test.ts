@@ -212,12 +212,20 @@ describe('BookmarksView context menu', () => {
         getRecentBookmarks: () => [],
         getBookmarksByCategory: () => [],
       },
-      { onActivate: vi.fn(), onOpenAlternate: vi.fn(), onEdit, onDelete },
+      {
+        onActivate: vi.fn(),
+        onOpenAlternate: vi.fn(),
+        onEdit,
+        onDelete,
+        onAddBookmark: vi.fn(),
+        onImport: vi.fn(),
+        onManageCategories: vi.fn(),
+      },
     );
     document.body.appendChild(view.element);
     view.render();
 
-    const tile = q<HTMLButtonElement>(view.element, '.tile');
+    const tile = q<HTMLButtonElement>(view.element, '.tile__open');
     tile.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
 
     const items = Array.from(document.querySelectorAll<HTMLButtonElement>('.context-menu__item'));

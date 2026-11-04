@@ -22,6 +22,30 @@ const ICON_PLUS = 'M12 5v14M5 12h14';
 const ICON_ARROW = 'M7 17 17 7M17 7H8M17 7v9';
 const ICON_SEARCH = 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35';
 
+/** Maximum number of result rows rendered at once. */
+const OMNIBAR_MAX_RESULTS = 8;
+
+/**
+ * Wrap the first case-insensitive match of `query` in a `<mark>` inside a text
+ * fragment. XSS-safe: only text nodes and `textContent` are used (G-30).
+ */
+function highlightMatch(text: string, query: string): DocumentFragment {
+  const fragment = document.createDocumentFragment();
+  const needle = query.trim().toLowerCase();
+  const index = needle.length > 0 ? text.toLowerCase().indexOf(needle) : -1;
+  if (index === -1) {
+    fragment.appendChild(document.createTextNode(text));
+    return fragment;
+  }
+  fragment.appendChild(document.createTextNode(text.slice(0, index)));
+  const mark = document.createElement('mark');
+  mark.className = 'omnibar__match';
+  mark.textContent = text.slice(index, index + needle.length);
+  fragment.appendChild(mark);
+  fragment.appendChild(document.createTextNode(text.slice(index + needle.length)));
+  return fragment;
+}
+
 /* ------------------------------------------------------------------ */
 /* Pure query logic (unit-tested)                                      */
 /* ------------------------------------------------------------------ */
@@ -250,6 +274,7 @@ export class Omnibar {
   private readonly input: HTMLInputElement;
   private readonly engineSelect: HTMLSelectElement;
   private readonly resultsEl: HTMLElement;
+  private readonly liveRegion: HTMLElement;
   private readonly disposers: Array<() => void> = [];
   private resultNodes: HTMLElement[] = [];
   private actions: OmnibarAction[] = [];
@@ -270,6 +295,7 @@ export class Omnibar {
         spellcheck: 'false',
         role: 'combobox',
         'aria-label': 'Search bookmarks or enter a URL',
+        'aria-autocomplete': 'list',
         'aria-expanded': 'false',
         'aria-controls': 'omnibar-results',
       },
@@ -293,10 +319,19 @@ export class Omnibar {
 
     this.resultsEl = el('ul', {
       className: 'omnibar__results',
-      attrs: { id: 'omnibar-results', role: 'listbox' },
+      attrs: { id: 'omnibar-results', role: 'listbox', 'aria-label': 'Search results' },
     });
 
-    this.element = el('div', { className: 'omnibar-wrap', children: [bar, this.resultsEl] });
+    // Polite live region announcing the result count (G-30).
+    this.liveRegion = el('div', {
+      className: 'sr-only',
+      attrs: { role: 'status', 'aria-live': 'polite' },
+    });
+
+    this.element = el('div', {
+      className: 'omnibar-wrap',
+      children: [bar, this.resultsEl, this.liveRegion],
+    });
 
     this.renderEngine();
     this.bind();
@@ -338,6 +373,10 @@ export class Omnibar {
           return;
         }
         if (!/^[1-9]$/.test(event.key)) {
+          return;
+        }
+        // Never act behind the app-lock overlay (G-29).
+        if (document.querySelector('.lock-overlay.is-open')) {
           return;
         }
         // Ignore the hotkey while the user is editing a field (task/note
@@ -383,6 +422,10 @@ export class Omnibar {
         if (document.querySelector('.modal-overlay.is-open')) {
           return;
         }
+        // The lock overlay is not a `.modal-overlay`, so guard it explicitly.
+        if (document.querySelector('.lock-overlay.is-open')) {
+          return;
+        }
         event.preventDefault();
         this.focusAndSelect();
       }),
@@ -407,6 +450,8 @@ export class Omnibar {
       on(this.input, 'keydown', (event: KeyboardEvent) => this.handleKeydown(event)),
     );
     this.disposers.push(on(this.input, 'focus', () => this.renderResults()));
+    // Close the results list when focus leaves the combobox (e.g. Tab away).
+    this.disposers.push(on(this.input, 'blur', () => this.closeResults()));
     // Prevent the input from blurring before a result click registers.
     this.disposers.push(
       on(this.resultsEl, 'mousedown', (event: MouseEvent) => event.preventDefault()),
@@ -419,7 +464,7 @@ export class Omnibar {
       this.store.activeBookmarks,
       this.store.appConfig.search_providers,
       this.selectedProviderId,
-    );
+    ).slice(0, OMNIBAR_MAX_RESULTS);
     this.activeIndex = defaultActiveIndex(this.actions);
     this.renderResults();
   }
@@ -427,8 +472,15 @@ export class Omnibar {
   private handleKeydown(event: KeyboardEvent): void {
     switch (event.key) {
       case 'Escape':
-        this.reset();
-        this.input.blur();
+        // Two-stage Escape: the first closes the results (keeping the query),
+        // the second clears the field and blurs (G-30).
+        if (this.actions.length > 0) {
+          event.preventDefault();
+          this.closeResults();
+        } else {
+          this.reset();
+          this.input.blur();
+        }
         break;
       case 'ArrowDown':
         if (this.actions.length > 0) {
@@ -483,6 +535,13 @@ export class Omnibar {
     this.renderResults();
   }
 
+  /** Collapse the results list without clearing the query. */
+  private closeResults(): void {
+    this.actions = [];
+    this.activeIndex = -1;
+    this.renderResults();
+  }
+
   private setActive(index: number): void {
     this.activeIndex = index;
     this.resultNodes.forEach((node, i) => {
@@ -490,6 +549,12 @@ export class Omnibar {
       node.classList.toggle('is-active', active);
       node.setAttribute('aria-selected', active ? 'true' : 'false');
     });
+    const activeNode = this.resultNodes[index];
+    if (activeNode) {
+      this.input.setAttribute('aria-activedescendant', activeNode.id);
+    } else {
+      this.input.removeAttribute('aria-activedescendant');
+    }
   }
 
   private renderResults(): void {
@@ -499,17 +564,20 @@ export class Omnibar {
     const open = this.actions.length > 0;
     this.resultsEl.classList.toggle('is-open', open);
     this.input.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) {
+      this.input.removeAttribute('aria-activedescendant');
+    }
 
     this.actions.forEach((action, index) => {
       const item = el('li', {
         className: `omnibar__result omnibar__result--${action.kind}`,
-        attrs: { role: 'option', 'aria-selected': 'false' },
+        attrs: { id: `omnibar-option-${index}`, role: 'option', 'aria-selected': 'false' },
       });
 
       if (action.kind === 'bookmark') {
-        item.appendChild(
-          el('span', { className: 'omnibar__result-title', text: action.bookmark.title }),
-        );
+        const titleEl = el('span', { className: 'omnibar__result-title' });
+        titleEl.appendChild(highlightMatch(action.bookmark.title, this.input.value));
+        item.appendChild(titleEl);
         item.appendChild(
           el('span', { className: 'omnibar__result-url', text: hostnameOf(action.bookmark.url) }),
         );
@@ -550,6 +618,10 @@ export class Omnibar {
       this.resultsEl.appendChild(item);
       this.resultNodes.push(item);
     });
+
+    this.liveRegion.textContent = open
+      ? `${this.actions.length} result${this.actions.length === 1 ? '' : 's'}`
+      : '';
 
     if (this.activeIndex >= 0) {
       this.setActive(this.activeIndex);

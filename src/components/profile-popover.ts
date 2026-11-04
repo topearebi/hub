@@ -7,6 +7,7 @@
  */
 
 import { clearChildren, el } from '../utils/dom';
+import { MenuKeyboard } from '../utils/menu';
 import { initialOf } from '../utils/text';
 import type { ProfileItem } from '../types/schemas';
 
@@ -26,6 +27,8 @@ export class ProfilePopover {
   readonly element: HTMLElement;
 
   private isOpen = false;
+  private anchor: HTMLElement | null = null;
+  private readonly keyboard: MenuKeyboard;
 
   constructor(
     private readonly store: ProfilePopoverStore,
@@ -34,6 +37,17 @@ export class ProfilePopover {
     this.element = el('div', {
       className: 'profile-popover',
       attrs: { role: 'menu', 'aria-label': 'Profiles' },
+    });
+
+    // Shared roving-tabindex keyboard behaviour (arrow/Home/End/Escape/type-ahead).
+    this.keyboard = new MenuKeyboard(this.element, {
+      getItems: () =>
+        Array.from(
+          this.element.querySelectorAll<HTMLElement>(
+            '.profile-popover__item, .profile-popover__action',
+          ),
+        ),
+      onClose: () => this.close(),
     });
 
     document.addEventListener('mousedown', (event) => {
@@ -59,6 +73,7 @@ export class ProfilePopover {
 
   show(anchor: HTMLElement): void {
     this.render();
+    this.anchor = anchor;
     const rect = anchor.getBoundingClientRect();
     this.element.style.setProperty('--popover-top', `${rect.bottom + 8}px`);
     this.element.style.setProperty(
@@ -66,11 +81,16 @@ export class ProfilePopover {
       `${Math.max(8, window.innerWidth - rect.right)}px`,
     );
     this.element.classList.add('is-open');
+    anchor.setAttribute('aria-expanded', 'true');
     this.isOpen = true;
+    this.keyboard.activate('first');
   }
 
   close(): void {
+    this.keyboard.deactivate();
     this.element.classList.remove('is-open');
+    this.anchor?.setAttribute('aria-expanded', 'false');
+    this.anchor = null;
     this.isOpen = false;
   }
 

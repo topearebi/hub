@@ -24,6 +24,7 @@ import {
   getMetrics,
   put,
   recordVisit as persistVisit,
+  remove,
   setAppConfig,
 } from './db';
 import { newId } from '../utils/crypto';
@@ -54,6 +55,33 @@ const ALL_EVENTS: readonly StoreEvent[] = [
   'metrics',
   'config',
 ];
+
+/**
+ * Tombstone grace period (SCHEMAS.md §5.3): soft-deleted records are retained
+ * for 30 days so they can be restored from Settings → Data → Recently deleted.
+ */
+export const TOMBSTONE_GRACE_MS = 30 * 86_400_000;
+
+/** Item counts for a deleted profile, shown in the Recently deleted list. */
+export interface DeletedProfileCounts {
+  bookmarks: number;
+  tasks: number;
+  notes: number;
+  categories: number;
+}
+
+/** A deleted profile together with the counts of the items it would restore. */
+export interface DeletedProfileEntry {
+  profile: ProfileItem;
+  counts: DeletedProfileCounts;
+}
+
+/** Individually deleted items still inside the 30-day recovery window. */
+export interface DeletedItems {
+  bookmarks: BookmarkItem[];
+  tasks: TaskItem[];
+  notes: NoteItem[];
+}
 
 /** Minimal contract the omnibar/bookmarks views depend on (keeps them testable). */
 export interface LaunchpadStore {
@@ -286,6 +314,61 @@ class HubStore implements LaunchpadStore {
       .filter((b): b is BookmarkItem => b !== undefined);
   }
 
+  /**
+   * Deleted profiles with the counts of the items that a restore would revive
+   * (SCHEMAS.md §5.4, DESIGN.md §9.1). Counts only include children tombstoned
+   * with the profile (same `updated_at`), so items deleted individually before
+   * the profile are not double-counted.
+   */
+  get deletedProfiles(): DeletedProfileEntry[] {
+    return this.profileList
+      .filter((p) => p.is_deleted === true)
+      .map((profile) => {
+        const at = profile.updated_at;
+        const count = <T extends { profile_id: string; is_deleted?: boolean; updated_at: number }>(
+          items: T[],
+        ): number =>
+          items.filter(
+            (item) =>
+              item.profile_id === profile.id && item.is_deleted === true && item.updated_at === at,
+          ).length;
+        return {
+          profile,
+          counts: {
+            bookmarks: count(this.bookmarks),
+            tasks: count(this.tasks),
+            notes: count(this.notes),
+            categories: count(this.categories),
+          },
+        };
+      });
+  }
+
+  /**
+   * Individually deleted bookmarks, tasks and notes still inside the 30-day
+   * recovery window. Items belonging to a deleted profile are excluded here
+   * because they are represented by that profile's entry.
+   */
+  get deletedItems(): DeletedItems {
+    const liveProfileIds = new Set(
+      this.profileList.filter((p) => p.is_deleted !== true).map((p) => p.id),
+    );
+    const now = Date.now();
+    const within = (item: { updated_at: number }): boolean =>
+      now - item.updated_at <= TOMBSTONE_GRACE_MS;
+    return {
+      bookmarks: this.bookmarks.filter(
+        (b) => b.is_deleted === true && liveProfileIds.has(b.profile_id) && within(b),
+      ),
+      tasks: this.tasks.filter(
+        (t) => t.is_deleted === true && liveProfileIds.has(t.profile_id) && within(t),
+      ),
+      notes: this.notes.filter(
+        (n) => n.is_deleted === true && liveProfileIds.has(n.profile_id) && within(n),
+      ),
+    };
+  }
+
   /* ---------------------------------------------------------------- */
   /* Mutations                                                        */
   /* ---------------------------------------------------------------- */
@@ -317,6 +400,71 @@ class HubStore implements LaunchpadStore {
       return;
     }
     await this.upsertCategory({ ...existing, is_deleted: true, updated_at: now });
+  }
+
+  /** Insert or update many categories in one transaction (reordering). */
+  async upsertCategories(items: readonly CategoryItem[]): Promise<void> {
+    if (items.length === 0) {
+      return;
+    }
+    for (const item of items) {
+      replaceIn(this.categories, item);
+    }
+    await bulkPut(STORE.categories, items);
+    this.emit('categories');
+  }
+
+  /** Rename a category in place. */
+  async renameCategory(id: string, name: string, now: number = Date.now()): Promise<void> {
+    const existing = this.categories.find((c) => c.id === id);
+    if (!existing) {
+      return;
+    }
+    await this.upsertCategory({ ...existing, name, updated_at: now });
+  }
+
+  /**
+   * Delete a category, moving its bookmarks to `targetCategoryId` (DESIGN.md §9).
+   * Returns the tombstoned category and the affected bookmarks (with their
+   * original `category_id`) so the caller can offer a faithful Undo.
+   */
+  async deleteCategory(
+    id: string,
+    targetCategoryId: string,
+    now: number = Date.now(),
+  ): Promise<{ category: CategoryItem; bookmarks: BookmarkItem[] } | null> {
+    const existing = this.categories.find((c) => c.id === id);
+    if (!existing) {
+      return null;
+    }
+    const affected = this.bookmarks.filter((b) => b.category_id === id && b.is_deleted !== true);
+    if (affected.length > 0) {
+      const moved = affected.map((b) => ({ ...b, category_id: targetCategoryId, updated_at: now }));
+      for (const bookmark of moved) {
+        replaceIn(this.bookmarks, bookmark);
+      }
+      await bulkPut(STORE.bookmarks, moved);
+      this.emit('bookmarks');
+    }
+    await this.upsertCategory({ ...existing, is_deleted: true, updated_at: now });
+    return { category: existing, bookmarks: affected };
+  }
+
+  /** Undo a category deletion: revive the category and re-home its bookmarks. */
+  async restoreCategory(
+    category: CategoryItem,
+    bookmarks: readonly BookmarkItem[],
+    now: number = Date.now(),
+  ): Promise<void> {
+    await this.upsertCategory({ ...category, is_deleted: false, updated_at: now });
+    if (bookmarks.length > 0) {
+      const restored = bookmarks.map((b) => ({ ...b, updated_at: now }));
+      for (const bookmark of restored) {
+        replaceIn(this.bookmarks, bookmark);
+      }
+      await bulkPut(STORE.bookmarks, restored);
+      this.emit('bookmarks');
+    }
   }
 
   async upsertTask(item: TaskItem): Promise<void> {
@@ -391,6 +539,34 @@ class HubStore implements LaunchpadStore {
     await this.upsertNote({ ...existing, is_deleted: true, updated_at: now });
   }
 
+  /* ---- Undo (restore a soft-deleted entity) ---- */
+
+  async restoreBookmark(id: string, now: number = Date.now()): Promise<void> {
+    const existing = this.getBookmark(id);
+    if (existing && existing.is_deleted === true) {
+      await this.upsertBookmark({ ...existing, is_deleted: false, updated_at: now });
+    }
+  }
+
+  /** Restore a task and every descendant tombstoned with it. */
+  async restoreTask(id: string, now: number = Date.now()): Promise<void> {
+    const ids = this.collectDescendantTaskIds(id);
+    ids.add(id);
+    for (const taskId of ids) {
+      const task = this.tasks.find((t) => t.id === taskId);
+      if (task && task.is_deleted === true) {
+        await this.upsertTask({ ...task, is_deleted: false, updated_at: now });
+      }
+    }
+  }
+
+  async restoreNote(id: string, now: number = Date.now()): Promise<void> {
+    const existing = this.notes.find((n) => n.id === id);
+    if (existing && existing.is_deleted === true) {
+      await this.upsertNote({ ...existing, is_deleted: false, updated_at: now });
+    }
+  }
+
   /* ---- Profiles ---- */
 
   async upsertProfile(item: ProfileItem): Promise<void> {
@@ -413,6 +589,10 @@ class HubStore implements LaunchpadStore {
       return;
     }
     await this.upsertProfile({ ...existing, is_deleted: true, updated_at: now });
+    // Cascade the tombstone to every not-already-deleted child under one shared
+    // timestamp so the profile and its items expire and restore together
+    // (SCHEMAS.md §5.4).
+    await this.tombstoneProfileChildren(id, now);
 
     if (this.currentProfileId === id) {
       const next = this.profileList.find((p) => p.is_deleted !== true);
@@ -430,6 +610,143 @@ class HubStore implements LaunchpadStore {
         await this.setActiveProfile(replacement.id);
       }
     }
+  }
+
+  /**
+   * Restore a deleted profile and exactly the children tombstoned with it
+   * (same `updated_at`). Items deleted individually before the profile keep
+   * their own, older timestamp and stay deleted (SCHEMAS.md §5.4).
+   */
+  async restoreProfile(id: string, now: number = Date.now()): Promise<void> {
+    const profile = this.profileList.find((p) => p.id === id);
+    if (!profile || profile.is_deleted !== true) {
+      return;
+    }
+    const tombstoneAt = profile.updated_at;
+    await this.upsertProfile({ ...profile, is_deleted: false, updated_at: now });
+    await this.reviveProfileChildren(id, tombstoneAt, now);
+  }
+
+  /** Permanently remove a deleted profile and all of its records (Delete now). */
+  async permanentlyDeleteProfile(id: string): Promise<void> {
+    const profile = this.profileList.find((p) => p.id === id);
+    if (!profile) {
+      return;
+    }
+    const bookmarks = this.bookmarks.filter((b) => b.profile_id === id);
+    const categories = this.categories.filter((c) => c.profile_id === id);
+    const tasks = this.tasks.filter((t) => t.profile_id === id);
+    const notes = this.notes.filter((n) => n.profile_id === id);
+
+    this.profileList = this.profileList.filter((p) => p.id !== id);
+    this.bookmarks = this.bookmarks.filter((b) => b.profile_id !== id);
+    this.categories = this.categories.filter((c) => c.profile_id !== id);
+    this.tasks = this.tasks.filter((t) => t.profile_id !== id);
+    this.notes = this.notes.filter((n) => n.profile_id !== id);
+
+    await Promise.all([
+      remove(STORE.profiles, id),
+      ...bookmarks.map((b) => remove(STORE.bookmarks, b.id)),
+      ...categories.map((c) => remove(STORE.categories, c.id)),
+      ...tasks.map((t) => remove(STORE.tasks, t.id)),
+      ...notes.map((n) => remove(STORE.notes, n.id)),
+    ]);
+
+    this.emit('profiles');
+    this.emit('bookmarks');
+    this.emit('categories');
+    this.emit('tasks');
+    this.emit('notes');
+  }
+
+  /** Permanently remove a single soft-deleted item (Delete now). */
+  async permanentlyDeleteItem(
+    storeName: 'bookmarks' | 'tasks' | 'notes',
+    id: string,
+  ): Promise<void> {
+    if (storeName === 'bookmarks') {
+      this.bookmarks = this.bookmarks.filter((b) => b.id !== id);
+    } else if (storeName === 'tasks') {
+      this.tasks = this.tasks.filter((t) => t.id !== id);
+    } else {
+      this.notes = this.notes.filter((n) => n.id !== id);
+    }
+    await remove(STORE[storeName], id);
+    this.emit(storeName);
+  }
+
+  /** Tombstone every not-already-deleted child of a profile at `now`. */
+  private async tombstoneProfileChildren(profileId: string, now: number): Promise<void> {
+    const bookmarks = this.bookmarks
+      .filter((b) => b.profile_id === profileId && b.is_deleted !== true)
+      .map((b) => ({ ...b, is_deleted: true, updated_at: now }));
+    const categories = this.categories
+      .filter((c) => c.profile_id === profileId && c.is_deleted !== true)
+      .map((c) => ({ ...c, is_deleted: true, updated_at: now }));
+    const tasks = this.tasks
+      .filter((t) => t.profile_id === profileId && t.is_deleted !== true)
+      .map((t) => ({ ...t, is_deleted: true, updated_at: now }));
+    const notes = this.notes
+      .filter((n) => n.profile_id === profileId && n.is_deleted !== true)
+      .map((n) => ({ ...n, is_deleted: true, updated_at: now }));
+
+    for (const item of bookmarks) replaceIn(this.bookmarks, item);
+    for (const item of categories) replaceIn(this.categories, item);
+    for (const item of tasks) replaceIn(this.tasks, item);
+    for (const item of notes) replaceIn(this.notes, item);
+
+    await Promise.all([
+      bulkPut(STORE.bookmarks, bookmarks),
+      bulkPut(STORE.categories, categories),
+      bulkPut(STORE.tasks, tasks),
+      bulkPut(STORE.notes, notes),
+    ]);
+
+    this.emit('bookmarks');
+    this.emit('categories');
+    this.emit('tasks');
+    this.emit('notes');
+  }
+
+  /** Revive children tombstoned with a profile (matching `tombstoneAt`). */
+  private async reviveProfileChildren(
+    profileId: string,
+    tombstoneAt: number,
+    now: number,
+  ): Promise<void> {
+    const matches = <T extends { profile_id: string; is_deleted?: boolean; updated_at: number }>(
+      items: T[],
+    ): T[] =>
+      items
+        .filter(
+          (item) =>
+            item.profile_id === profileId &&
+            item.is_deleted === true &&
+            item.updated_at === tombstoneAt,
+        )
+        .map((item) => ({ ...item, is_deleted: false, updated_at: now }));
+
+    const bookmarks = matches(this.bookmarks);
+    const categories = matches(this.categories);
+    const tasks = matches(this.tasks);
+    const notes = matches(this.notes);
+
+    for (const item of bookmarks) replaceIn(this.bookmarks, item);
+    for (const item of categories) replaceIn(this.categories, item);
+    for (const item of tasks) replaceIn(this.tasks, item);
+    for (const item of notes) replaceIn(this.notes, item);
+
+    await Promise.all([
+      bulkPut(STORE.bookmarks, bookmarks),
+      bulkPut(STORE.categories, categories),
+      bulkPut(STORE.tasks, tasks),
+      bulkPut(STORE.notes, notes),
+    ]);
+
+    this.emit('bookmarks');
+    this.emit('categories');
+    this.emit('tasks');
+    this.emit('notes');
   }
 
   /** Switch the active profile and refresh every partitioned view. */

@@ -31,14 +31,18 @@ import { TasksDrawer } from './components/tasks';
 import { NotesDrawer } from './components/notes';
 import { resolveDrawerOpen } from './components/drawer';
 import { SettingsModal } from './components/settings';
+import { OnboardingCard } from './components/onboarding';
+import { CategoryManager } from './components/category-manager';
+import { RecentlyDeleted } from './components/recently-deleted';
 import { ShareTargetPrompt } from './components/share-target';
-import { LockScreen } from './components/lock-screen';
+import { isLockScreenOpen, LockScreen } from './components/lock-screen';
 import { Header } from './components/header';
 import { Brand } from './components/brand';
 import { ProfilePopover } from './components/profile-popover';
 import { ProfileEditor } from './components/profile-editor';
 import { showToast } from './components/toast';
 import { el, svg } from './utils/dom';
+import { confirmDialog, Dialog } from './utils/dialog';
 import { newId } from './utils/crypto';
 import { draftFromShare, parseLaunchIntent, updateAppBadge } from './core/pwa';
 import { NotificationManager } from './core/notifications';
@@ -58,6 +62,9 @@ type ViewKey = 'bookmarks' | 'tasks' | 'notes';
 
 /** Inline 'plus' icon for the add-bookmark control (no external icons). */
 const ICON_PLUS = 'M12 5v14M5 12h14';
+const ICON_TAB_BOOKMARKS = 'M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z';
+const ICON_TAB_TASKS = 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11';
+const ICON_TAB_NOTES = 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6';
 
 /**
  * Activate a bookmark: record the local visit, resolve the best reachable URL
@@ -73,7 +80,24 @@ async function activateBookmark(bookmark: BookmarkItem): Promise<void> {
     // Ignore: the visit counter is non-essential.
   }
 
-  const result = await resolveBookmarkUrl(bookmark);
+  // Busy feedback while probing the primary URL and its mirrors (G-41).
+  const dismissBusy = showToast('Opening…', {
+    variant: 'info',
+    persistent: true,
+    dismissible: false,
+    dedupeKey: 'opening',
+  });
+
+  let result: Awaited<ReturnType<typeof resolveBookmarkUrl>>;
+  try {
+    result = await resolveBookmarkUrl(bookmark);
+  } catch {
+    dismissBusy();
+    showToast('Could not open that bookmark.', { variant: 'error' });
+    return;
+  }
+  dismissBusy();
+
   if (result.usedAlternate) {
     showToast(`Primary URL unreachable. Routed to mirror: ${result.hostname}`, {
       variant: 'warning',
@@ -103,19 +127,43 @@ function exportJson(): void {
   showToast('Exported hub-data.json.', { variant: 'success' });
 }
 
-/** Import a JSON backup, replacing local collections. */
+/** Import a JSON backup, previewing and confirming before replacing data (G-40). */
 async function importJson(file: File): Promise<void> {
+  let payload: ReturnType<typeof parsePayload>;
   try {
     const text = await file.text();
-    const payload = parsePayload(text);
+    payload = parsePayload(text);
+  } catch {
+    showToast('Import failed: invalid file.', { variant: 'error' });
+    return;
+  }
+
+  const confirmed = await confirmDialog({
+    title: 'Replace local data?',
+    message:
+      `This import contains ${payload.bookmarks.length} bookmarks, ` +
+      `${payload.tasks.length} tasks and ${payload.notes.length} notes. ` +
+      'It will replace your current local data.',
+    confirmLabel: 'Replace data',
+    danger: true,
+  });
+  if (!confirmed) {
+    return;
+  }
+
+  try {
     await store.applyPayload(payload);
     showToast('Import complete.', { variant: 'success' });
   } catch {
-    showToast('Import failed: invalid file.', { variant: 'error' });
+    showToast('Import failed while saving.', { variant: 'error' });
   }
 }
 
-/** Ensure at least one category exists so new bookmarks have a home. */
+/**
+ * Ensure at least one category exists so new bookmarks have a home. The
+ * auto-created category is named "Links" (user-renamable) rather than the
+ * opaque legacy "Shared" (G-39, DESIGN.md §7).
+ */
 async function ensureDefaultCategory(): Promise<CategoryItem> {
   const existing = store.sortedCategories[0];
   if (existing) {
@@ -127,45 +175,48 @@ async function ensureDefaultCategory(): Promise<CategoryItem> {
     created_at: now,
     updated_at: now,
     profile_id: store.activeProfileId ?? '',
-    name: 'Shared',
+    name: 'Links',
     order: 0,
   };
   await store.upsertCategory(category);
   return category;
 }
 
-/** Show a nested confirmation dialog and resolve with the user's choice. */
-function confirmDialog(message: string, confirmLabel: string): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    const text = el('p', { className: 'modal__message', text: message });
-    const cancelButton = el('button', {
-      className: 'button',
-      text: 'Cancel',
-      attrs: { type: 'button' },
-    });
-    const confirmButton = el('button', {
-      className: 'button button--primary',
-      text: confirmLabel,
-      attrs: { type: 'button' },
-    });
-    const actions = el('div', {
-      className: 'modal__actions',
-      children: [cancelButton, confirmButton],
-    });
-    const dialog = el('div', { className: 'modal modal--sm', children: [text, actions] });
-    const overlay = el('div', {
-      className: 'modal-overlay modal-overlay--nested',
-      attrs: { role: 'alertdialog', 'aria-modal': 'true' },
-      children: [dialog],
-    });
-    document.body.appendChild(overlay);
+/**
+ * Seed the optional, clearly-labelled sample set (DESIGN.md §7). Removing the
+ * "Sample links" category removes the samples in one action; nothing is ever
+ * seeded silently.
+ */
+async function seedSampleSet(): Promise<void> {
+  const now = Date.now();
+  const category: CategoryItem = {
+    id: newId(),
+    created_at: now,
+    updated_at: now,
+    profile_id: store.activeProfileId ?? '',
+    name: 'Sample links',
+    order: store.sortedCategories.reduce((max, c) => Math.max(max, c.order), -1) + 1,
+  };
+  await store.upsertCategory(category);
 
-    const finish = (value: boolean): void => {
-      overlay.remove();
-      resolve(value);
-    };
-    cancelButton.addEventListener('click', () => finish(false));
-    confirmButton.addEventListener('click', () => finish(true));
+  const samples: ReadonlyArray<{ title: string; url: string }> = [
+    { title: 'Wikipedia', url: 'https://wikipedia.org' },
+    { title: 'Hacker News', url: 'https://news.ycombinator.com' },
+    { title: 'GitHub', url: 'https://github.com' },
+  ];
+  for (const sample of samples) {
+    await store.upsertBookmark({
+      id: newId(),
+      created_at: now,
+      updated_at: now,
+      profile_id: store.activeProfileId ?? '',
+      title: sample.title,
+      url: sample.url,
+      category_id: category.id,
+    });
+  }
+  showToast('Sample links added. Remove the “Sample links” category to clear them.', {
+    variant: 'info',
   });
 }
 
@@ -185,14 +236,82 @@ async function createNote(title: string, content: string): Promise<void> {
   showToast('Note saved.', { variant: 'success' });
 }
 
+/** Render a friendly, actionable screen when startup fails (G-41). */
+function renderBootstrapError(root: HTMLElement): void {
+  const card = el('div', { className: 'error-boundary' });
+  card.appendChild(el('h1', { className: 'error-boundary__title', text: 'Hub could not start' }));
+  card.appendChild(
+    el('p', {
+      text:
+        'Your browser blocked local storage. Private browsing or a disabled IndexedDB can ' +
+        'cause this. Your data has not been changed.',
+    }),
+  );
+  const retry = el('button', {
+    className: 'button button--primary',
+    text: 'Retry',
+    attrs: { type: 'button' },
+  });
+  retry.addEventListener('click', () => window.location.reload());
+  card.appendChild(retry);
+  root.replaceChildren(card);
+}
+
+/** Show platform-specific install guidance (DESIGN.md §7). */
+function showInstallGuidance(): void {
+  const dialog = new Dialog({
+    label: 'Install Hub',
+    onRequestClose: () => dialog.close(),
+  });
+  const title = el('h2', { className: 'modal__title', text: 'Install Hub' });
+  const body = el('div', { className: 'modal__body' });
+  body.appendChild(title);
+
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const steps = isIos
+    ? ['Tap the Share button in Safari.', 'Choose “Add to Home Screen”.', 'Tap “Add”.']
+    : [
+        'Open your browser menu.',
+        'Choose “Install app” or “Add to Home screen”.',
+        'Confirm to install.',
+      ];
+  const list = el('ol', { className: 'install-steps' });
+  for (const step of steps) {
+    list.appendChild(el('li', { text: step }));
+  }
+  body.appendChild(list);
+
+  const close = el('button', {
+    className: 'button button--primary',
+    text: 'Got it',
+    attrs: { type: 'button' },
+  });
+  close.addEventListener('click', () => dialog.close());
+  body.appendChild(el('div', { className: 'modal__actions', children: [close] }));
+
+  dialog.content.appendChild(body);
+  dialog.open();
+}
+
 async function bootstrap(): Promise<void> {
   const root = document.getElementById('app');
   if (!root) {
     return;
   }
 
+  // Loading skeleton while IndexedDB opens (G-41).
+  const skeleton = el('div', { className: 'skeleton', attrs: { 'aria-busy': 'true' } });
+  skeleton.appendChild(el('span', { className: 'sr-only', text: 'Loading your data' }));
+  root.replaceChildren(skeleton);
+
   // Hydrate RAM from IndexedDB before the first render.
-  await store.init();
+  try {
+    await store.init();
+  } catch {
+    renderBootstrapError(root);
+    return;
+  }
+  root.replaceChildren();
 
   /* ---- Shell ---- */
   const shell = el('div', { className: 'app-shell', attrs: { 'data-view': 'bookmarks' } });
@@ -202,6 +321,7 @@ async function bootstrap(): Promise<void> {
     onToggleTasks: () => setOpen('tasks', !openState.tasks),
     onToggleNotes: () => setOpen('notes', !openState.notes),
     onOpenProfile: (anchor) => profilePopover.toggle(anchor),
+    onOpenSync: () => settings.open(),
   });
 
   /* ---- Centered brand + launchpad ---- */
@@ -233,25 +353,36 @@ async function bootstrap(): Promise<void> {
   shell.appendChild(launchpad);
   shell.appendChild(notesDrawer.element);
 
-  /* ---- Mobile tab bar ---- */
-  const tabDefs: ReadonlyArray<{ key: ViewKey; label: string }> = [
-    { key: 'bookmarks', label: 'Bookmarks' },
-    { key: 'tasks', label: 'Tasks' },
-    { key: 'notes', label: 'Notes' },
+  /* ---- Mobile tab bar (icon + label + open-task count) ---- */
+  const tabDefs: ReadonlyArray<{ key: ViewKey; label: string; icon: string }> = [
+    { key: 'bookmarks', label: 'Bookmarks', icon: ICON_TAB_BOOKMARKS },
+    { key: 'tasks', label: 'Tasks', icon: ICON_TAB_TASKS },
+    { key: 'notes', label: 'Notes', icon: ICON_TAB_NOTES },
   ];
   const tabButtons = new Map<ViewKey, HTMLButtonElement>();
+  const tabCounts = new Map<ViewKey, HTMLElement>();
   const mobileTabs = el('nav', { className: 'mobile-tabs', attrs: { 'aria-label': 'Primary' } });
   for (const tab of tabDefs) {
     const button = el('button', {
       className: 'mobile-tabs__button',
-      text: tab.label,
       attrs: { type: 'button' },
     });
+    button.appendChild(svg(tab.icon, { className: 'mobile-tabs__icon', size: 20 }));
+    button.appendChild(el('span', { className: 'mobile-tabs__label', text: tab.label }));
+    if (tab.key === 'tasks') {
+      const count = el('span', { className: 'mobile-tabs__count', text: '0' });
+      count.hidden = true;
+      button.appendChild(count);
+      tabCounts.set('tasks', count);
+    }
     button.addEventListener('click', () => setView(tab.key));
     tabButtons.set(tab.key, button);
     mobileTabs.appendChild(button);
   }
 
+  root.appendChild(
+    el('a', { className: 'skip-link', text: 'Skip to content', attrs: { href: '#main' } }),
+  );
   root.appendChild(shell);
   root.appendChild(mobileTabs);
 
@@ -291,6 +422,11 @@ async function bootstrap(): Promise<void> {
     onDelete: (bookmark) => {
       void deleteBookmark(bookmark);
     },
+    onAddBookmark: () => {
+      void openBookmarkEditor();
+    },
+    onImport: () => settings.triggerImport(),
+    onManageCategories: () => categoryManager.open(),
   });
   bookmarksHost.appendChild(bookmarksView.element);
 
@@ -338,6 +474,33 @@ async function bootstrap(): Promise<void> {
     bookmarksView.element,
   );
 
+  /* ---- First-run onboarding card (G-39, DESIGN.md §7) ---- */
+  const onboarding = new OnboardingCard({
+    onAddBookmark: () => {
+      void openBookmarkEditor();
+    },
+    onImport: () => settings.triggerImport(),
+    onConnectSync: () => settings.open(),
+    onTrySample: () => {
+      void seedSampleSet();
+    },
+    onInstall: () => showInstallGuidance(),
+    onComplete: () => {
+      void store.updateConfig({ onboarding_completed: true });
+    },
+  });
+  bookmarksHost.insertBefore(onboarding.element, bookmarksHost.firstChild);
+
+  /** Show the welcome card only on a fresh, empty install (G-39). */
+  function updateOnboarding(): void {
+    const show = !store.appConfig.onboarding_completed && store.activeBookmarks.length === 0;
+    if (show) {
+      onboarding.show();
+    } else {
+      onboarding.hide();
+    }
+  }
+
   /** Open the bookmark editor, ensuring a category exists for new bookmarks. */
   async function openBookmarkEditor(
     bookmark?: BookmarkItem,
@@ -351,12 +514,25 @@ async function bootstrap(): Promise<void> {
 
   /** Confirm and soft-delete a bookmark. */
   async function deleteBookmark(bookmark: BookmarkItem): Promise<void> {
-    const confirmed = await confirmDialog(`Delete "${bookmark.title}"?`, 'Delete');
+    const confirmed = await confirmDialog({
+      title: 'Delete bookmark?',
+      message: `Delete "${bookmark.title}"?`,
+      confirmLabel: 'Delete',
+      danger: true,
+    });
     if (!confirmed) {
       return;
     }
     await store.softDeleteBookmark(bookmark.id);
-    showToast('Bookmark deleted.', { variant: 'info' });
+    showToast('Bookmark deleted.', {
+      variant: 'info',
+      action: {
+        label: 'Undo',
+        onSelect: () => {
+          void store.restoreBookmark(bookmark.id);
+        },
+      },
+    });
   }
 
   /* ---- Share target prompt (shared text -> bookmark or note) ---- */
@@ -375,13 +551,31 @@ async function bootstrap(): Promise<void> {
 
   /* ---- Sync engine ---- */
   let suppressSync = false;
+  let lastSyncStatus: SyncStatus = 'idle';
 
   function updateSyncStatus(status: SyncStatus): void {
-    header.setSyncStatus(status);
+    lastSyncStatus = status;
+    // Offline takes precedence over the sync state in the status chip (G-44).
+    if (!navigator.onLine) {
+      header.setStatusState('offline');
+    } else {
+      header.setSyncStatus(status);
+    }
     if (status === 'error') {
       showToast('Sync failed. Check your GitHub settings.', { variant: 'error' });
     }
   }
+
+  /** Reflect connectivity in the status chip (G-44). */
+  function updateOnlineStatus(): void {
+    if (!navigator.onLine) {
+      header.setStatusState('offline');
+    } else {
+      header.setSyncStatus(lastSyncStatus);
+    }
+  }
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
 
   const syncEngine = new SyncEngine({
     getConfig: () => store.appConfig,
@@ -442,8 +636,30 @@ async function bootstrap(): Promise<void> {
     onSyncNow: () => {
       void syncEngine.pullNow();
     },
+    onOpenRecentlyDeleted: () => recentlyDeleted.open(),
+    onOpenCategories: () => categoryManager.open(),
+    onInstall: () => showInstallGuidance(),
   });
   document.body.appendChild(settings.element);
+
+  /* ---- Category manager (G-39) ---- */
+  const categoryManager = new CategoryManager(store, {
+    onClose: () => undefined,
+    onChanged: () => bookmarksView.render(),
+  });
+  document.body.appendChild(categoryManager.element);
+
+  /* ---- Recently deleted (G-40, DESIGN.md §9.1) ---- */
+  const recentlyDeleted = new RecentlyDeleted(store, {
+    onClose: () => undefined,
+    onChanged: () => {
+      bookmarksView.render();
+      tasksDrawer.render();
+      notesDrawer.render();
+      applyProfile();
+    },
+  });
+  document.body.appendChild(recentlyDeleted.element);
 
   /* ---- Profile popover + editor ---- */
   const profilePopover = new ProfilePopover(store, {
@@ -469,10 +685,43 @@ async function bootstrap(): Promise<void> {
     },
     onDelete: async () => {
       const current = store.activeProfile;
-      if (current) {
-        await store.softDeleteProfile(current.id);
+      if (!current) {
+        return;
       }
+      // Guard: never delete the last live profile (G-40).
+      const live = store.profiles.filter((profile) => profile.is_deleted !== true);
+      if (live.length <= 1) {
+        showToast('Hub needs at least one profile.', { variant: 'warning' });
+        return;
+      }
+      const counts = {
+        bookmarks: store.activeBookmarks.length,
+        tasks: store.activeTasks.length,
+        notes: store.activeNotes.length,
+      };
+      const confirmed = await confirmDialog({
+        title: 'Delete profile?',
+        message:
+          `Delete profile “${current.name}”? Its ${counts.bookmarks} links, ` +
+          `${counts.tasks} tasks and ${counts.notes} notes will be removed. ` +
+          'You can restore it from Settings → Data → Recently deleted for 30 days.',
+        confirmLabel: 'Delete profile',
+        danger: true,
+      });
+      if (!confirmed) {
+        return;
+      }
+      await store.softDeleteProfile(current.id);
       applyProfile();
+      showToast(`Profile “${current.name}” deleted.`, {
+        variant: 'info',
+        action: {
+          label: 'Undo',
+          onSelect: () => {
+            void store.restoreProfile(current.id).then(() => applyProfile());
+          },
+        },
+      });
     },
   });
   document.body.appendChild(profileEditor.element);
@@ -487,6 +736,7 @@ async function bootstrap(): Promise<void> {
     openState[key] = open;
     const drawer = key === 'tasks' ? tasksDrawer : notesDrawer;
     drawer.setOpen(open);
+    header.setDrawerExpanded(key, open);
   }
 
   /** Reflect persisted pinning into the shell grid + drawer attributes. */
@@ -533,8 +783,25 @@ async function bootstrap(): Promise<void> {
   function setView(view: ViewKey): void {
     shell.setAttribute('data-view', view);
     for (const [key, button] of tabButtons) {
-      button.classList.toggle('is-active', key === view);
+      const active = key === view;
+      button.classList.toggle('is-active', active);
+      if (active) {
+        button.setAttribute('aria-current', 'page');
+      } else {
+        button.removeAttribute('aria-current');
+      }
     }
+  }
+
+  /** Reflect the open-task count on the Tasks tab (hidden when zero). */
+  function updateTabCounts(): void {
+    const count = tabCounts.get('tasks');
+    if (!count) {
+      return;
+    }
+    const open = store.activeTasks.length;
+    count.textContent = String(open);
+    count.hidden = open === 0;
   }
 
   /* ---- Profile / theme helpers ---- */
@@ -578,13 +845,22 @@ async function bootstrap(): Promise<void> {
   applyPinnedState();
   applyProfile();
   setView('bookmarks');
+  updateTabCounts();
+  updateOnboarding();
 
-  store.subscribe('bookmarks', () => bookmarksView.render());
+  store.subscribe('bookmarks', () => {
+    bookmarksView.render();
+    updateOnboarding();
+  });
   store.subscribe('categories', () => bookmarksView.render());
   store.subscribe('metrics', () => bookmarksView.render());
-  store.subscribe('tasks', () => tasksDrawer.render());
+  store.subscribe('tasks', () => {
+    tasksDrawer.render();
+    updateTabCounts();
+  });
   store.subscribe('notes', () => notesDrawer.render());
   store.subscribe('profiles', () => applyProfile());
+  store.subscribe('config', () => updateOnboarding());
 
   // Debounced sync on any syncable mutation (event-driven, never polled).
   // `profiles` is included because profile branding/preferences are part of the
@@ -640,6 +916,10 @@ async function bootstrap(): Promise<void> {
 
   /** Close the top-most layer (modal, drawer, or blur). */
   function closeTopLayer(): void {
+    // While locked, nothing behind the overlay may be dismissed (G-29).
+    if (isLockScreenOpen()) {
+      return;
+    }
     if (sharePrompt.element.classList.contains('is-open')) {
       sharePrompt.close();
       return;
@@ -677,6 +957,9 @@ async function bootstrap(): Promise<void> {
 
   /** Translate a gamepad action into app navigation. */
   function handleGamepadAction(action: GamepadAction): void {
+    if (isLockScreenOpen()) {
+      return;
+    }
     switch (action) {
       case 'omnibar':
         omnibar.focus();
@@ -777,11 +1060,82 @@ async function bootstrap(): Promise<void> {
     window.history.replaceState(null, '', import.meta.env.BASE_URL);
   }
 
+  /* ---- Keyboard shortcuts overlay + non-Alt pinned shortcut (G-26) ---- */
+  function showShortcuts(): void {
+    const dialog = new Dialog({
+      label: 'Keyboard shortcuts',
+      onRequestClose: () => dialog.close(),
+    });
+    const title = el('h2', { className: 'modal__title', text: 'Keyboard shortcuts' });
+    const list = el('ul', { className: 'shortcuts-list' });
+    const rows: ReadonlyArray<[string, string]> = [
+      ['/', 'Focus the search bar'],
+      ['Alt+1–9 or g then 1–9', 'Open a pinned bookmark'],
+      ['t / m', 'Toggle Tasks / Notes'],
+      ['Esc', 'Close the current layer'],
+      ['?', 'Show this help'],
+    ];
+    for (const [keys, description] of rows) {
+      const item = el('li', { className: 'shortcuts-list__item' });
+      item.appendChild(el('kbd', { className: 'shortcut-key', text: keys }));
+      item.appendChild(el('span', { text: description }));
+      list.appendChild(item);
+    }
+    dialog.content.appendChild(el('div', { className: 'modal__body', children: [title, list] }));
+    dialog.open();
+  }
+
+  // `?` opens the help overlay; `g` then a digit is a modifier-free alternative
+  // to `Alt + [1-9]` (which collides with browser tab shortcuts).
+  let pendingG = false;
+  let pendingGTimer: ReturnType<typeof setTimeout> | null = null;
+  document.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (isLockScreenOpen()) {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    const editable =
+      target !== null &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable);
+    if (editable || document.querySelector('.modal-overlay.is-open')) {
+      return;
+    }
+    if (event.key === '?') {
+      event.preventDefault();
+      showShortcuts();
+      return;
+    }
+    if (pendingG && /^[1-9]$/.test(event.key)) {
+      event.preventDefault();
+      pendingG = false;
+      const bookmark = store.activeBookmarks.find((entry) => entry.hotkey === event.key);
+      if (bookmark) {
+        void activateBookmark(bookmark);
+      }
+      return;
+    }
+    if (event.key === 'g') {
+      pendingG = true;
+      if (pendingGTimer !== null) {
+        clearTimeout(pendingGTimer);
+      }
+      pendingGTimer = setTimeout(() => {
+        pendingG = false;
+      }, 1500);
+    }
+  });
+
   // Load environment telemetry without blocking the UI.
   void telemetry.load().then((data) => header.telemetry.render(data));
 
-  // Instant typing: focus the omnibar on boot.
-  omnibar.focus();
+  // Instant typing: focus the omnibar on boot, unless locked or on a coarse
+  // pointer (auto-focus would raise the phone keyboard — G-27).
+  if (!isLockScreenOpen() && !window.matchMedia('(pointer: coarse)').matches) {
+    omnibar.focus();
+  }
 }
 
 /**

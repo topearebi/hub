@@ -11,6 +11,8 @@
 
 import { buildDrawerShell } from './drawer';
 import { clearChildren, el, svg } from '../utils/dom';
+import { Menu, MenuKeyboard } from '../utils/menu';
+import { showToast } from './toast';
 import { newId } from '../utils/crypto';
 import { renderLinkified } from '../utils/text';
 import type { TaskItem } from '../types/schemas';
@@ -24,10 +26,12 @@ const ICON_CALENDAR =
   'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z';
 const ICON_SUBTASK = 'M6 3v12a3 3 0 0 0 3 3h9M15 15l3 3-3 3';
 const ICON_GRIP = 'M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01';
+const ICON_UP = 'M12 19V5M5 12l7-7 7 7';
+const ICON_DOWN = 'M12 5v14M19 12l-7 7-7-7';
+const ICON_INDENT = 'M3 8h18M3 12h12M3 16h18M20 12l3 3-3 3';
+const ICON_OUTDENT = 'M3 8h18M9 12h12M3 16h18M4 12l-3 3 3 3';
 
 type Recurrence = 'daily' | 'weekly' | 'monthly' | 'yearly' | null;
-
-const RECURRENCE_CYCLE: ReadonlyArray<Recurrence> = [null, 'daily', 'weekly', 'monthly', 'yearly'];
 
 /* ------------------------------------------------------------------ */
 /* Pure helpers                                                        */
@@ -175,6 +179,59 @@ export function computeTaskMove(
   });
 }
 
+/** Active siblings under `parentId`, in visual order. */
+function siblingsOf(tasks: readonly TaskItem[], parentId: string | null): TaskItem[] {
+  return sortTasks(
+    tasks.filter((task) => !task.completed && (task.parent_id ?? null) === parentId),
+  );
+}
+
+/** Move a task before its previous sibling. Returns null when it is first. */
+export function computeMoveUp(tasks: readonly TaskItem[], id: string): TaskItem[] | null {
+  const task = tasks.find((entry) => entry.id === id);
+  if (!task) {
+    return null;
+  }
+  const siblings = siblingsOf(tasks, task.parent_id ?? null);
+  const index = siblings.findIndex((entry) => entry.id === id);
+  const previous = index > 0 ? siblings[index - 1] : undefined;
+  return previous ? computeTaskMove(tasks, id, previous.id, 'before') : null;
+}
+
+/** Move a task after its next sibling. Returns null when it is last. */
+export function computeMoveDown(tasks: readonly TaskItem[], id: string): TaskItem[] | null {
+  const task = tasks.find((entry) => entry.id === id);
+  if (!task) {
+    return null;
+  }
+  const siblings = siblingsOf(tasks, task.parent_id ?? null);
+  const index = siblings.findIndex((entry) => entry.id === id);
+  const next = index >= 0 ? siblings[index + 1] : undefined;
+  return next ? computeTaskMove(tasks, id, next.id, 'after') : null;
+}
+
+/** Indent a task under its previous sibling. Returns null when it is first. */
+export function computeIndent(tasks: readonly TaskItem[], id: string): TaskItem[] | null {
+  const task = tasks.find((entry) => entry.id === id);
+  if (!task) {
+    return null;
+  }
+  const siblings = siblingsOf(tasks, task.parent_id ?? null);
+  const index = siblings.findIndex((entry) => entry.id === id);
+  const previous = index > 0 ? siblings[index - 1] : undefined;
+  return previous ? computeTaskMove(tasks, id, previous.id, 'child') : null;
+}
+
+/** Outdent a task to sit after its parent. Returns null at the root. */
+export function computeOutdent(tasks: readonly TaskItem[], id: string): TaskItem[] | null {
+  const task = tasks.find((entry) => entry.id === id);
+  const parentId = task?.parent_id ?? null;
+  if (!task || !parentId) {
+    return null;
+  }
+  return computeTaskMove(tasks, id, parentId, 'after');
+}
+
 /** Format a due date/time for display. */
 export function formatDue(task: TaskItem): string {
   if (!task.due_date) {
@@ -218,6 +275,8 @@ export interface TasksStore {
   readonly activeProfileId: string | null;
   upsertTask(item: TaskItem): Promise<void>;
   softDeleteTask(id: string): Promise<void>;
+  /** Restore a soft-deleted task and its descendants (undo). */
+  restoreTask?(id: string): Promise<void>;
   /** Optional batched write used by drag-and-drop reordering. */
   upsertTasks?(items: readonly TaskItem[]): Promise<void>;
 }
@@ -242,8 +301,10 @@ export class TasksDrawer {
   private creatorParentId: string | null = null;
   private creatorRecurrence: Recurrence = null;
   private completedOpen = false;
-  /** Id of the task currently being dragged, or `null`. */
-  private draggedTaskId: string | null = null;
+  /** Keyboard controller for the currently open task menu, if any. */
+  private activeMenuKeyboard: MenuKeyboard | null = null;
+  /** Active pointer-drag state, or `null`. */
+  private dragState: { id: string; item: HTMLElement; pointerId: number } | null = null;
 
   /**
    * Dismiss any open three-dot menu when the user clicks outside it. Registered
@@ -297,7 +358,10 @@ export class TasksDrawer {
     const dateChip = this.chip('Date & Time', () => {
       this.dateRow.hidden = !this.dateRow.hidden;
     });
-    this.recurrenceChip = this.chip('Recurrence', () => this.cycleRecurrence());
+    // Repeat opens a menu of all options rather than cycling (DESIGN.md §6.4).
+    this.recurrenceChip = this.chip('Repeat', () => this.openRecurrenceMenu());
+    this.recurrenceChip.setAttribute('aria-haspopup', 'menu');
+    this.recurrenceChip.setAttribute('aria-expanded', 'false');
 
     const chips = el('div', {
       className: 'task-creator__chips',
@@ -403,10 +467,15 @@ export class TasksDrawer {
     this.element.remove();
   }
 
-  /** Hide every open task context menu. */
+  /** Hide every open task context menu and reset its trigger's state. */
   private closeAllMenus(): void {
+    this.activeMenuKeyboard?.deactivate();
+    this.activeMenuKeyboard = null;
     for (const menu of this.listEl.querySelectorAll<HTMLElement>('.task-menu')) {
       menu.hidden = true;
+    }
+    for (const button of this.listEl.querySelectorAll<HTMLElement>('.task__menu-button')) {
+      button.setAttribute('aria-expanded', 'false');
     }
   }
 
@@ -447,16 +516,39 @@ export class TasksDrawer {
     this.dateRow.hidden = false;
   }
 
-  private cycleRecurrence(): void {
-    const index = RECURRENCE_CYCLE.indexOf(this.creatorRecurrence);
-    this.creatorRecurrence = RECURRENCE_CYCLE[(index + 1) % RECURRENCE_CYCLE.length] ?? null;
-    this.updateRecurrenceChip();
+  /** Open the Repeat menu (DESIGN.md §6.4: a menu, not a cycling chip). */
+  private openRecurrenceMenu(): void {
+    const options: ReadonlyArray<{ value: Recurrence; label: string }> = [
+      { value: null, label: 'None' },
+      { value: 'daily', label: 'Daily' },
+      { value: 'weekly', label: 'Weekly' },
+      { value: 'monthly', label: 'Monthly' },
+      { value: 'yearly', label: 'Yearly' },
+    ];
+    const menu = new Menu({
+      label: 'Repeat',
+      className: 'task-menu',
+      itemClassName: 'task-menu__item',
+      items: options.map((option) => ({
+        label: option.label,
+        role: 'menuitemradio',
+        checked: this.creatorRecurrence === option.value,
+        onSelect: () => {
+          this.creatorRecurrence = option.value;
+          this.updateRecurrenceChip();
+        },
+      })),
+      onClose: () => this.recurrenceChip.setAttribute('aria-expanded', 'false'),
+    });
+    const rect = this.recurrenceChip.getBoundingClientRect();
+    this.recurrenceChip.setAttribute('aria-expanded', 'true');
+    menu.openAt(rect.left, rect.bottom);
   }
 
   private updateRecurrenceChip(): void {
     this.recurrenceChip.textContent = this.creatorRecurrence
       ? `Repeats ${this.creatorRecurrence}`
-      : 'Recurrence';
+      : 'Repeat';
     this.recurrenceChip.classList.toggle('is-active', this.creatorRecurrence !== null);
   }
 
@@ -548,44 +640,92 @@ export class TasksDrawer {
       body.appendChild(meta);
     }
 
+    const menuId = `task-menu-${task.id}`;
     const menuButton = el('button', {
       className: 'icon-button task__menu-button',
-      attrs: { type: 'button', 'aria-label': `Actions for ${task.title}` },
+      attrs: {
+        type: 'button',
+        'aria-label': `Actions for ${task.title}`,
+        'aria-haspopup': 'menu',
+        'aria-expanded': 'false',
+        'aria-controls': menuId,
+      },
     });
     menuButton.appendChild(svg(ICON_MORE));
 
-    const menu = el('div', { className: 'task-menu' });
+    const menu = el('div', {
+      className: 'task-menu',
+      attrs: { role: 'menu', id: menuId, 'aria-label': `Actions for ${task.title}` },
+    });
     menu.hidden = true;
     menu.appendChild(this.menuItem('Add subtask', ICON_SUBTASK, () => this.openCreator(task.id)));
     menu.appendChild(
       this.menuItem('Set date/time', ICON_CALENDAR, () => this.toggleDateEditor(body, task)),
     );
+    // Keyboard-accessible alternatives to dragging (G-24, WCAG 2.5.7).
     menu.appendChild(
-      this.menuItem('Delete', ICON_TRASH, () => void this.store.softDeleteTask(task.id)),
+      this.menuItem(
+        'Move up',
+        ICON_UP,
+        () => void this.applyMove(computeMoveUp(this.store.activeTasks, task.id)),
+      ),
     );
+    menu.appendChild(
+      this.menuItem(
+        'Move down',
+        ICON_DOWN,
+        () => void this.applyMove(computeMoveDown(this.store.activeTasks, task.id)),
+      ),
+    );
+    menu.appendChild(
+      this.menuItem(
+        'Indent',
+        ICON_INDENT,
+        () => void this.applyMove(computeIndent(this.store.activeTasks, task.id)),
+      ),
+    );
+    menu.appendChild(
+      this.menuItem(
+        'Outdent',
+        ICON_OUTDENT,
+        () => void this.applyMove(computeOutdent(this.store.activeTasks, task.id)),
+      ),
+    );
+    menu.appendChild(this.menuItem('Delete', ICON_TRASH, () => void this.deleteTask(task.id)));
     menuButton.addEventListener('click', (event) => {
       event.stopPropagation();
       // Close any other open menu first so only one is ever visible, then
       // toggle this one. Clicking the same button again closes it.
       const willOpen = menu.hidden;
       this.closeAllMenus();
-      menu.hidden = !willOpen;
+      if (!willOpen) {
+        return;
+      }
+      menu.hidden = false;
+      menuButton.setAttribute('aria-expanded', 'true');
+      const keyboard = new MenuKeyboard(menu, {
+        getItems: () => Array.from(menu.querySelectorAll<HTMLElement>('.task-menu__item')),
+        onClose: () => this.closeAllMenus(),
+      });
+      keyboard.activate('first');
+      this.activeMenuKeyboard = keyboard;
     });
 
-    // Drag handle: only the grip initiates a drag, so the checkbox, menu and
-    // inline date inputs keep their normal click behaviour.
-    const dragHandle = el('span', {
+    // Drag handle: pointer-based reordering (G-20, G-24). Keyboard users use
+    // the Move/Indent menu actions instead, so dragging is never the only path.
+    const dragHandle = el('button', {
       className: 'task__drag',
-      attrs: { draggable: 'true', 'aria-label': 'Drag to reorder', title: 'Drag to reorder' },
+      attrs: { type: 'button', 'aria-label': 'Drag to reorder' },
     });
     dragHandle.appendChild(svg(ICON_GRIP, { size: 16 }));
-    dragHandle.addEventListener('dragstart', (event) => this.handleDragStart(event, task, item));
-    dragHandle.addEventListener('dragend', () => this.handleDragEnd(item));
+    dragHandle.addEventListener('pointerdown', (event) =>
+      this.handleHandlePointerDown(event, task, item),
+    );
+    dragHandle.addEventListener('pointermove', (event) => this.handleHandlePointerMove(event));
+    dragHandle.addEventListener('pointerup', (event) => void this.handleHandlePointerUp(event));
+    dragHandle.addEventListener('pointercancel', () => this.handleHandlePointerCancel());
 
-    item.addEventListener('dragover', (event) => this.handleDragOver(event, task, item));
-    item.addEventListener('dragleave', (event) => this.handleDragLeave(event, item));
-    item.addEventListener('drop', (event) => void this.handleDrop(event, task, item));
-
+    item.dataset.taskId = task.id;
     item.appendChild(dragHandle);
     item.appendChild(check);
     item.appendChild(body);
@@ -594,10 +734,24 @@ export class TasksDrawer {
     return item;
   }
 
+  /** Delete a task with an undo affordance (G-40). */
+  private async deleteTask(id: string): Promise<void> {
+    await this.store.softDeleteTask(id);
+    showToast('Task deleted.', {
+      variant: 'info',
+      action: {
+        label: 'Undo',
+        onSelect: () => {
+          void this.store.restoreTask?.(id);
+        },
+      },
+    });
+  }
+
   private menuItem(label: string, icon: string, onClick: () => void): HTMLElement {
     const button = el('button', {
       className: 'task-menu__item',
-      attrs: { type: 'button' },
+      attrs: { type: 'button', role: 'menuitem' },
     });
     button.appendChild(svg(icon, { size: 16 }));
     button.appendChild(el('span', { text: label }));
@@ -651,61 +805,82 @@ export class TasksDrawer {
   /* Drag & drop                                                      */
   /* ---------------------------------------------------------------- */
 
-  private handleDragStart(event: DragEvent, task: TaskItem, item: HTMLElement): void {
-    this.draggedTaskId = task.id;
+  private handleHandlePointerDown(event: PointerEvent, task: TaskItem, item: HTMLElement): void {
+    if (event.pointerType === 'mouse' && event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    this.dragState = { id: task.id, item, pointerId: event.pointerId };
     item.classList.add('is-dragging');
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', task.id);
-      event.dataTransfer.setDragImage(item, 12, 12);
+  }
+
+  private handleHandlePointerMove(event: PointerEvent): void {
+    if (!this.dragState || event.pointerId !== this.dragState.pointerId) {
+      return;
+    }
+    const row = this.rowUnder(event.clientX, event.clientY);
+    if (!row || row === this.dragState.item) {
+      this.clearDropIndicators();
+      return;
+    }
+    this.setDropIndicator(row, this.dropPositionFor(event.clientY, row));
+  }
+
+  private async handleHandlePointerUp(event: PointerEvent): Promise<void> {
+    const state = this.dragState;
+    if (!state || event.pointerId !== state.pointerId) {
+      return;
+    }
+    this.dragState = null;
+    state.item.classList.remove('is-dragging');
+    const row = this.rowUnder(event.clientX, event.clientY);
+    this.clearDropIndicators();
+    if (!row || row === state.item) {
+      return;
+    }
+    const targetId = row.dataset.taskId;
+    if (!targetId) {
+      return;
+    }
+    const updated = computeTaskMove(
+      this.store.activeTasks,
+      state.id,
+      targetId,
+      this.dropPositionFor(event.clientY, row),
+    );
+    if (updated) {
+      await this.persistMove(updated);
     }
   }
 
-  private handleDragEnd(item: HTMLElement): void {
-    this.draggedTaskId = null;
-    item.classList.remove('is-dragging');
+  private handleHandlePointerCancel(): void {
+    if (!this.dragState) {
+      return;
+    }
+    this.dragState.item.classList.remove('is-dragging');
+    this.dragState = null;
     this.clearDropIndicators();
   }
 
-  private handleDragOver(event: DragEvent, target: TaskItem, item: HTMLElement): void {
-    if (!this.draggedTaskId || this.draggedTaskId === target.id) {
-      return;
-    }
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'move';
-    }
-    this.setDropIndicator(item, this.dropPositionFor(event, item));
+  /** The task row currently under a viewport point, if any. */
+  private rowUnder(x: number, y: number): HTMLElement | null {
+    const node = document.elementFromPoint(x, y);
+    const row = node instanceof Element ? node.closest<HTMLElement>('.task') : null;
+    return row && this.listEl.contains(row) ? row : null;
   }
 
-  private handleDragLeave(event: DragEvent, item: HTMLElement): void {
-    const related = event.relatedTarget as Node | null;
-    if (related && item.contains(related)) {
-      return;
+  /** Apply a move result from the menu actions. */
+  private async applyMove(updated: TaskItem[] | null): Promise<void> {
+    if (updated) {
+      await this.persistMove(updated);
     }
-    item.classList.remove('drop-before', 'drop-after', 'drop-child');
-  }
-
-  private async handleDrop(event: DragEvent, target: TaskItem, item: HTMLElement): Promise<void> {
-    event.preventDefault();
-    const draggedId = this.draggedTaskId;
-    this.draggedTaskId = null;
-    this.clearDropIndicators();
-    if (!draggedId || draggedId === target.id) {
-      return;
-    }
-    const position = this.dropPositionFor(event, item);
-    const updated = computeTaskMove(this.store.activeTasks, draggedId, target.id, position);
-    if (!updated) {
-      return;
-    }
-    await this.persistMove(updated);
   }
 
   /** Map the pointer's vertical position within a row to a drop position. */
-  private dropPositionFor(event: DragEvent, item: HTMLElement): DropPosition {
+  private dropPositionFor(clientY: number, item: HTMLElement): DropPosition {
     const rect = item.getBoundingClientRect();
-    const ratio = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5;
+    const ratio = rect.height > 0 ? (clientY - rect.top) / rect.height : 0.5;
     if (ratio < 0.25) {
       return 'before';
     }

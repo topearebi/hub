@@ -12,12 +12,15 @@
  */
 
 import { el, svg } from '../utils/dom';
+import { confirmDialog, Dialog } from '../utils/dialog';
 import { hostnameOf } from '../core/fallback';
 import { newId } from '../utils/crypto';
 import { isUrlLike, normalizeUrl } from './omnibar';
 import type { BookmarkItem, CategoryItem } from '../types/schemas';
 
 const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
+
+let bookmarkDialogSeq = 0;
 /** Sentinel select value that reveals the inline new-category input. */
 export const NEW_CATEGORY = '__new__';
 
@@ -146,6 +149,9 @@ function field(labelText: string, input: HTMLElement): HTMLElement {
 export class BookmarkEditor {
   readonly element: HTMLElement;
 
+  private readonly dialog: Dialog;
+  private readonly titleId: string;
+  private readonly statusId: string;
   private readonly titleEl: HTMLElement;
   private readonly titleInput: HTMLInputElement;
   private readonly urlInput: HTMLInputElement;
@@ -159,6 +165,7 @@ export class BookmarkEditor {
   private readonly deleteButton: HTMLButtonElement;
 
   private editing: BookmarkItem | null = null;
+  private initialSnapshot = '';
 
   constructor(
     private readonly store: BookmarkEditorStore,
@@ -170,7 +177,17 @@ export class BookmarkEditor {
     });
     this.urlInput = el('input', {
       className: 'drawer__input',
-      attrs: { type: 'text', placeholder: 'https://…', 'aria-label': 'Bookmark URL' },
+      attrs: {
+        type: 'url',
+        inputmode: 'url',
+        placeholder: 'https://…',
+        'aria-label': 'Bookmark URL',
+        required: '',
+        autocapitalize: 'none',
+        autocorrect: 'off',
+        spellcheck: 'false',
+        enterkeyhint: 'go',
+      },
     });
     this.altInput = el('textarea', {
       className: 'drawer__textarea',
@@ -211,10 +228,12 @@ export class BookmarkEditor {
         el('option', { text: `Alt + ${hotkey}`, attrs: { value: hotkey } }),
       );
     }
+    this.statusId = `bookmark-editor-status-${bookmarkDialogSeq}`;
     this.statusEl = el('p', {
       className: 'settings-status',
-      attrs: { role: 'status', 'aria-live': 'polite' },
+      attrs: { id: this.statusId, role: 'status', 'aria-live': 'polite' },
     });
+    this.urlInput.setAttribute('aria-describedby', this.statusId);
 
     this.deleteButton = el('button', {
       className: 'button',
@@ -223,7 +242,19 @@ export class BookmarkEditor {
     });
     this.deleteButton.addEventListener('click', () => this.handleDelete());
 
-    this.titleEl = el('h2', { className: 'modal__title', text: 'Add bookmark' });
+    bookmarkDialogSeq += 1;
+    this.titleId = `bookmark-editor-title-${bookmarkDialogSeq}`;
+    this.dialog = new Dialog({
+      labelledBy: this.titleId,
+      sheet: true,
+      onRequestClose: () => this.requestClose(),
+    });
+
+    this.titleEl = el('h2', {
+      className: 'modal__title',
+      attrs: { id: this.titleId },
+      text: 'Add bookmark',
+    });
 
     this.element = this.build();
     this.categorySelect.addEventListener('change', () => this.syncNewCategoryVisibility());
@@ -247,17 +278,52 @@ export class BookmarkEditor {
     this.renderCategories(
       bookmark?.category_id ?? this.store.sortedCategories[0]?.id ?? NEW_CATEGORY,
     );
-    this.element.classList.add('is-open');
-    (bookmark ? this.titleInput : this.urlInput).focus();
+    this.urlInput.removeAttribute('aria-invalid');
+    this.dialog.open(bookmark ? this.titleInput : this.urlInput);
+    this.initialSnapshot = this.snapshot();
+  }
+
+  /** Serialise the editable fields for dirty-checking. */
+  private snapshot(): string {
+    return [
+      this.titleInput.value,
+      this.urlInput.value,
+      this.altInput.value,
+      this.iconInput.value,
+      this.hotkeySelect.value,
+      this.categorySelect.value,
+    ].join('\u0000');
+  }
+
+  private isDirty(): boolean {
+    return this.snapshot() !== this.initialSnapshot;
+  }
+
+  /** Close, guarding unsaved edits (G-40). */
+  private requestClose(): void {
+    if (!this.isDirty()) {
+      this.close();
+      return;
+    }
+    void confirmDialog({
+      title: 'Discard changes?',
+      message: 'You have unsaved changes. Discard them?',
+      confirmLabel: 'Discard',
+      danger: true,
+    }).then((ok) => {
+      if (ok) {
+        this.close();
+      }
+    });
   }
 
   close(): void {
-    this.element.classList.remove('is-open');
+    this.dialog.close();
     this.editing = null;
   }
 
   isOpen(): boolean {
-    return this.element.classList.contains('is-open');
+    return this.dialog.isOpen();
   }
 
   /* ---------------------------------------------------------------- */
@@ -270,7 +336,7 @@ export class BookmarkEditor {
       attrs: { type: 'button', 'aria-label': 'Close bookmark editor' },
     });
     closeButton.appendChild(svg(ICON_CLOSE));
-    closeButton.addEventListener('click', () => this.close());
+    closeButton.addEventListener('click', () => this.requestClose());
 
     const header = el('header', {
       className: 'modal__header',
@@ -286,9 +352,12 @@ export class BookmarkEditor {
     const saveButton = el('button', {
       className: 'button button--primary',
       text: 'Save',
-      attrs: { type: 'button' },
+      attrs: { type: 'submit' },
     });
-    saveButton.addEventListener('click', () => {
+    // `type=submit` gives Enter-to-submit; the click handler guarantees a save
+    // even where implicit form submission is unavailable.
+    saveButton.addEventListener('click', (event) => {
+      event.preventDefault();
       void this.save();
     });
 
@@ -297,42 +366,25 @@ export class BookmarkEditor {
       children: [this.deleteButton, saveButton],
     });
 
-    const body = el('div', {
-      className: 'modal__body',
-      children: [
-        field('Title', this.titleInput),
-        field('URL', this.urlInput),
-        field('Alternate / mirror URLs', this.altInput),
-        categoryLabel,
-        field('Icon URL', this.iconInput),
-        field('Hotkey', this.hotkeySelect),
-        this.statusEl,
-        actions,
-      ],
+    const form = el('form', { className: 'modal__body', attrs: { novalidate: '' } });
+    form.append(
+      field('Title', this.titleInput),
+      field('URL', this.urlInput),
+      field('Alternate / mirror URLs', this.altInput),
+      categoryLabel,
+      field('Icon URL', this.iconInput),
+      field('Hotkey', this.hotkeySelect),
+      this.statusEl,
+      actions,
+    );
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      void this.save();
     });
 
-    const dialog = el('div', {
-      className: 'modal',
-      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Bookmark editor' },
-      children: [header, body],
-    });
-
-    const overlay = el('div', { className: 'modal-overlay', children: [dialog] });
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) {
-        this.close();
-      }
-    });
-    // Escape dismisses the editor. The listener lives on the overlay (which
-    // contains the focused input) so it only fires while the modal is open.
-    overlay.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        this.close();
-      }
-    });
-
-    return overlay;
+    this.dialog.content.appendChild(header);
+    this.dialog.content.appendChild(form);
+    return this.dialog.overlay;
   }
 
   /* ---------------------------------------------------------------- */
@@ -398,6 +450,8 @@ export class BookmarkEditor {
 
     if (!validation.ok || validation.title === undefined || validation.url === undefined) {
       this.statusEl.textContent = validation.error ?? 'Check the form and try again.';
+      this.urlInput.setAttribute('aria-invalid', 'true');
+      this.urlInput.focus();
       return;
     }
 

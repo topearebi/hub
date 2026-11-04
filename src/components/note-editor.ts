@@ -6,9 +6,12 @@
  */
 
 import { el, svg } from '../utils/dom';
+import { confirmDialog, Dialog } from '../utils/dialog';
 import type { NoteItem } from '../types/schemas';
 
 const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
+
+let noteDialogSeq = 0;
 
 /** Warm pastel color tokens (legacy `'neutral'` maps to `'default'`). */
 export const NOTE_COLORS = ['default', 'burgundy', 'amber', 'sage', 'terracotta', 'slate'] as const;
@@ -31,6 +34,9 @@ export interface NoteEditorCallbacks {
 export class NoteEditor {
   readonly element: HTMLElement;
 
+  private readonly dialog: Dialog;
+  private readonly titleId: string;
+  private readonly statusId: string;
   private readonly titleInput: HTMLInputElement;
   private readonly contentInput: HTMLTextAreaElement;
   private readonly colorRow: HTMLElement;
@@ -38,8 +44,17 @@ export class NoteEditor {
 
   private note: NoteItem | null = null;
   private selectedColor: NoteColor = 'default';
+  private initialSnapshot = '';
 
   constructor(private readonly callbacks: NoteEditorCallbacks) {
+    noteDialogSeq += 1;
+    this.titleId = `note-editor-title-${noteDialogSeq}`;
+    this.dialog = new Dialog({
+      labelledBy: this.titleId,
+      sheet: true,
+      onRequestClose: () => this.requestClose(),
+    });
+
     this.titleInput = el('input', {
       className: 'note-editor__title',
       attrs: { type: 'text', placeholder: 'Title', 'aria-label': 'Note title' },
@@ -52,10 +67,12 @@ export class NoteEditor {
       className: 'note-editor__colors',
       attrs: { role: 'radiogroup', 'aria-label': 'Note color' },
     });
+    this.statusId = `note-editor-status-${noteDialogSeq}`;
     this.statusEl = el('p', {
       className: 'settings-status',
-      attrs: { role: 'status', 'aria-live': 'polite' },
+      attrs: { id: this.statusId, role: 'status', 'aria-live': 'polite' },
     });
+    this.titleInput.setAttribute('aria-describedby', this.statusId);
 
     this.element = this.build();
   }
@@ -67,13 +84,44 @@ export class NoteEditor {
     this.selectedColor = normalizeNoteColor(note.color_tag);
     this.renderColors();
     this.statusEl.textContent = '';
-    this.element.classList.add('is-open');
-    this.titleInput.focus();
+    this.titleInput.removeAttribute('aria-invalid');
+    this.dialog.open(this.titleInput);
+    this.initialSnapshot = this.snapshot();
+  }
+
+  private snapshot(): string {
+    return [this.titleInput.value, this.contentInput.value, this.selectedColor].join('\u0000');
+  }
+
+  private isDirty(): boolean {
+    return this.snapshot() !== this.initialSnapshot;
+  }
+
+  /** Close, guarding unsaved edits (G-40). */
+  private requestClose(): void {
+    if (!this.isDirty()) {
+      this.close();
+      return;
+    }
+    void confirmDialog({
+      title: 'Discard changes?',
+      message: 'You have unsaved changes. Discard them?',
+      confirmLabel: 'Discard',
+      danger: true,
+    }).then((ok) => {
+      if (ok) {
+        this.close();
+      }
+    });
   }
 
   close(): void {
-    this.element.classList.remove('is-open');
+    this.dialog.close();
     this.note = null;
+  }
+
+  isOpen(): boolean {
+    return this.dialog.isOpen();
   }
 
   private build(): HTMLElement {
@@ -82,17 +130,24 @@ export class NoteEditor {
       attrs: { type: 'button', 'aria-label': 'Close note editor' },
     });
     closeButton.appendChild(svg(ICON_CLOSE));
-    closeButton.addEventListener('click', () => this.close());
+    closeButton.addEventListener('click', () => this.requestClose());
 
-    const title = el('h2', { className: 'modal__title', text: 'Edit note' });
+    const title = el('h2', {
+      className: 'modal__title',
+      attrs: { id: this.titleId },
+      text: 'Edit note',
+    });
     const header = el('header', { className: 'modal__header', children: [title, closeButton] });
 
     const saveButton = el('button', {
       className: 'button button--primary',
       text: 'Save',
-      attrs: { type: 'button' },
+      attrs: { type: 'submit' },
     });
-    saveButton.addEventListener('click', () => {
+    // `type=submit` gives Enter-to-submit; the click handler guarantees a save
+    // even where implicit form submission is unavailable.
+    saveButton.addEventListener('click', (event) => {
+      event.preventDefault();
       void this.save();
     });
 
@@ -113,31 +168,16 @@ export class NoteEditor {
       children: [deleteButton, saveButton],
     });
 
-    const body = el('div', {
-      className: 'modal__body',
-      children: [this.titleInput, this.contentInput, this.colorRow, this.statusEl, actions],
+    const form = el('form', { className: 'modal__body', attrs: { novalidate: '' } });
+    form.append(this.titleInput, this.contentInput, this.colorRow, this.statusEl, actions);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      void this.save();
     });
 
-    const dialog = el('div', {
-      className: 'modal',
-      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Edit note' },
-      children: [header, body],
-    });
-    const overlay = el('div', { className: 'modal-overlay', children: [dialog] });
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) {
-        this.close();
-      }
-    });
-    // Escape dismisses the editor. The listener lives on the overlay (which
-    // contains the focused input) so it only fires while the modal is open.
-    overlay.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        this.close();
-      }
-    });
-    return overlay;
+    this.dialog.content.appendChild(header);
+    this.dialog.content.appendChild(form);
+    return this.dialog.overlay;
   }
 
   private renderColors(): void {
@@ -168,6 +208,8 @@ export class NoteEditor {
     const content = this.contentInput.value;
     if (title.length === 0 && content.trim().length === 0) {
       this.statusEl.textContent = 'Add a title or some content first.';
+      this.titleInput.setAttribute('aria-invalid', 'true');
+      this.titleInput.focus();
       return;
     }
     await this.callbacks.onSave({

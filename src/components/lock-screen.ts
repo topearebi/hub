@@ -7,9 +7,18 @@
  */
 
 import { el, svg } from '../utils/dom';
+import { setBackgroundInert, trapFocus } from '../utils/dialog';
 
 const ICON_LOCK =
   'M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2zM8 11V7a4 4 0 0 1 8 0v4';
+
+/**
+ * True while the lock overlay is showing. Global shortcut handlers consult this
+ * so `/`, `Alt+digit` and app hotkeys cannot act behind the lock (G-29).
+ */
+export function isLockScreenOpen(): boolean {
+  return document.querySelector('.lock-overlay.is-open') !== null;
+}
 
 export interface LockScreenOptions {
   /** Performs the WebAuthn assertion. Resolves true when unlocked. */
@@ -24,6 +33,8 @@ export class LockScreen {
   private readonly statusEl: HTMLElement;
   private readonly button: HTMLButtonElement;
   private busy = false;
+  private releaseTrap: (() => void) | null = null;
+  private releaseInert: (() => void) | null = null;
 
   constructor(private readonly options: LockScreenOptions) {
     const icon = svg(ICON_LOCK, { className: 'lock__icon', size: 40 });
@@ -58,11 +69,20 @@ export class LockScreen {
 
   open(): void {
     this.element.classList.add('is-open');
+    // The lock blocks the whole app: trap focus inside the overlay and inert the
+    // background. There is intentionally no Escape handler — only a successful
+    // verification unlocks.
+    this.releaseInert = setBackgroundInert(this.element);
+    this.releaseTrap = trapFocus(this.element);
     this.button.focus();
   }
 
   close(): void {
     this.element.classList.remove('is-open');
+    this.releaseTrap?.();
+    this.releaseTrap = null;
+    this.releaseInert?.();
+    this.releaseInert = null;
   }
 
   private async attempt(): Promise<void> {

@@ -141,3 +141,101 @@ describe('task cascade delete', () => {
     expect(store.activeTasks.map((t) => t.id)).toEqual([]);
   });
 });
+
+describe('profile cascade delete & restore (SCHEMAS.md §5.4)', () => {
+  it('tombstones the profile and its items together, then restores exactly those', async () => {
+    await store.init();
+    const now = Date.now();
+
+    await store.upsertProfile({ id: 'p2', created_at: now, updated_at: now, name: 'Work' });
+    await store.upsertCategory({
+      id: 'c2',
+      created_at: now,
+      updated_at: now,
+      profile_id: 'p2',
+      name: 'Work',
+      order: 0,
+    });
+    await store.upsertBookmark({
+      id: 'b2',
+      created_at: now,
+      updated_at: now,
+      profile_id: 'p2',
+      title: 'W',
+      url: 'https://w.test',
+      category_id: 'c2',
+    });
+    await store.upsertTask({
+      id: 't2',
+      created_at: now,
+      updated_at: now,
+      profile_id: 'p2',
+      title: 'T',
+      completed: false,
+      completed_at: null,
+    });
+    await store.upsertNote({
+      id: 'n2',
+      created_at: now,
+      updated_at: now,
+      profile_id: 'p2',
+      title: 'N',
+      content: 'x',
+    });
+    // An item deleted individually *before* the profile keeps its own timestamp.
+    await store.upsertBookmark({
+      id: 'b3',
+      created_at: now,
+      updated_at: now - 1000,
+      profile_id: 'p2',
+      title: 'Old',
+      url: 'https://old.test',
+      category_id: 'c2',
+      is_deleted: true,
+    });
+
+    await store.setActiveProfile('p2');
+    const deleteAt = now + 5000;
+    await store.softDeleteProfile('p2', deleteAt);
+
+    // The profile and its live children are tombstoned with the shared timestamp.
+    expect(store.profiles.some((p) => p.id === 'p2')).toBe(false);
+    expect(store.activeBookmarks.map((b) => b.id)).not.toContain('b2');
+    expect(store.getBookmark('b3')?.updated_at).toBe(now - 1000);
+
+    // The deleted profile is listed with the counts a restore would revive.
+    const entry = store.deletedProfiles.find((e) => e.profile.id === 'p2');
+    expect(entry?.counts).toEqual({ bookmarks: 1, tasks: 1, notes: 1, categories: 1 });
+
+    // Restore revives exactly the cascaded records.
+    const restoreAt = deleteAt + 5000;
+    await store.restoreProfile('p2', restoreAt);
+    expect(store.profiles.some((p) => p.id === 'p2')).toBe(true);
+    await store.setActiveProfile('p2');
+    expect(store.activeBookmarks.map((b) => b.id)).toContain('b2');
+    expect(store.activeTasks.map((t) => t.id)).toContain('t2');
+    expect(store.activeNotes.map((n) => n.id)).toContain('n2');
+    // The individually deleted item stays deleted.
+    expect(store.activeBookmarks.map((b) => b.id)).not.toContain('b3');
+  });
+
+  it('permanently removes a deleted profile and all of its records', async () => {
+    await store.init();
+    const now = Date.now();
+    await store.upsertProfile({ id: 'p3', created_at: now, updated_at: now, name: 'Temp' });
+    await store.upsertBookmark({
+      id: 'b4',
+      created_at: now,
+      updated_at: now,
+      profile_id: 'p3',
+      title: 'X',
+      url: 'https://x.test',
+      category_id: 'c3',
+    });
+    await store.softDeleteProfile('p3', now + 1);
+    await store.permanentlyDeleteProfile('p3');
+
+    expect(store.getBookmark('b4')).toBeUndefined();
+    expect(store.deletedProfiles.some((e) => e.profile.id === 'p3')).toBe(false);
+  });
+});

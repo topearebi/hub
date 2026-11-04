@@ -209,15 +209,16 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .tile {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-lg) var(--space-md);
+  align-items: stretch;
   text-align: center;
   background-color: var(--bg-card);
   border: 1px solid var(--border-control);
@@ -230,6 +231,24 @@
     transform var(--dur-fast),
     border-color var(--dur-fast),
     box-shadow var(--dur-fast);
+}
+
+/* The primary activation target; a sibling "more" button handles actions so
+   interactive content is never nested (G-32). */
+.tile__open {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-lg) var(--space-md);
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .tile:hover {
@@ -312,6 +331,9 @@
 }
 
 .toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
   max-width: min(90vw, 480px);
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-md);
@@ -320,11 +342,45 @@
   color: var(--text-main);
   box-shadow: var(--shadow-2);
   font-size: var(--font-size-sm);
+  pointer-events: auto;
   opacity: 0;
   transform: translateY(8px);
   transition:
     opacity var(--dur),
     transform var(--dur);
+}
+
+.toast__message {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast__action {
+  flex: none;
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-subtle);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.toast__dismiss {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-sub);
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .toast--visible {
@@ -668,12 +724,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: 22px;
   height: 22px;
   margin-top: 1px;
+  border: none;
+  background: transparent;
   color: var(--text-faint);
   cursor: grab;
   opacity: 0;
+  touch-action: none;
   transition: opacity var(--dur-fast);
 }
 
@@ -1590,5 +1649,576 @@
   .note-swatch {
     forced-color-adjust: none;
     border: 1px solid CanvasText;
+  }
+}
+
+/* ================================================================== */
+/* Phase 4 — Touch parity (G-20..G-27, G-31..G-34)                    */
+/* ================================================================== */
+
+/* Tile "more" affordance: reachable by touch, keyboard and hover (G-23). */
+.tile__more {
+  position: absolute;
+  top: var(--space-xs);
+  inset-inline-end: var(--space-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background-color: color-mix(in srgb, var(--bg-card) 82%, transparent);
+  color: var(--text-sub);
+  cursor: pointer;
+  opacity: 0;
+  touch-action: manipulation;
+}
+
+.tile:hover .tile__more,
+.tile:focus-within .tile__more,
+.tile__more:focus-visible {
+  opacity: 1;
+}
+
+/* Keep the hotkey hint clear of the more button. */
+.tile__hotkey {
+  inset-inline-start: var(--space-sm);
+  inset-inline-end: auto;
+}
+
+/* Note card restructure: an open button + a sibling toolbar (G-32). */
+.note__open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Mobile tab bar: icon + label + count (G-15). */
+.mobile-tabs__button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.mobile-tabs__icon {
+  color: inherit;
+}
+
+.mobile-tabs__label {
+  font-size: var(--font-size-xs);
+}
+
+.mobile-tabs__count {
+  min-width: 1.25em;
+  padding: 0 var(--space-2xs);
+  border-radius: var(--radius-pill);
+  background-color: var(--accent-terracotta);
+  color: var(--on-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.mobile-tabs__button[aria-current='page'] .mobile-tabs__icon,
+.mobile-tabs__button[aria-current='page'] .mobile-tabs__label {
+  color: var(--accent-terracotta-text);
+}
+
+/* ---- Coarse pointers: 44 px hit areas (G-21) ---- */
+@media (pointer: coarse) {
+  .task__check,
+  .task__drag,
+  .task__menu-button,
+  .note__action,
+  .note-swatch,
+  .tile__more,
+  .note-capture__pin {
+    width: 44px;
+    height: 44px;
+  }
+
+  .task-chip {
+    min-height: 44px;
+    padding-block: var(--space-xs);
+  }
+
+  .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* ---- No fine pointer: reveal hover-only controls, hide hotkey hints ---- */
+@media (hover: none) {
+  .task__drag,
+  .task__menu-button,
+  .note__toolbar,
+  .tile__more {
+    opacity: 1;
+  }
+
+  /* Keyboard hints are meaningless without a keyboard (G-26). */
+  .tile__hotkey,
+  .omnibar__hint,
+  .omnibar__result-hotkey {
+    display: none;
+  }
+}
+
+/* ---- Non-colour cue for the sync dot (G-34) ---- */
+.sync-status {
+  position: relative;
+}
+
+/* ---- Skip link (G-32) ---- */
+.skip-link {
+  position: absolute;
+  top: var(--space-sm);
+  inset-inline-start: var(--space-sm);
+  z-index: var(--z-toast);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border-control);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* ---- Keyboard shortcuts overlay (G-26) ---- */
+.shortcuts-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.shortcuts-list__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.shortcut-key {
+  flex: none;
+  min-width: 7em;
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-subtle);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+
+/* ---- Screen-reader-only content (live regions, hidden labels) ---- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Loading skeleton (G-41) ---- */
+.skeleton {
+  min-height: 100dvh;
+  background-color: var(--bg-app);
+  background-image: linear-gradient(
+    90deg,
+    var(--bg-subtle) 25%,
+    var(--bg-card) 50%,
+    var(--bg-subtle) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ---- Bootstrap error boundary (G-41) ---- */
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  max-width: 32rem;
+  margin: 15vh auto 0;
+  padding: var(--space-xl);
+  text-align: center;
+}
+
+.error-boundary__title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  color: var(--text-main);
+}
+
+/* ---- Omnibar match highlight (G-30) ---- */
+.omnibar__match {
+  background-color: transparent;
+  color: var(--accent-terracotta-text);
+  font-weight: 600;
+}
+
+/* ---- Destructive action button (DESIGN.md §9) ---- */
+.button--danger {
+  background-color: var(--accent-terracotta);
+  border-color: var(--accent-terracotta);
+  color: var(--on-accent);
+}
+
+.button--danger:hover {
+  background-color: color-mix(in srgb, var(--accent-terracotta) 88%, var(--text-main));
+}
+
+/* ---- Bottom-sheet dialogs on phones (DESIGN.md §5.3, §6.7) ---- */
+@media (max-width: 640px) {
+  .modal--sheet {
+    align-self: flex-end;
+    width: 100%;
+    max-width: none;
+    max-height: 92dvh;
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+}
+
+/* ================================================================== */
+/* Phase 6 — First-run & information architecture (G-39, G-42, G-44)  */
+/* ================================================================== */
+
+/* ---- Guided empty state (G-39, G-60) ---- */
+.empty-state--guided {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-2xl) var(--space-md);
+  text-align: center;
+}
+
+.empty-state__title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.empty-state__text {
+  margin: 0;
+  max-width: 32rem;
+  color: var(--text-sub);
+  font-size: var(--font-size-md);
+}
+
+.empty-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+
+/* ---- Onboarding welcome card (G-39, DESIGN.md §7) ---- */
+.onboarding {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+  padding: var(--space-lg);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+
+.onboarding[hidden] {
+  display: none;
+}
+
+.onboarding__title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.onboarding__lead {
+  margin: 0;
+  color: var(--text-sub);
+  font-size: var(--font-size-md);
+}
+
+.onboarding__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.onboarding__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.onboarding__tip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-light);
+  color: var(--text-sub);
+  font-size: var(--font-size-sm);
+}
+
+.onboarding__link {
+  padding: var(--space-2xs) var(--space-sm);
+  border: none;
+  background: transparent;
+  color: var(--accent-terracotta-text);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* ---- Status chip (G-44, DESIGN.md §6.9) ---- */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  max-width: 15rem;
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-pill);
+  background-color: var(--bg-card);
+  color: var(--text-sub);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.status-chip:hover,
+.status-chip:active {
+  background-color: var(--bg-subtle);
+  color: var(--text-main);
+}
+
+.status-chip__icon {
+  display: inline-flex;
+  flex: none;
+  color: inherit;
+}
+
+.status-chip__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-chip[data-state='synced'] .status-chip__icon {
+  color: var(--accent-sage-text);
+}
+
+.status-chip[data-state='syncing'] .status-chip__icon {
+  color: var(--accent-amber-text);
+}
+
+.status-chip[data-state='error'] .status-chip__icon {
+  color: var(--accent-terracotta-text);
+}
+
+/* ---- Category manager (G-39) ---- */
+.category-manager__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.category-manager__row,
+.category-manager__add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.category-manager__input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.category-manager__action {
+  flex: none;
+}
+
+/* ---- Recently deleted (G-40, DESIGN.md §9.1) ---- */
+.recently-deleted__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.recently-deleted__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+.recently-deleted__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.recently-deleted__name {
+  color: var(--text-main);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.recently-deleted__meta {
+  color: var(--text-sub);
+  font-size: var(--font-size-xs);
+}
+
+.recently-deleted__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/* ---- Settings sections (G-42, DESIGN.md §6.12) ---- */
+.settings-select {
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.field__help,
+.settings-help {
+  margin: 0;
+  color: var(--text-sub);
+  font-size: var(--font-size-xs);
+}
+
+.settings-token-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.settings-token-status[hidden] {
+  display: none;
+}
+
+.settings-token-status__label {
+  color: var(--accent-sage-text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.settings-advanced {
+  gap: var(--space-sm);
+}
+
+.settings-advanced__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0;
+  border: none;
+  background: transparent;
+  color: var(--text-sub);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.settings-advanced__toggle svg {
+  transition: transform var(--dur-fast);
+}
+
+.settings-advanced__toggle.is-open svg {
+  transform: rotate(180deg);
+}
+
+.settings-advanced__region {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.settings-advanced__region[hidden] {
+  display: none;
+}
+
+/* ---- Install guidance steps ---- */
+.install-steps {
+  margin: 0;
+  padding-inline-start: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  color: var(--text-main);
+}
+
+/* ---- Coarse pointers: 44 px hit areas for the new controls ---- */
+@media (pointer: coarse) {
+  .status-chip,
+  .onboarding__link,
+  .settings-advanced__toggle {
+    min-height: 44px;
   }
 }

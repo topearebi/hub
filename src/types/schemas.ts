@@ -258,6 +258,17 @@ export interface AppConfig {
 
   /** Base64url credential id of the registered platform authenticator. */
   app_lock_credential_id?: string;
+
+  /* ---- Production-readiness additions (local-only, never synced; approved v1.2) ---- */
+
+  /** True once the first-run welcome card has been completed or dismissed. */
+  onboarding_completed?: boolean;
+
+  /** ISO-8601 timestamp of the last time the user dismissed the install prompt/card. */
+  install_prompt_dismissed_at?: string;
+
+  /** Result of the last `navigator.storage.persist()` request (true = durable storage granted). */
+  storage_persisted?: boolean;
 }
 
 /**

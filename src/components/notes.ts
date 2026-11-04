@@ -52,6 +52,8 @@ export interface NotesStore {
   readonly activeProfileId: string | null;
   upsertNote(item: NoteItem): Promise<void>;
   softDeleteNote(id: string): Promise<void>;
+  /** Restore a soft-deleted note (undo). */
+  restoreNote?(id: string): Promise<void>;
 }
 
 export interface NotesCallbacks {
@@ -152,7 +154,7 @@ export class NotesDrawer {
     /* ---- Edit modal ---- */
     this.editor = new NoteEditor({
       onSave: (note) => this.store.upsertNote(note),
-      onDelete: (id) => this.store.softDeleteNote(id),
+      onDelete: (id) => this.deleteNote(id),
     });
     document.body.appendChild(this.editor.element);
 
@@ -197,7 +199,7 @@ export class NotesDrawer {
 
   /** True when the note edit modal is open. */
   isEditorOpen(): boolean {
-    return this.editor.element.classList.contains('is-open');
+    return this.editor.isOpen();
   }
 
   /** Close the note edit modal (used by the gamepad Back action). */
@@ -296,19 +298,26 @@ export class NotesDrawer {
   }
 
   private renderNote(note: NoteItem): HTMLElement {
-    const card = el('article', {
-      className: `note ${noteColorClass(note.color_tag)}`,
-      attrs: { tabindex: '0', role: 'button', 'aria-label': `Edit ${note.title}` },
-    });
+    const card = el('article', { className: `note ${noteColorClass(note.color_tag)}` });
 
+    // The open action is a real button; the toolbar is a sibling, so
+    // interactive content is never nested inside another control (G-32).
+    const open = el('button', {
+      className: 'note__open',
+      attrs: { type: 'button', 'aria-label': `Edit ${note.title}` },
+    });
     if (note.title.trim().length > 0) {
-      card.appendChild(el('h4', { className: 'note__title', text: note.title }));
+      open.appendChild(el('h4', { className: 'note__title', text: note.title }));
     }
     if (note.content.trim().length > 0) {
-      card.appendChild(el('pre', { className: 'note__content', text: note.content }));
+      open.appendChild(el('pre', { className: 'note__content', text: note.content }));
     }
+    open.addEventListener('click', () => this.editor.open(note));
 
-    const toolbar = el('div', { className: 'note__toolbar' });
+    const toolbar = el('div', {
+      className: 'note__toolbar',
+      attrs: { role: 'group', 'aria-label': `Actions for ${note.title}` },
+    });
     toolbar.appendChild(
       this.toolbarButton(ICON_PALETTE, 'Change color', () => this.cycleColor(note)),
     );
@@ -317,25 +326,26 @@ export class NotesDrawer {
     );
     toolbar.appendChild(this.toolbarButton(ICON_COPY, 'Copy', () => void this.copyNote(note)));
     toolbar.appendChild(
-      this.toolbarButton(ICON_TRASH, 'Delete', () => void this.store.softDeleteNote(note.id)),
+      this.toolbarButton(ICON_TRASH, 'Delete', () => void this.deleteNote(note.id)),
     );
+
+    card.appendChild(open);
     card.appendChild(toolbar);
-
-    const openEditor = (): void => this.editor.open(note);
-    card.addEventListener('click', (event) => {
-      if ((event.target as HTMLElement).closest('.note__toolbar')) {
-        return;
-      }
-      openEditor();
-    });
-    card.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        openEditor();
-      }
-    });
-
     return card;
+  }
+
+  /** Delete a note with an undo affordance (G-40). */
+  private async deleteNote(id: string): Promise<void> {
+    await this.store.softDeleteNote(id);
+    showToast('Note deleted.', {
+      variant: 'info',
+      action: {
+        label: 'Undo',
+        onSelect: () => {
+          void this.store.restoreNote?.(id);
+        },
+      },
+    });
   }
 
   private toolbarButton(icon: string, label: string, onClick: () => void): HTMLElement {

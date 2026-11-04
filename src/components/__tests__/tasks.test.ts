@@ -4,6 +4,10 @@ import {
   TasksDrawer,
   buildTaskTree,
   completedTasks,
+  computeIndent,
+  computeMoveDown,
+  computeMoveUp,
+  computeOutdent,
   computeTaskMove,
   isDescendantOf,
   sortTasks,
@@ -326,5 +330,54 @@ describe('computeTaskMove', () => {
 
   it('rejects dropping a task onto itself', () => {
     expect(computeTaskMove(tasks, 'a', 'a', 'before')).toBeNull();
+  });
+});
+
+describe('move actions (G-24)', () => {
+  const tasks: TaskItem[] = [
+    makeTask({ id: 'a', title: 'A', created_at: 1, order: 0 }),
+    makeTask({ id: 'b', title: 'B', created_at: 2, order: 1 }),
+    makeTask({ id: 'c', title: 'C', created_at: 3, order: 2 }),
+  ];
+
+  it('moves a task up before its previous sibling', () => {
+    const updated = computeMoveUp(tasks, 'b');
+    expect(sortTasks(updated ?? []).map((t) => t.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('returns null when the task is already first', () => {
+    expect(computeMoveUp(tasks, 'a')).toBeNull();
+  });
+
+  it('moves a task down after its next sibling', () => {
+    const updated = computeMoveDown(tasks, 'a');
+    expect(sortTasks(updated ?? []).map((t) => t.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('returns null when the task is already last', () => {
+    expect(computeMoveDown(tasks, 'c')).toBeNull();
+  });
+
+  it('indents a task under its previous sibling', () => {
+    const updated = computeIndent(tasks, 'b');
+    expect(updated?.find((t) => t.id === 'b')?.parent_id).toBe('a');
+  });
+
+  it('returns null when there is no previous sibling to indent under', () => {
+    expect(computeIndent(tasks, 'a')).toBeNull();
+  });
+
+  it('outdents a task to sit after its parent', () => {
+    const nested: TaskItem[] = [
+      makeTask({ id: 'p', title: 'P', created_at: 1, order: 0 }),
+      makeTask({ id: 'c', title: 'C', created_at: 2, order: 0, parent_id: 'p' }),
+      makeTask({ id: 'd', title: 'D', created_at: 3, order: 1 }),
+    ];
+    const updated = computeOutdent(nested, 'c');
+    expect(updated?.find((t) => t.id === 'c')?.parent_id).toBeNull();
+  });
+
+  it('returns null when outdenting a root task', () => {
+    expect(computeOutdent(tasks, 'a')).toBeNull();
   });
 });

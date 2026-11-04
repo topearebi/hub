@@ -104,7 +104,7 @@ describe('NotesDrawer editor controls', () => {
 
     expect(drawer.isEditorOpen()).toBe(false);
 
-    drawer.element.querySelector<HTMLElement>('.note')?.click();
+    drawer.element.querySelector<HTMLElement>('.note__open')?.click();
     expect(drawer.isEditorOpen()).toBe(true);
 
     drawer.closeEditor();
