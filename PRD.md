@@ -10,7 +10,7 @@
 
 **Intended Audience:** Autonomous AI Coding Agents, Software Engineers, Systems Architects
 
-**Companion specs:** [`DESIGN.md`](DESIGN.md) v2.0 (visual and interaction design — single source of truth for tokens and layout), [`docs/accessibility.md`](docs/accessibility.md) (WCAG 2.2 AA conformance), [`SCHEMAS.md`](SCHEMAS.md) (data contracts), [`AGENTS.md`](AGENTS.md) (agent rules).
+**Companion specs:** [`DESIGN.md`](DESIGN.md) v2.0 (visual and interaction design — single source of truth for tokens and layout), [`docs/accessibility.md`](docs/accessibility.md) (WCAG 2.2 AA conformance), [`docs/spec-checklist.md`](docs/spec-checklist.md) (pre-implementation checklist; applies to every change to this document), [`SCHEMAS.md`](SCHEMAS.md) (data contracts), [`AGENTS.md`](AGENTS.md) (agent rules).
 
 **Revision note (1.1.0):** Hub is now specified as a **mobile-first** product for quick access to key information on the go. The IP/location/weather telemetry is removed. Requirements for touch parity, accessibility, safety (undo), onboarding, offline status, install/update and storage durability were added (§2, §3, §5.5–5.9, §6, §8, Appendix A).
 

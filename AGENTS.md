@@ -1,12 +1,12 @@
 # `agents.md` — AI Agent Development & Operational Guidelines
 
-**Document Version:** 1.2.0
+**Document Version:** 1.3.0
 
 **Project:** Hub
 
 **Target Runtime:** Autonomous AI Agents (Claude Code, Cursor, Hermes, Copilot Workspace)
 
-**Parent Specs:** `PRD.md` (v1.1.0), `DESIGN.md` (v2.0), `SCHEMAS.md` (v1.4.0), `docs/accessibility.md`
+**Parent Specs:** `PRD.md` (v1.1.0), `DESIGN.md` (v2.0), `SCHEMAS.md` (v1.4.0), `docs/accessibility.md`, `docs/spec-checklist.md`
 
 **Active roadmap:** `plans/production-readiness.md`
 
@@ -104,6 +104,7 @@ The original five build phases (Foundation, Launchpad, Productivity Panes, Sync 
 Rules for working the roadmap:
 
 - Implement phases in the documented order. **Do not start a phase until the previous phase's exit criteria are verified.** Phases 2 and 3 unblock 4–7.
+- Before implementing a new feature or changing a requirement, complete the pre-implementation checklist and feature spec template in [`docs/spec-checklist.md`](docs/spec-checklist.md). A spec that is silent on touch, accessibility, offline, recovery or privacy is not ready to build.
 - Reference gap IDs (`G-xx`) in commit messages and tests (e.g. `fix(tasks): use local date for today chip (G-57)`).
 - Each phase adds tests for the behaviour it introduces and updates the relevant spec if reality differs (specs and code must never drift).
 - Record before/after metrics in `plans/production-readiness.md` §6.
@@ -167,4 +168,5 @@ Before declaring any ticket or stage complete, the agent must verify:
 - [ ] **Responsive:** checked at 320, 390, 768, 1280 and 1920 px, portrait and landscape; safe areas and `dvh` respected.
 - [ ] **Safety:** deletes are undoable or confirmed; dirty forms are guarded; async actions always resolve to a visible success or error.
 - [ ] **Network:** the change adds no request to any host other than same-origin or `api.github.com`.
+- [ ] The pull request template (`.github/pull_request_template.md`) is completed, including evidence (screenshots at phone and desktop sizes, devices and assistive technology tested); for UI changes "tests pass" alone is not sufficient.
 - [ ] Specs updated in the same change if behaviour or tokens changed (`PRD.md`, `DESIGN.md`, `docs/accessibility.md`, `SCHEMAS.md`), and the gap ID (`G-xx`) referenced.

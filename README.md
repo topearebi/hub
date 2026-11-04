@@ -19,6 +19,7 @@ Bring-Your-Own-Storage (BYOS) sync via the GitHub REST API.
 | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | [`PRD.md`](PRD.md)                                               | Product requirements (v1.1.0): scope, functional requirements, verification matrix, release criteria |
 | [`DESIGN.md`](DESIGN.md)                                         | UI/UX design system (v2.0): tokens, responsive tiers, touch rules, components, content               |
+| [`docs/spec-checklist.md`](docs/spec-checklist.md)               | Pre-implementation spec checklist and feature spec template (prevents silent or wrong requirements)  |
 | [`docs/accessibility.md`](docs/accessibility.md)                 | WCAG 2.2 AA conformance spec, keyboard map, ARIA patterns, test procedure                            |
 | [`SCHEMAS.md`](SCHEMAS.md)                                       | Data contracts: entities, IndexedDB layout, sync payload, `AppConfig`                                |
 | [`AGENTS.md`](AGENTS.md)                                         | Rules for AI agents and contributors: constraints, directory map, Definition of Done                 |
