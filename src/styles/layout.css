@@ -404,22 +404,48 @@
 }
 
 /* ================================================================== */
-/* Standalone back/home affordance (DESIGN.md §3, §6.1)               */
+/* App logo / Home navigation affordance (DESIGN.md §3, §6.1)          */
 /* ================================================================== */
 
-/* The Home control is only meaningful in an installed/standalone window. */
+/* Always visible across all display modes as Hub's primary branding and home button. */
 .header-home {
-  display: none;
-}
-
-@media (display-mode: standalone) {
-  .header-home {
-    display: inline-flex;
-  }
-}
-
-/* iOS standalone reports via `navigator.standalone`; the binder adds this
-   class so the affordance appears there too. */
-html.is-standalone .header-home {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  background-color: transparent;
+  padding: 0;
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  transition:
+    background-color var(--dur-fast),
+    border-color var(--dur-fast),
+    transform var(--dur-fast);
+}
+
+.header-home:hover {
+  background-color: var(--state-hover);
+}
+
+.header-home:active {
+  background-color: var(--state-pressed);
+  transform: scale(0.96);
+}
+
+.header-home__logo {
+  display: block;
+  flex-shrink: 0;
+}
+
+.header-home__logo .hub-logo__bg {
+  fill: var(--bg-subtle);
+  transition: fill var(--dur-fast);
+}
+
+.header-home__logo .hub-logo__mark {
+  fill: currentColor;
 }

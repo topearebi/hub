@@ -189,7 +189,7 @@ Additional rules:
 - **Tile grid** uses an intrinsic `repeat(auto-fill, minmax(var(--tile-min), 1fr))` with `--tile-min`: 96 px (A/B), 120 px (C+). A container query on the grid caps columns (no 640 px lock).
 - **Sticky omnibar** has a solid `--bg-app` backing (no content bleed-through) and sits below the safe-area top inset.
 - **Thumb zone:** primary destinations (tab bar) and the add-actions live in the bottom half of the screen on phones. Destructive actions are never placed adjacent to the primary action.
-- **Standalone display:** when `display-mode: standalone` (or iOS `navigator.standalone`) is active, the header shows a Back/Home affordance after in-app navigations and external opens (see §6.1).
+- **Standalone display:** when `display-mode: standalone` (or iOS `navigator.standalone`) is active, the header's Hub app logo navigates back to Home after in-app navigations and external opens (see §6.1).
 - **Window Controls Overlay (desktop Chromium):** implemented, as a progressive enhancement of the installed desktop app. See §3.1 for the full specification.
 - **Print:** `@media print` hides chrome, forces the light palette and prints the active pane's content.
 
@@ -307,7 +307,7 @@ Every component documents: anatomy, states (default · hover · pressed · focus
 
 Full-width bar pinned to the top (below the safe-area inset), `--bg-app`, 1 px bottom `--border-light`. **No telemetry.** (The IP / location / weather cluster is removed — see PRD §2.2.) Content:
 
-- **Left:** Home affordance (standalone only) and the **status chip** (§6.9).
+- **Left:** Hub app logo (functions as Home navigation across all display modes) and the **status chip** (§6.9).
 - **Right:** drawer toggles (tablet+; phones use the tab bar), settings gear, and the active-profile control (avatar + name, collapses to avatar-only < 480 px) opening the profile popover.
 - The header is a page-level `banner` landmark placed **outside** `<main>`. In Window Controls Overlay mode it doubles as the draggable title bar (§3.1).
 - **Profile popover:** a menu (§6.8): profile list as `menuitemradio` (current profile `aria-checked`), then Add profile, Profile settings, App settings.

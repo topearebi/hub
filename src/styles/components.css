@@ -506,7 +506,7 @@
   position: fixed;
   left: 50%;
   /* Lift above the tab bar, the safe area and the on-screen keyboard (G-16). */
-  bottom: calc(var(--space-lg) + env(safe-area-inset-bottom, 0px) + var(--keyboard-inset));
+  bottom: calc(var(--tab-bar-h) + var(--space-md) + var(--keyboard-inset));
   transform: translateX(-50%);
   z-index: var(--z-toast);
   display: flex;

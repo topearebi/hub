@@ -79,6 +79,68 @@ export interface SvgOptions {
   size?: number;
 }
 
+export interface HubLogoOptions {
+  /** Optional class applied to the root `<svg>`. */
+  className?: string;
+  /** Rendered width/height in px (default 24). */
+  size?: number;
+  /** Whether to render the rounded squircle background (default true). */
+  withBackground?: boolean;
+}
+
+/**
+ * Build the official Hub app logo mark as an inline SVG.
+ * Sourced from the 512x512 design space (DESIGN.md §2).
+ */
+export function hubLogoSvg(options: HubLogoOptions = {}): SVGSVGElement {
+  const size = options.size ?? 24;
+  const withBackground = options.withBackground ?? true;
+  const node = document.createElementNS(SVG_NS, 'svg');
+  node.setAttribute('viewBox', '0 0 512 512');
+  node.setAttribute('width', String(size));
+  node.setAttribute('height', String(size));
+  node.setAttribute('aria-hidden', 'true');
+  node.setAttribute('focusable', 'false');
+  if (options.className !== undefined) {
+    node.setAttribute('class', options.className);
+  }
+
+  if (withBackground) {
+    const bg = document.createElementNS(SVG_NS, 'rect');
+    bg.setAttribute('width', '512');
+    bg.setAttribute('height', '512');
+    bg.setAttribute('rx', '112');
+    bg.setAttribute('class', 'hub-logo__bg');
+    node.appendChild(bg);
+  }
+
+  const g = document.createElementNS(SVG_NS, 'g');
+  g.setAttribute('class', 'hub-logo__mark');
+
+  const squares = [
+    { x: 132, y: 132, size: 104, radius: 26, opacity: 1 },
+    { x: 276, y: 132, size: 104, radius: 26, opacity: 0.55 },
+    { x: 132, y: 276, size: 104, radius: 26, opacity: 0.55 },
+    { x: 276, y: 276, size: 104, radius: 26, opacity: 0.3 },
+  ];
+
+  for (const sq of squares) {
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('x', String(sq.x));
+    rect.setAttribute('y', String(sq.y));
+    rect.setAttribute('width', String(sq.size));
+    rect.setAttribute('height', String(sq.size));
+    rect.setAttribute('rx', String(sq.radius));
+    if (sq.opacity < 1) {
+      rect.setAttribute('opacity', String(sq.opacity));
+    }
+    g.appendChild(rect);
+  }
+
+  node.appendChild(g);
+  return node;
+}
+
 /**
  * Build a local, inline SVG icon from a single path `d` string.
  *

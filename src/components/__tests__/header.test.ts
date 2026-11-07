@@ -15,9 +15,16 @@ function makeHeader(overrides: Partial<HeaderCallbacks> = {}): Header {
 }
 
 describe('Header', () => {
-  it('renders a Home affordance', () => {
+  it('renders a Home affordance with the Hub app logo', () => {
     const header = makeHeader();
-    expect(header.element.querySelector('.header-home')).not.toBeNull();
+    const home = header.element.querySelector('.header-home');
+    expect(home).not.toBeNull();
+    expect(home?.getAttribute('aria-label')).toBe('Home');
+    expect(home?.getAttribute('title')).toBe('Home');
+    expect(home?.querySelector('.header-home__logo')).not.toBeNull();
+    expect(home?.querySelector('.hub-logo__mark')).not.toBeNull();
+    expect(home?.querySelector('.hub-logo__bg')).not.toBeNull();
+    expect(home?.querySelector('.header-home__label')).toBeNull();
   });
 
   it('places the status chip in the left cluster (DESIGN.md §6.1)', () => {

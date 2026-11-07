@@ -51,7 +51,12 @@ export function precachePlugin(): Plugin {
       const files = collectFiles(distDir).filter((file) => file !== SW_OUTPUT);
       const urls = files.map((file) => `./${file}`);
 
-      const version = createHash('sha256').update(urls.join('\n')).digest('hex').slice(0, 12);
+      const hasher = createHash('sha256');
+      for (const file of files) {
+        hasher.update(file);
+        hasher.update(readFileSync(join(distDir, file)));
+      }
+      const version = hasher.digest('hex').slice(0, 12);
 
       const template = readFileSync(resolve(root, SW_TEMPLATE), 'utf8');
       const output = template

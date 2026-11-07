@@ -338,7 +338,7 @@ For each entity collection C in [bookmarks, categories, tasks, notes]:
 4. **Update flow:** a new worker waits; Hub shows "A new version of Hub is ready — Reload"; `SKIP_WAITING` is sent only on user action; the page reloads on `controllerchange`. No unconditional `skipWaiting()`.
 5. **Durability:** after first meaningful data entry (or install), call `navigator.storage.persist()`; record the result (`AppConfig.storage_persisted`); Settings → Data shows persistence state and quota estimate with a "Protect my data" action if not persistent, plus a prominent Export backup.
 6. **Homepage/new tab:** `docs/homepage.md` documents setting Hub as the browser homepage/startup page and pinning the installed app; a browser-extension `newtab` override remains v2.
-7. **Standalone navigation:** same-window navigation is retained (§5.1), with the system back gesture returning to Hub and a Home action in the header.
+7. **Standalone navigation:** same-window navigation is retained (§5.1), with the system back gesture returning to Hub and the app logo Home action in the header.
 8. **Native integrations (as supported):** badge with open-task count (also refreshed on resume), share target (text/URL), outbound Web Share on bookmarks and notes, reminders via local notifications and optional Web Push.
 
 ---

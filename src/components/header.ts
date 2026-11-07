@@ -2,13 +2,13 @@
  * Hub System Header
  * -----------------
  * Edge-to-edge header with two clusters (DESIGN.md §6.1):
- *   - Left: the Home affordance (standalone only) and the status chip.
+ *   - Left: Hub app logo (functions as Home navigation) and the status chip.
  *   - Right: drawer toggles and the active-profile control.
  *
  * The profile control opens the profile popover (wired by `main.ts`).
  */
 
-import { el, svg } from '../utils/dom';
+import { el, hubLogoSvg, svg } from '../utils/dom';
 import { t } from '../utils/i18n';
 import { initialOf, safeCssUrl } from '../utils/text';
 import { StatusChip } from './status-chip';
@@ -19,7 +19,6 @@ import type { SyncStatus } from '../core/sync';
 const ICON_TASKS = 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11';
 const ICON_NOTES =
   'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8';
-const ICON_HOME = 'M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5';
 
 export interface HeaderCallbacks {
   onToggleTasks: () => void;
@@ -27,7 +26,7 @@ export interface HeaderCallbacks {
   onOpenProfile: (anchor: HTMLElement) => void;
   /** Open sync details / retry (status chip activation). */
   onOpenSync: () => void;
-  /** Return to the launchpad (standalone back/home affordance). */
+  /** Return to the launchpad (Home affordance). */
   onHome: () => void;
 }
 
@@ -64,15 +63,17 @@ export class Header {
     this.notesToggle.appendChild(svg(ICON_NOTES));
     this.notesToggle.addEventListener('click', () => this.callbacks.onToggleNotes());
 
-    // Standalone back/home affordance (DESIGN.md §3, §6.1). Hidden unless the
-    // app is installed/standalone (see `layout.css`).
+    // App logo Home affordance (DESIGN.md §3, §6.1). Functions as home navigation.
     this.homeButton = el('button', {
       className: 'icon-button header-home',
-      attrs: { type: 'button', 'aria-label': t('header.home') },
+      attrs: {
+        type: 'button',
+        'aria-label': t('header.home'),
+        title: t('header.home'),
+      },
     });
-    this.homeButton.appendChild(svg(ICON_HOME));
     this.homeButton.appendChild(
-      el('span', { className: 'header-home__label', text: t('header.home') }),
+      hubLogoSvg({ size: 28, withBackground: true, className: 'header-home__logo' }),
     );
     this.homeButton.addEventListener('click', () => this.callbacks.onHome());
 

@@ -159,7 +159,12 @@ async function navigateShell(event) {
   try {
     // Prefer the navigation-preload response when the browser provided one.
     const preload = await event.preloadResponse;
-    const response = preload || (await fetch(event.request));
+    const response =
+      preload ||
+      (await fetch(event.request.url, {
+        cache: 'no-cache',
+        headers: { Accept: 'text/html' },
+      }));
     if (isValidShell(response)) {
       cache.put(SHELL_URL, response.clone());
       return response;

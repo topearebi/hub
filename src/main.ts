@@ -471,7 +471,18 @@ async function bootstrap(): Promise<void> {
     onToggleNotes: () => setOpen('notes', !openState.notes),
     onOpenProfile: (anchor) => profilePopover.toggle(anchor),
     onOpenSync: () => settings.open(),
-    onHome: () => navigate(import.meta.env.BASE_URL),
+    onHome: () => {
+      setView('bookmarks');
+      const isBase =
+        window.location.pathname === import.meta.env.BASE_URL ||
+        window.location.pathname === '/' ||
+        window.location.href === new URL(import.meta.env.BASE_URL, window.location.origin).href;
+      if (!isBase) {
+        navigate(import.meta.env.BASE_URL);
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    },
   });
   bindWindowControlsOverlay(header);
 
@@ -1476,12 +1487,27 @@ function registerServiceWorker(): void {
 
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register(`${import.meta.env.BASE_URL}sw.js`)
+      .register(`${import.meta.env.BASE_URL}sw.js`, { updateViaCache: 'none' })
       .then((registration) => {
-        // A worker may already be waiting from a previous session.
+        // Immediately check for updates bypassing HTTP cache.
+        void registration.update();
+
+        // Check for updates when returning to the tab or app.
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            void registration.update();
+          }
+        });
+        window.addEventListener('focus', () => {
+          void registration.update();
+        });
+
+        // If a worker is already waiting from a previous session or reload,
+        // activate it so the page receives the updated bundle.
         if (registration.waiting && navigator.serviceWorker.controller) {
-          promptUpdate(registration.waiting);
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
         }
+
         registration.addEventListener('updatefound', () => {
           const installing = registration.installing;
           if (!installing) {
