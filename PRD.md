@@ -358,7 +358,7 @@ For each entity collection C in [bookmarks, categories, tasks, notes]:
 
 Six tiers are defined in `DESIGN.md` §3. Product-level requirements:
 
-- **Phone portrait (`< 768px`, primary target):** single pane, sticky omnibar at the top, fixed bottom tab bar `[ Bookmarks ] [ Tasks ] [ Notes ]` with icons, labels, an open-task count badge and `aria-current`. Safe areas respected; toasts and the status chip sit above the bar. Tab switches restore scroll position and move focus to the pane heading.
+- **Phone portrait (`< 768px`, primary target):** single pane, sticky omnibar at the top, fixed bottom tab bar `[ Tasks ] [ Bookmarks ] [ Notes ]` with icons, labels, an open-task count badge and `aria-current`. Safe areas respected; toasts and the status chip sit above the bar. Tab switches restore scroll position and move focus to the pane heading.
 - **Phone landscape (short viewport):** the tab bar becomes a side rail; chrome is compacted so content is not squeezed.
 - **Tablet (`768–1023px`):** drawers are overlays with a scrim (tap/Esc to close); pinning is disabled.
 - **Laptop (`1024–1439px`):** one drawer may be pinned (two-column); two pinned drawers require `≥ 1280px`.

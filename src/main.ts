@@ -510,8 +510,8 @@ async function bootstrap(): Promise<void> {
 
   /* ---- Mobile tab bar (icon + label + open-task count) ---- */
   const tabDefs: ReadonlyArray<{ key: ViewKey; label: string; icon: string }> = [
-    { key: 'bookmarks', label: t('app.tabBookmarks'), icon: ICON_TAB_BOOKMARKS },
     { key: 'tasks', label: t('app.tabTasks'), icon: ICON_TAB_TASKS },
+    { key: 'bookmarks', label: t('app.tabBookmarks'), icon: ICON_TAB_BOOKMARKS },
     { key: 'notes', label: t('app.tabNotes'), icon: ICON_TAB_NOTES },
   ];
   const tabButtons = new Map<ViewKey, HTMLButtonElement>();
@@ -585,6 +585,18 @@ async function bootstrap(): Promise<void> {
     },
     onImport: () => settings.triggerImport(),
     onManageCategories: () => categoryManager.open(),
+    onResize: async (bookmark, size) => {
+      const updated: BookmarkItem = {
+        ...bookmark,
+        updated_at: Date.now(),
+      };
+      if (size !== 'small') {
+        updated.card_size = size;
+      } else {
+        delete updated.card_size;
+      }
+      await store.upsertBookmark(updated);
+    },
   });
   bookmarksHost.appendChild(bookmarksView.element);
 

@@ -139,7 +139,7 @@ export function fuzzyScore(query: string, text: string): number | null {
   return qi === q.length ? score : null;
 }
 
-/** Filter and rank bookmarks by fuzzy match against title and URL. */
+/** Filter and rank bookmarks by fuzzy match against title, URL and description. */
 export function filterBookmarks(query: string, bookmarks: readonly BookmarkItem[]): BookmarkItem[] {
   const q = query.trim();
   if (q.length === 0) {
@@ -153,7 +153,8 @@ export function filterBookmarks(query: string, bookmarks: readonly BookmarkItem[
     }
     const titleScore = fuzzyScore(q, bookmark.title);
     const urlScore = fuzzyScore(q, bookmark.url);
-    const best = Math.max(titleScore ?? -1, urlScore ?? -1);
+    const descScore = bookmark.description ? fuzzyScore(q, bookmark.description) : null;
+    const best = Math.max(titleScore ?? -1, urlScore ?? -1, descScore ?? -1);
     if (best >= 0) {
       scored.push({ bookmark, score: best });
     }

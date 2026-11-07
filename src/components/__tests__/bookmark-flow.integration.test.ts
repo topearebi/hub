@@ -244,4 +244,70 @@ describe('BookmarksView context menu', () => {
     delAgain?.click();
     expect(onDelete).toHaveBeenCalledWith(bookmark);
   });
+
+  it('renders wide and large bookmark cards with dynamic descriptions and mirrors', () => {
+    const wideBookmark = makeBookmark({
+      id: 'b_wide',
+      title: 'Wide App',
+      url: 'https://wide.test',
+      card_size: 'wide',
+      description: 'Wide card description',
+    });
+    const largeBookmark = makeBookmark({
+      id: 'b_large',
+      title: 'Large App',
+      url: 'https://large.test',
+      card_size: 'large',
+      description: 'Large card description',
+      alternate_urls: ['https://mirror1.large.test', 'https://mirror2.large.test'],
+    });
+
+    const onActivate = vi.fn();
+    const onOpenAlternate = vi.fn();
+    const onResize = vi.fn();
+
+    const view = new BookmarksView(
+      {
+        activeBookmarks: [wideBookmark, largeBookmark],
+        sortedCategories: [CATEGORY],
+        getRecentBookmarks: () => [],
+        getBookmarksByCategory: () => [wideBookmark, largeBookmark],
+      },
+      {
+        onActivate,
+        onOpenAlternate,
+        onEdit: vi.fn(),
+        onDelete: vi.fn(),
+        onAddBookmark: vi.fn(),
+        onImport: vi.fn(),
+        onManageCategories: vi.fn(),
+        onResize,
+      },
+    );
+    document.body.appendChild(view.element);
+    view.render();
+
+    const wideTile = q<HTMLElement>(view.element, '.tile--size-wide');
+    expect(wideTile).toBeDefined();
+    expect(wideTile.textContent).toContain('Wide card description');
+
+    const largeTile = q<HTMLElement>(view.element, '.tile--size-large');
+    expect(largeTile).toBeDefined();
+    expect(largeTile.textContent).toContain('Large card description');
+
+    // Mirrors rendered on large card
+    const mirrorChips = Array.from(
+      largeTile.querySelectorAll<HTMLButtonElement>('.tile__mirror-chip'),
+    );
+    expect(mirrorChips).toHaveLength(3); // 1 primary + 2 mirrors
+
+    // Click secondary mirror
+    mirrorChips[1]?.click();
+    expect(onOpenAlternate).toHaveBeenCalledWith(largeBookmark, 'https://mirror1.large.test');
+
+    // Cycle size button on wide tile cycles to large
+    const cycleBtn = q<HTMLButtonElement>(wideTile, '.tile__cycle-size');
+    cycleBtn.click();
+    expect(onResize).toHaveBeenCalledWith(wideBookmark, 'large');
+  });
 });

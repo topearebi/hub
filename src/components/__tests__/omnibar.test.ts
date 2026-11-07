@@ -138,6 +138,20 @@ describe('filterBookmarks', () => {
     const results = filterBookmarks('gitlab', bookmarks);
     expect(results.map((b) => b.id)).toEqual(['b2']);
   });
+
+  it('matches on description as well as title and URL', () => {
+    const list: BookmarkItem[] = [
+      makeBookmark({
+        id: 'b1',
+        title: 'Dashboard',
+        url: 'https://dash.test',
+        description: 'Kubernetes monitoring cluster',
+      }),
+      makeBookmark({ id: 'b2', title: 'Repo', url: 'https://repo.test' }),
+    ];
+    const results = filterBookmarks('kuber', list);
+    expect(results.map((b) => b.id)).toEqual(['b1']);
+  });
 });
 
 describe('resolveQuery', () => {

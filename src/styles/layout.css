@@ -147,7 +147,8 @@
 }
 
 /* Drawer toggles are redundant on phones (the tab bar handles navigation). */
-.drawer-toggle {
+.drawer-toggle,
+.icon-button.drawer-toggle {
   display: none;
 }
 
@@ -239,7 +240,8 @@
   }
 
   /* Header drawer toggles replace the tab bar. */
-  .drawer-toggle {
+  .drawer-toggle,
+  .icon-button.drawer-toggle {
     display: inline-flex;
   }
 

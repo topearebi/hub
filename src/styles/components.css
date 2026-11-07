@@ -214,10 +214,35 @@
 .tile-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--tile-min), 1fr));
+  grid-auto-flow: dense;
   gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* Card size footprints (Bento-style launchpad grid) */
+.tile--size-small {
+  grid-column: span 1;
+  grid-row: span 1;
+}
+
+.tile--size-wide {
+  grid-column: span 2;
+  grid-row: span 1;
+}
+
+.tile--size-large {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+
+/* Narrow container guard: prevent overflow when viewport fits only 1 column */
+@container (max-width: 260px) {
+  .tile--size-wide,
+  .tile--size-large {
+    grid-column: span 1;
+  }
 }
 
 /* Tier C+: larger tiles (the height guard excludes landscape-short phones). */
@@ -325,6 +350,146 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   line-height: 1.4;
+}
+
+/* Wide card layout (2x1) */
+.tile--size-wide .tile__open {
+  flex-direction: row;
+  align-items: center;
+  text-align: start;
+  padding: var(--space-md) var(--space-lg);
+  gap: var(--space-md);
+}
+
+.tile--size-wide .tile__icon {
+  flex-shrink: 0;
+}
+
+.tile__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  min-width: 0;
+  flex: 1;
+}
+
+.tile__header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.tile__description {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  line-height: var(--line-height-normal);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.tile__badge--mirrors {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px var(--space-xs);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-subtle);
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+/* Large card layout (2x2) */
+.tile--size-large {
+  text-align: start;
+}
+
+.tile--size-large .tile__open {
+  flex-direction: column;
+  align-items: stretch;
+  text-align: start;
+  padding: var(--space-lg);
+  gap: var(--space-sm);
+}
+
+.tile__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+}
+
+.tile--size-large .tile__icon {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.tile__title-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.tile--size-large .tile__title {
+  font-size: var(--font-size-base);
+  -webkit-line-clamp: 1;
+}
+
+.tile__host {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile--size-large .tile__description {
+  -webkit-line-clamp: 3;
+  font-size: var(--font-size-sm);
+}
+
+.tile__mirrors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-lg) var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+  margin-top: auto;
+}
+
+.tile__mirror-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-pill);
+  background-color: var(--bg-subtle);
+  color: var(--text-sub);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color var(--dur-fast),
+    border-color var(--dur-fast),
+    color var(--dur-fast);
+}
+
+.tile__mirror-chip:hover,
+.tile__mirror-chip:focus-visible {
+  background-color: var(--bg-hover);
+  border-color: var(--focus-color);
+  color: var(--text-main);
+}
+
+.tile__mirror-chip--primary {
+  border-color: var(--border-active);
+  color: var(--text-main);
 }
 
 /* ---- Empty state ---- */
@@ -1666,11 +1831,19 @@
 /* Phase 4 — Touch parity (G-20..G-27, G-31..G-34)                    */
 /* ================================================================== */
 
-/* Tile "more" affordance: reachable by touch, keyboard and hover (G-23). */
-.tile__more {
+/* Tile "more" and cycle affordances: reachable by touch, keyboard and hover (G-23). */
+.tile__actions {
   position: absolute;
   top: var(--space-xs);
   inset-inline-end: var(--space-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  z-index: 2;
+}
+
+.tile__more,
+.tile__cycle-size {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1683,12 +1856,24 @@
   cursor: pointer;
   opacity: 0;
   touch-action: manipulation;
+  transition:
+    opacity var(--dur-fast),
+    background-color var(--dur-fast);
 }
 
 .tile:hover .tile__more,
+.tile:hover .tile__cycle-size,
 .tile:focus-within .tile__more,
-.tile__more:focus-visible {
+.tile:focus-within .tile__cycle-size,
+.tile__more:focus-visible,
+.tile__cycle-size:focus-visible {
   opacity: 1;
+}
+
+.tile__more:hover,
+.tile__cycle-size:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-main);
 }
 
 /* Keep the hotkey hint clear of the more button. */
@@ -1753,6 +1938,7 @@
   .note__action,
   .note-swatch,
   .tile__more,
+  .tile__cycle-size,
   .note-capture__pin {
     width: 44px;
     height: 44px;
@@ -1774,7 +1960,8 @@
   .task__drag,
   .task__menu-button,
   .note__toolbar,
-  .tile__more {
+  .tile__more,
+  .tile__cycle-size {
     opacity: 1;
   }
 

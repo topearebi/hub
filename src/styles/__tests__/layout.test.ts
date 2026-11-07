@@ -54,6 +54,19 @@ describe('layout.css responsive tiers (DESIGN.md §3)', () => {
     const wide = LAYOUT.slice(LAYOUT.indexOf('(min-width: 1440px)'));
     expect(wide).toContain('.app-shell--both-pinned');
   });
+
+  it('hides drawer toggles on phones and reveals them on tablets (DESIGN.md §3)', () => {
+    // Phone tier hides drawer toggles with high specificity to beat .icon-button
+    expect(LAYOUT).toContain('.icon-button.drawer-toggle');
+    const phoneRules = LAYOUT.slice(0, LAYOUT.indexOf('(min-width: 768px)'));
+    expect(phoneRules).toContain('.drawer-toggle,\n.icon-button.drawer-toggle {\n  display: none;');
+
+    // Tablet tier reveals drawer toggles
+    const tabletRules = LAYOUT.slice(LAYOUT.indexOf('(min-width: 768px)'));
+    expect(tabletRules).toContain(
+      '.drawer-toggle,\n  .icon-button.drawer-toggle {\n    display: inline-flex;',
+    );
+  });
 });
 
 describe('components.css responsive behaviour', () => {

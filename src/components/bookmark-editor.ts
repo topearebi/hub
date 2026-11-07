@@ -17,7 +17,7 @@ import { t } from '../utils/i18n';
 import { hostnameOf } from '../core/fallback';
 import { newId } from '../utils/crypto';
 import { isUrlLike, normalizeUrl } from './omnibar';
-import type { BookmarkItem, CategoryItem } from '../types/schemas';
+import type { BookmarkCardSize, BookmarkItem, CategoryItem } from '../types/schemas';
 
 const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
 
@@ -28,6 +28,13 @@ export const NEW_CATEGORY = '__new__';
 /** Valid `Alt + [1-9]` hotkey slots (mirrors `BookmarkItem.hotkey`). */
 export const HOTKEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const;
 export type Hotkey = (typeof HOTKEYS)[number];
+
+export const CARD_SIZES: readonly BookmarkCardSize[] = ['small', 'wide', 'large'] as const;
+
+/** Coerce a card size value to a valid BookmarkCardSize, defaulting to 'small'. */
+export function normalizeCardSize(value: string | undefined): BookmarkCardSize {
+  return value === 'wide' || value === 'large' ? value : 'small';
+}
 
 /* ------------------------------------------------------------------ */
 /* Pure helpers (unit-tested)                                          */
@@ -69,6 +76,8 @@ export interface BookmarkFormInput {
   title: string;
   url: string;
   alternateText: string;
+  descriptionText?: string;
+  cardSize?: BookmarkCardSize | string;
   hotkey: string;
 }
 
@@ -85,6 +94,8 @@ export interface BookmarkValidation {
   title?: string | undefined;
   url?: string | undefined;
   alternateUrls?: string[] | undefined;
+  description?: string | undefined;
+  cardSize?: BookmarkCardSize | undefined;
   hotkey?: Hotkey | undefined;
 }
 
@@ -118,7 +129,17 @@ export function validateBookmarkForm(
   }
 
   const title = input.title.trim() || hostnameOf(url) || url;
-  return { ok: true, title, url, alternateUrls, hotkey };
+  const description = input.descriptionText ? input.descriptionText.trim() : undefined;
+  const cardSize = input.cardSize ? normalizeCardSize(input.cardSize) : 'small';
+  return {
+    ok: true,
+    title,
+    url,
+    alternateUrls,
+    description: description && description.length > 0 ? description : undefined,
+    cardSize,
+    hotkey,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -157,6 +178,8 @@ export class BookmarkEditor {
   private readonly titleInput: HTMLInputElement;
   private readonly urlInput: HTMLInputElement;
   private readonly altInput: HTMLTextAreaElement;
+  private readonly descriptionInput: HTMLTextAreaElement;
+  private readonly cardSizeSelect: HTMLSelectElement;
   private readonly categorySelect: HTMLSelectElement;
   private readonly newCategoryInput: HTMLInputElement;
   private readonly newCategoryRow: HTMLElement;
@@ -202,6 +225,27 @@ export class BookmarkEditor {
         rows: '3',
       },
     });
+    this.descriptionInput = el('textarea', {
+      className: 'drawer__textarea',
+      attrs: {
+        placeholder: t('bookmarkEditor.descriptionPlaceholder'),
+        'aria-label': t('bookmarkEditor.descriptionAria'),
+        rows: '2',
+      },
+    });
+    this.cardSizeSelect = el('select', {
+      className: 'drawer__select',
+      attrs: { 'aria-label': t('bookmarkEditor.cardSizeAria') },
+    });
+    this.cardSizeSelect.appendChild(
+      el('option', { text: t('bookmarkEditor.sizeSmall'), attrs: { value: 'small' } }),
+    );
+    this.cardSizeSelect.appendChild(
+      el('option', { text: t('bookmarkEditor.sizeWide'), attrs: { value: 'wide' } }),
+    );
+    this.cardSizeSelect.appendChild(
+      el('option', { text: t('bookmarkEditor.sizeLarge'), attrs: { value: 'large' } }),
+    );
     this.categorySelect = el('select', {
       className: 'drawer__select',
       attrs: { 'aria-label': t('bookmarkEditor.categoryAria') },
@@ -284,6 +328,8 @@ export class BookmarkEditor {
     this.titleInput.value = bookmark?.title ?? prefill?.title ?? '';
     this.urlInput.value = bookmark?.url ?? prefill?.url ?? '';
     this.altInput.value = (bookmark?.alternate_urls ?? []).join('\n');
+    this.descriptionInput.value = bookmark?.description ?? '';
+    this.cardSizeSelect.value = bookmark?.card_size ?? 'small';
     this.iconInput.value = bookmark?.icon ?? '';
     this.hotkeySelect.value = bookmark?.hotkey ?? '';
     this.newCategoryInput.value = '';
@@ -303,6 +349,8 @@ export class BookmarkEditor {
       this.titleInput.value,
       this.urlInput.value,
       this.altInput.value,
+      this.descriptionInput.value,
+      this.cardSizeSelect.value,
       this.iconInput.value,
       this.hotkeySelect.value,
       this.categorySelect.value,
@@ -386,6 +434,8 @@ export class BookmarkEditor {
     form.append(
       field(t('bookmarkEditor.fieldTitle'), this.titleInput),
       field(t('bookmarkEditor.fieldUrl'), this.urlInput),
+      field(t('bookmarkEditor.fieldDescription'), this.descriptionInput),
+      field(t('bookmarkEditor.fieldCardSize'), this.cardSizeSelect),
       field(t('bookmarkEditor.fieldAlt'), this.altInput),
       categoryLabel,
       field(t('bookmarkEditor.fieldIcon'), this.iconInput),
@@ -459,6 +509,8 @@ export class BookmarkEditor {
         title: this.titleInput.value,
         url: this.urlInput.value,
         alternateText: this.altInput.value,
+        descriptionText: this.descriptionInput.value,
+        cardSize: this.cardSizeSelect.value,
         hotkey: this.hotkeySelect.value,
       },
       { bookmarks: this.store.activeBookmarks, excludeId: this.editing?.id },
@@ -492,6 +544,18 @@ export class BookmarkEditor {
     bookmark.title = validation.title;
     bookmark.url = validation.url;
     bookmark.category_id = categoryId;
+
+    if (validation.description && validation.description.length > 0) {
+      bookmark.description = validation.description;
+    } else {
+      delete bookmark.description;
+    }
+
+    if (validation.cardSize && validation.cardSize !== 'small') {
+      bookmark.card_size = validation.cardSize;
+    } else {
+      delete bookmark.card_size;
+    }
 
     // Optional fields are omitted entirely when cleared so tombstones/sync do
     // not carry stale empty values.

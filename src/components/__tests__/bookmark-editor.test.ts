@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HOTKEYS,
   isHotkeyTaken,
+  normalizeCardSize,
   normalizeHotkey,
   parseAlternateUrls,
   validateBookmarkForm,
@@ -161,5 +162,52 @@ describe('validateBookmarkForm', () => {
     );
     expect(result.ok).toBe(true);
     expect(result.hotkey).toBeUndefined();
+  });
+
+  it('normalises description and card_size', () => {
+    const result = validateBookmarkForm(
+      {
+        title: 'Two',
+        url: 'https://two.test',
+        alternateText: '',
+        descriptionText: '  Useful description  ',
+        cardSize: 'wide',
+        hotkey: '',
+      },
+      { bookmarks },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.description).toBe('Useful description');
+    expect(result.cardSize).toBe('wide');
+  });
+
+  it('handles empty description as undefined', () => {
+    const result = validateBookmarkForm(
+      {
+        title: 'Two',
+        url: 'https://two.test',
+        alternateText: '',
+        descriptionText: '   ',
+        cardSize: 'small',
+        hotkey: '',
+      },
+      { bookmarks },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.description).toBeUndefined();
+    expect(result.cardSize).toBe('small');
+  });
+});
+
+describe('normalizeCardSize', () => {
+  it('accepts wide and large', () => {
+    expect(normalizeCardSize('wide')).toBe('wide');
+    expect(normalizeCardSize('large')).toBe('large');
+  });
+
+  it('defaults invalid or empty sizes to small', () => {
+    expect(normalizeCardSize('')).toBe('small');
+    expect(normalizeCardSize(undefined)).toBe('small');
+    expect(normalizeCardSize('unknown')).toBe('small');
   });
 });

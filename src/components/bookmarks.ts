@@ -14,11 +14,18 @@ import { canShare, share } from '../utils/share';
 import { hostnameOf } from '../core/fallback';
 import { initialOf } from '../utils/text';
 import { showToast } from './toast';
+import type { BookmarkCardSize, BookmarkItem, CategoryItem } from '../types/schemas';
 
 const ICON_MORE = 'M12 6h.01M12 12h.01M12 18h.01';
+const ICON_RESIZE = 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7';
 /** Long-press duration (ms) that opens the tile menu on touch (G-23). */
 const LONG_PRESS_MS = 500;
-import type { BookmarkItem, CategoryItem } from '../types/schemas';
+
+export const NEXT_CARD_SIZE: Record<BookmarkCardSize, BookmarkCardSize> = {
+  small: 'wide',
+  wide: 'large',
+  large: 'small',
+};
 
 export interface BookmarksStore {
   readonly activeBookmarks: BookmarkItem[];
@@ -40,6 +47,8 @@ export interface BookmarksCallbacks {
   onImport: () => void;
   /** Open the category manager. */
   onManageCategories: () => void;
+  /** Resize a bookmark tile card footprint. */
+  onResize?: (bookmark: BookmarkItem, size: BookmarkCardSize) => void;
 }
 
 export class BookmarksView {
@@ -158,7 +167,10 @@ export class BookmarksView {
   }
 
   private renderTile(bookmark: BookmarkItem, isRecents: boolean): HTMLElement {
-    const tile = el('li', { className: `tile${isRecents ? ' tile--recent' : ''}` });
+    const size: BookmarkCardSize = isRecents ? 'small' : (bookmark.card_size ?? 'small');
+    const tile = el('li', {
+      className: `tile tile--size-${size}${isRecents ? ' tile--recent' : ''}`,
+    });
 
     const open = el('button', {
       className: 'tile__open',
@@ -170,10 +182,56 @@ export class BookmarksView {
       open.setAttribute('aria-label', t('bookmarks.recentLabel', { title: bookmark.title }));
       open.setAttribute('tabindex', '-1');
     }
-    open.appendChild(this.renderIcon(bookmark));
-    open.appendChild(el('span', { className: 'tile__title', text: bookmark.title }));
-    if (bookmark.hotkey) {
-      open.appendChild(el('kbd', { className: 'tile__hotkey', text: bookmark.hotkey }));
+
+    if (size === 'wide') {
+      const icon = this.renderIcon(bookmark);
+      const content = el('div', { className: 'tile__body' });
+      const row = el('div', { className: 'tile__header-row' });
+      row.appendChild(el('span', { className: 'tile__title', text: bookmark.title }));
+      if (bookmark.hotkey) {
+        row.appendChild(el('kbd', { className: 'tile__hotkey', text: bookmark.hotkey }));
+      }
+      content.appendChild(row);
+      if (bookmark.description) {
+        content.appendChild(
+          el('p', { className: 'tile__description', text: bookmark.description }),
+        );
+      }
+      if (bookmark.alternate_urls && bookmark.alternate_urls.length > 0) {
+        content.appendChild(
+          el('span', {
+            className: 'tile__badge tile__badge--mirrors',
+            text: t('bookmarks.mirrorCount', { count: bookmark.alternate_urls.length }),
+          }),
+        );
+      }
+      open.appendChild(icon);
+      open.appendChild(content);
+    } else if (size === 'large') {
+      const header = el('div', { className: 'tile__header' });
+      const icon = this.renderIcon(bookmark);
+      const titleCol = el('div', { className: 'tile__title-col' });
+      titleCol.appendChild(el('span', { className: 'tile__title', text: bookmark.title }));
+      const host = hostnameOf(bookmark.url);
+      if (host) {
+        titleCol.appendChild(el('span', { className: 'tile__host', text: host }));
+      }
+      header.appendChild(icon);
+      header.appendChild(titleCol);
+      if (bookmark.hotkey) {
+        header.appendChild(el('kbd', { className: 'tile__hotkey', text: bookmark.hotkey }));
+      }
+      open.appendChild(header);
+
+      if (bookmark.description) {
+        open.appendChild(el('p', { className: 'tile__description', text: bookmark.description }));
+      }
+    } else {
+      open.appendChild(this.renderIcon(bookmark));
+      open.appendChild(el('span', { className: 'tile__title', text: bookmark.title }));
+      if (bookmark.hotkey) {
+        open.appendChild(el('kbd', { className: 'tile__hotkey', text: bookmark.hotkey }));
+      }
     }
 
     // Long-press (touch) opens the menu; a subsequent click is suppressed.
@@ -215,6 +273,63 @@ export class BookmarksView {
       this.handleTileKeydown(event, open, bookmark),
     );
 
+    // Mirrors section for large tiles (dynamic content without nested buttons)
+    let mirrorsContainer: HTMLElement | null = null;
+    if (size === 'large' && bookmark.alternate_urls && bookmark.alternate_urls.length > 0) {
+      mirrorsContainer = el('div', {
+        className: 'tile__mirrors',
+        attrs: { role: 'group', 'aria-label': t('bookmarkEditor.fieldAlt') },
+      });
+      const primaryChip = el('button', {
+        className: 'tile__mirror-chip tile__mirror-chip--primary',
+        text: t('bookmarks.openPrimary', { host: hostnameOf(bookmark.url) }),
+        attrs: { type: 'button' },
+      });
+      primaryChip.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.callbacks.onActivate(bookmark);
+      });
+      mirrorsContainer.appendChild(primaryChip);
+
+      for (const mirrorUrl of bookmark.alternate_urls) {
+        const mirrorHost = hostnameOf(mirrorUrl);
+        const mirrorChip = el('button', {
+          className: 'tile__mirror-chip',
+          text: t('bookmarks.openMirrorDirect', { host: mirrorHost }),
+          attrs: { type: 'button' },
+        });
+        mirrorChip.addEventListener('click', (event) => {
+          event.stopPropagation();
+          this.callbacks.onOpenAlternate(bookmark, mirrorUrl);
+        });
+        mirrorsContainer.appendChild(mirrorChip);
+      }
+    }
+
+    const actionsWrapper = el('div', { className: 'tile__actions' });
+
+    // Cycle size button (only on non-recents)
+    if (!isRecents) {
+      const sizeLabels: Record<BookmarkCardSize, string> = {
+        small: t('bookmarks.sizeSmall'),
+        wide: t('bookmarks.sizeWide'),
+        large: t('bookmarks.sizeLarge'),
+      };
+      const cycleButton = el('button', {
+        className: 'icon-button tile__cycle-size',
+        attrs: {
+          type: 'button',
+          'aria-label': t('bookmarks.cycleSize', { size: sizeLabels[size] }),
+        },
+      });
+      cycleButton.appendChild(svg(ICON_RESIZE, { size: 14 }));
+      cycleButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.callbacks.onResize?.(bookmark, NEXT_CARD_SIZE[size]);
+      });
+      actionsWrapper.appendChild(cycleButton);
+    }
+
     // A visible, always-present "more" affordance (G-22, G-23).
     const moreButton = el('button', {
       className: 'icon-button tile__more',
@@ -233,9 +348,13 @@ export class BookmarksView {
       const rect = moreButton.getBoundingClientRect();
       this.openContextMenu(bookmark, rect.left, rect.bottom);
     });
+    actionsWrapper.appendChild(moreButton);
 
     tile.appendChild(open);
-    tile.appendChild(moreButton);
+    if (mirrorsContainer) {
+      tile.appendChild(mirrorsContainer);
+    }
+    tile.appendChild(actionsWrapper);
     // Only category tiles participate in the roving-tabindex grid; recents are
     // duplicates and stay out of the Tab order (G-42).
     if (!isRecents) {
@@ -336,6 +455,23 @@ export class BookmarksView {
           : t('bookmarks.openMirror', { host: hostnameOf(url) }),
       onSelect: () => this.callbacks.onOpenAlternate(bookmark, url),
     }));
+
+    if (this.callbacks.onResize) {
+      items.push({
+        label: t('bookmarks.sizeSmall'),
+        separatorBefore: true,
+        onSelect: () => this.callbacks.onResize?.(bookmark, 'small'),
+      });
+      items.push({
+        label: t('bookmarks.sizeWide'),
+        onSelect: () => this.callbacks.onResize?.(bookmark, 'wide'),
+      });
+      items.push({
+        label: t('bookmarks.sizeLarge'),
+        onSelect: () => this.callbacks.onResize?.(bookmark, 'large'),
+      });
+    }
+
     items.push({
       label: t('bookmarks.edit'),
       separatorBefore: true,

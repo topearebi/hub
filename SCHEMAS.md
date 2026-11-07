@@ -120,6 +120,8 @@ export interface SyncableEntity {
 #### A. Bookmarks & Categories
 
 ```typescript
+export type BookmarkCardSize = 'small' | 'wide' | 'large';
+
 export interface BookmarkItem extends SyncableEntity {
   /** Owning profile id (partition key) */
   profile_id: string;
@@ -151,6 +153,17 @@ export interface BookmarkItem extends SyncableEntity {
    * Triggered in the browser using the modifier-free chord `g` then `[1-9]`, or the optional `Alt + [1-9]` combination (see DESIGN.md §4.5).
    */
   hotkey?: '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
+
+  /**
+   * Visual card footprint in the launchpad tile grid.
+   * - 'small': 1x1 compact tile (default)
+   * - 'wide': 2x1 horizontal card with description/mirrors
+   * - 'large': 2x2 hero card with full description & direct clickable mirrors
+   */
+  card_size?: BookmarkCardSize;
+
+  /** Optional secondary details, notes, or context for the bookmark. */
+  description?: string;
 }
 
 export interface CategoryItem extends SyncableEntity {
