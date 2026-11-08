@@ -111,6 +111,15 @@ export interface BookmarkItem extends SyncableEntity {
 
   /** Manual sort index within its category (ascending; defaults to 0). */
   order?: number;
+
+  /** Optional custom card background color or CSS gradient. */
+  bg_color?: string;
+
+  /** Optional custom text / label color. */
+  text_color?: string;
+
+  /** Optional custom card border color. */
+  border_color?: string;
 }
 
 export interface CategoryItem extends SyncableEntity {

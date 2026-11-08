@@ -70,6 +70,69 @@ export function clearChildren(node: Node): void {
   }
 }
 
+/** Check whether an event target is an editable input or contenteditable. */
+export function isEditable(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+}
+
+/** Helper to wrap an element in a labelled `.field`. */
+export function field(labelText: string, control: HTMLElement, helpText?: string): HTMLElement {
+  const node = el('label', {
+    className: 'field',
+    children: [
+      el('span', { className: 'field__label', text: labelText }),
+      control,
+      ...(helpText ? [el('span', { className: 'field__help', text: helpText })] : []),
+    ],
+  });
+  return node;
+}
+
+/** Helper to build an accessible button. */
+export function btn(
+  text: string,
+  options: {
+    className?: string;
+    onClick?: (e: MouseEvent) => void;
+    submit?: boolean;
+    icon?: string;
+    iconSize?: number;
+    attrs?: Record<string, string>;
+  } = {},
+): HTMLButtonElement {
+  const b = el('button', {
+    className: options.className ? `button ${options.className}` : 'button',
+    attrs: { type: options.submit ? 'submit' : 'button', ...options.attrs },
+  });
+  if (options.icon) {
+    b.appendChild(svg(options.icon, { size: options.iconSize ?? 16 }));
+    if (text) b.appendChild(el('span', { text }));
+  } else if (text) {
+    b.textContent = text;
+  }
+  if (options.onClick) b.addEventListener('click', options.onClick);
+  return b;
+}
+
+/** Helper to build an icon button with SVG and accessible label. */
+export function iconBtn(
+  iconPath: string,
+  ariaLabel: string,
+  onClick?: (e: MouseEvent) => void,
+  className = 'icon-button',
+  iconSize = 20,
+): HTMLButtonElement {
+  const b = el('button', {
+    className,
+    attrs: { type: 'button', 'aria-label': ariaLabel },
+    children: [svg(iconPath, { size: iconSize })],
+  });
+  if (onClick) b.addEventListener('click', onClick);
+  return b;
+}
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /* ---- Common SVG icon paths shared across components ---- */
@@ -85,8 +148,7 @@ export const ICON_MORE = 'M12 6h.01M12 12h.01M12 18h.01';
 export const ICON_SYNC =
   'M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8M3 16v-4h4M21 8V4h-4';
 export const ICON_GRIP = 'M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01';
-export const ICON_PIN =
-  'M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z';
+export const ICON_PIN = 'M12 17v5M9 11l-2 2v2h10v-2l-2-2V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1z';
 export const ICON_TASKS = 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11';
 export const ICON_NOTES = 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6';
 
@@ -166,11 +228,9 @@ export function hubLogoSvg(options: HubLogoOptions = {}): SVGSVGElement {
  * created here. The stroke inherits `currentColor` for theme compatibility.
  */
 export function svg(pathData: string, options: SvgOptions = {}): SVGSVGElement {
-  const size = options.size ?? 20;
+  const size = String(options.size ?? 20);
   const node = document.createElementNS(SVG_NS, 'svg');
   node.setAttribute('viewBox', '0 0 24 24');
-  node.setAttribute('width', String(size));
-  node.setAttribute('height', String(size));
   node.setAttribute('fill', 'none');
   node.setAttribute('stroke', 'currentColor');
   node.setAttribute('stroke-width', '2');
@@ -178,6 +238,8 @@ export function svg(pathData: string, options: SvgOptions = {}): SVGSVGElement {
   node.setAttribute('stroke-linejoin', 'round');
   node.setAttribute('aria-hidden', 'true');
   node.setAttribute('focusable', 'false');
+  node.setAttribute('width', size);
+  node.setAttribute('height', size);
   if (options.className !== undefined) {
     node.setAttribute('class', options.className);
   }

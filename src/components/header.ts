@@ -8,7 +8,7 @@
  * The profile control opens the profile popover (wired by `main.ts`).
  */
 
-import { el, hubLogoSvg, svg, ICON_NOTES, ICON_TASKS } from '../utils/dom';
+import { el, hubLogoSvg, iconBtn, ICON_NOTES, ICON_TASKS } from '../utils/dom';
 import { t } from '../utils/i18n';
 import { initialOf, safeCssUrl } from '../utils/text';
 import { StatusChip } from './status-chip';
@@ -41,23 +41,21 @@ export class Header {
     // A single icon + text status chip replaces the colour-only dot (G-44).
     this.statusChip = new StatusChip({ onActivate: () => this.callbacks.onOpenSync() });
 
-    this.tasksToggle = el('button', {
-      className: 'icon-button drawer-toggle',
-      attrs: { type: 'button', 'aria-label': t('header.toggleTasks'), 'aria-expanded': 'false' },
-    });
-    this.tasksToggle.appendChild(svg(ICON_TASKS));
-    this.tasksToggle.addEventListener('click', () => this.callbacks.onToggleTasks());
+    this.tasksToggle = iconBtn(
+      ICON_TASKS,
+      t('header.toggleTasks'),
+      () => this.callbacks.onToggleTasks(),
+      'icon-button drawer-toggle',
+    );
+    this.tasksToggle.setAttribute('aria-expanded', 'false');
 
-    this.notesToggle = el('button', {
-      className: 'icon-button drawer-toggle',
-      attrs: {
-        type: 'button',
-        'aria-label': t('header.toggleScratchpad'),
-        'aria-expanded': 'false',
-      },
-    });
-    this.notesToggle.appendChild(svg(ICON_NOTES));
-    this.notesToggle.addEventListener('click', () => this.callbacks.onToggleNotes());
+    this.notesToggle = iconBtn(
+      ICON_NOTES,
+      t('header.toggleScratchpad'),
+      () => this.callbacks.onToggleNotes(),
+      'icon-button drawer-toggle',
+    );
+    this.notesToggle.setAttribute('aria-expanded', 'false');
 
     // App logo Home affordance (DESIGN.md §3, §6.1). Functions as home navigation.
     this.homeButton = el('button', {
@@ -67,10 +65,8 @@ export class Header {
         'aria-label': t('header.home'),
         title: t('header.home'),
       },
+      children: [hubLogoSvg({ size: 28, withBackground: true, className: 'header-home__logo' })],
     });
-    this.homeButton.appendChild(
-      hubLogoSvg({ size: 28, withBackground: true, className: 'header-home__logo' }),
-    );
     this.homeButton.addEventListener('click', () => this.callbacks.onHome());
 
     this.avatar = el('span', { className: 'profile-button__avatar' });

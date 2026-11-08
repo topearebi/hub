@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BookmarkEditor, NEW_CATEGORY } from '../bookmark-editor';
 import { Omnibar } from '../omnibar';
-import { BookmarksView, computeBookmarkMove, computeBookmarkMoveWithin } from '../bookmarks';
+import {
+  applyBookmarkWidgetStyles,
+  BookmarksView,
+  computeBookmarkMove,
+  computeBookmarkMoveWithin,
+} from '../bookmarks';
 import { DEFAULT_APP_CONFIG } from '../../types/schemas';
 import type { BookmarkItem, CategoryItem } from '../../types/schemas';
 
@@ -588,6 +593,106 @@ describe('BookmarksView context menu', () => {
       const crossCatReordered = onReorderBookmarks.mock.calls[1]?.[0] as BookmarkItem[];
       const b1Cross = crossCatReordered.find((b) => b.id === 'b1');
       expect(b1Cross?.category_id).toBe('c2');
+    });
+  });
+
+  describe('Bookmark Widget Styling (Phase 3)', () => {
+    it('applies widget styling CSS custom properties to DOM elements', () => {
+      const el = document.createElement('div');
+      applyBookmarkWidgetStyles(el, {
+        bg_color: '#1e293b',
+        text_color: '#ffffff',
+        border_color: '#334155',
+      });
+
+      expect(el.style.getPropertyValue('--tile-custom-bg')).toBe('#1e293b');
+      expect(el.style.getPropertyValue('--tile-custom-color')).toBe('#ffffff');
+      expect(el.style.getPropertyValue('--tile-custom-border')).toBe('#334155');
+      expect(el.style.getPropertyValue('--tile-custom-color-faint')).toContain('color-mix');
+    });
+
+    it('renders bookmark cards with custom widget styles in BookmarksView', () => {
+      const styledBookmark = makeBookmark({
+        id: 'styled_1',
+        title: 'Cyberpunk Hub',
+        url: 'https://cyber.hub',
+        bg_color: '#0d1117',
+        text_color: '#58a6ff',
+        border_color: '#388bfd',
+      });
+
+      const store = {
+        activeBookmarks: [styledBookmark],
+        sortedCategories: [CATEGORY],
+        getRecentBookmarks: () => [],
+        getBookmarksByCategory: () => [styledBookmark],
+      };
+
+      const view = new BookmarksView(store, {
+        onActivate: vi.fn(),
+        onOpenAlternate: vi.fn(),
+        onEdit: vi.fn(),
+        onDelete: vi.fn(),
+        onAddBookmark: vi.fn(),
+        onImport: vi.fn(),
+        onManageCategories: vi.fn(),
+      });
+
+      view.render();
+      document.body.appendChild(view.element);
+
+      const tile = q<HTMLElement>(view.element, '.tile');
+      expect(tile.style.getPropertyValue('--tile-custom-bg')).toBe('#0d1117');
+      expect(tile.style.getPropertyValue('--tile-custom-color')).toBe('#58a6ff');
+      expect(tile.style.getPropertyValue('--tile-custom-border')).toBe('#388bfd');
+
+      view.destroy();
+    });
+
+    it('BookmarkEditor preset buttons update form values and live preview', () => {
+      const store = {
+        sortedCategories: [CATEGORY],
+        activeBookmarks: [],
+        activeProfileId: 'p1',
+      };
+
+      const editor = new BookmarkEditor(store, {
+        onSave: vi.fn(),
+        onDelete: vi.fn(),
+        onCreateCategory: vi.fn(),
+      });
+
+      document.body.appendChild(editor.element);
+      editor.open();
+
+      // Live preview has aria-hidden for screen reader hygiene
+      const previewCard = q<HTMLElement>(editor.element, '.tile--preview');
+      expect(previewCard.getAttribute('aria-hidden')).toBe('true');
+
+      // Find preset buttons
+      const presetButtons = Array.from(
+        editor.element.querySelectorAll<HTMLButtonElement>('.widget-preset-btn'),
+      );
+      const sunsetBtn = presetButtons.find((btn) => btn.textContent?.includes('Sunset'));
+      expect(sunsetBtn).toBeDefined();
+
+      sunsetBtn!.click();
+
+      const bgInput = q<HTMLInputElement>(editor.element, '[aria-label="Card background"]');
+      const textInput = q<HTMLInputElement>(editor.element, '[aria-label="Text color"]');
+      const borderInput = q<HTMLInputElement>(editor.element, '[aria-label="Border color"]');
+
+      expect(bgInput.value).toContain('linear-gradient');
+      expect(textInput.value).toBe('#ffffff');
+      expect(borderInput.value).toBe('#ea580c');
+
+      // Live preview reflects the preset style
+      expect(previewCard.style.getPropertyValue('--tile-custom-bg')).toContain('linear-gradient');
+      expect(previewCard.style.getPropertyValue('--tile-custom-color')).toBe('#ffffff');
+      expect(previewCard.style.getPropertyValue('--tile-custom-border')).toBe('#ea580c');
+
+      editor.close();
+      editor.element.remove();
     });
   });
 });

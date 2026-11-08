@@ -16,8 +16,10 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
     modulePreload: { polyfill: false },
-    // Performance budget guard (PRD §3.1): warn if the entry chunk grows large.
     chunkSizeWarningLimit: 60,
+  },
+  esbuild: {
+    legalComments: 'none',
   },
   test: {
     environment: 'jsdom',

@@ -10,7 +10,7 @@
  * Built on the shared `Dialog` primitive and the XSS-safe `el()` helper.
  */
 
-import { clearChildren, el } from '../utils/dom';
+import { btn, clearChildren, el } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
 import { t, tp } from '../utils/i18n';
 import { showToast } from './toast';
@@ -60,7 +60,7 @@ export class RecentlyDeleted {
     private readonly callbacks: RecentlyDeletedCallbacks,
   ) {
     recentlyDeletedSeq += 1;
-    this.titleId = `recently-deleted-title-${recentlyDeletedSeq}`;
+    this.titleId = `dlg-title-rd-${recentlyDeletedSeq}`;
     this.dialog = new Dialog({
       labelledBy: this.titleId,
       onRequestClose: () => this.close(),
@@ -143,53 +143,56 @@ export class RecentlyDeleted {
   }
 
   private section(title: string, rows: HTMLElement[]): HTMLElement {
-    const section = el('section', { className: 'recently-deleted__section' });
-    section.appendChild(el('h3', { className: 'settings-section__title', text: title }));
-    for (const row of rows) {
-      section.appendChild(row);
-    }
-    return section;
+    return el('section', {
+      className: 'settings-section',
+      children: [el('h3', { className: 'settings-section__title', text: title }), ...rows],
+    });
   }
 
   private profileRow(entry: DeletedProfileEntry): HTMLElement {
     const { profile, counts } = entry;
-    const row = el('div', { className: 'recently-deleted__row' });
-
-    const info = el('div', { className: 'recently-deleted__info' });
-    info.appendChild(el('span', { className: 'recently-deleted__name', text: profile.name }));
     const summary = t('recentlyDeleted.summary', {
       links: tp('recentlyDeleted.linkCount', counts.bookmarks),
       tasks: tp('recentlyDeleted.taskCount', counts.tasks),
       notes: tp('recentlyDeleted.noteCount', counts.notes),
     });
-    info.appendChild(el('span', { className: 'recently-deleted__meta', text: summary }));
-    info.appendChild(
-      el('span', {
-        className: 'recently-deleted__meta',
-        text: t('recentlyDeleted.deletedAgo', {
-          days: daysSince(profile.updated_at),
-          remaining: daysRemaining(profile.updated_at),
-        }),
-      }),
-    );
-    row.appendChild(info);
 
-    const actions = el('div', { className: 'recently-deleted__actions' });
-    actions.appendChild(
-      this.button(t('common.restore'), 'button', () => {
-        void this.store.restoreProfile(profile.id).then(() => this.afterChange());
-      }),
-    );
-    actions.appendChild(
-      this.button(t('recentlyDeleted.deleteNow'), 'button button--danger', () => {
-        void this.confirmPermanent(
-          t('recentlyDeleted.confirmProfile', { name: profile.name, summary }),
-          () => this.store.permanentlyDeleteProfile(profile.id),
-        );
-      }),
-    );
-    row.appendChild(actions);
-    return row;
+    const info = el('div', {
+      className: 'recently-deleted__info',
+      children: [
+        el('span', { className: 'recently-deleted__name', text: profile.name }),
+        el('span', { className: 'recently-deleted__meta', text: summary }),
+        el('span', {
+          className: 'recently-deleted__meta',
+          text: t('recentlyDeleted.deletedAgo', {
+            days: daysSince(profile.updated_at),
+            remaining: daysRemaining(profile.updated_at),
+          }),
+        }),
+      ],
+    });
+
+    const actions = el('div', {
+      className: 'recently-deleted__actions',
+      children: [
+        btn(t('common.restore'), {
+          onClick: () => {
+            void this.store.restoreProfile(profile.id).then(() => this.afterChange());
+          },
+        }),
+        btn(t('recentlyDeleted.deleteNow'), {
+          className: 'button--danger',
+          onClick: () => {
+            void this.confirmPermanent(
+              t('recentlyDeleted.confirmProfile', { name: profile.name, summary }),
+              () => this.store.permanentlyDeleteProfile(profile.id),
+            );
+          },
+        }),
+      ],
+    });
+
+    return el('div', { className: 'recently-deleted__row', children: [info, actions] });
   }
 
   private itemRow(
@@ -199,56 +202,50 @@ export class RecentlyDeleted {
     kind: string,
     updatedAt: number,
   ): HTMLElement {
-    const row = el('div', { className: 'recently-deleted__row' });
-
-    const info = el('div', { className: 'recently-deleted__info' });
-    info.appendChild(
-      el('span', { className: 'recently-deleted__name', text: title || t('common.untitled') }),
-    );
-    info.appendChild(
-      el('span', {
-        className: 'recently-deleted__meta',
-        text: t('recentlyDeleted.itemMeta', {
-          kind,
-          days: daysSince(updatedAt),
-          remaining: daysRemaining(updatedAt),
+    const info = el('div', {
+      className: 'recently-deleted__info',
+      children: [
+        el('span', { className: 'recently-deleted__name', text: title || t('common.untitled') }),
+        el('span', {
+          className: 'recently-deleted__meta',
+          text: t('recentlyDeleted.itemMeta', {
+            kind,
+            days: daysSince(updatedAt),
+            remaining: daysRemaining(updatedAt),
+          }),
         }),
-      }),
-    );
-    row.appendChild(info);
+      ],
+    });
 
-    const actions = el('div', { className: 'recently-deleted__actions' });
-    actions.appendChild(
-      this.button(t('common.restore'), 'button', () => {
-        void this.restoreItem(storeName, id).then(() => this.afterChange());
-      }),
-    );
-    actions.appendChild(
-      this.button(t('recentlyDeleted.deleteNow'), 'button button--danger', () => {
-        void this.confirmPermanent(
-          t('recentlyDeleted.confirmItem', { name: title || t('common.untitled') }),
-          () => this.store.permanentlyDeleteItem(storeName, id),
-        );
-      }),
-    );
-    row.appendChild(actions);
-    return row;
-  }
+    const actions = el('div', {
+      className: 'recently-deleted__actions',
+      children: [
+        btn(t('common.restore'), {
+          onClick: () => {
+            void this.restoreItem(storeName, id).then(() => this.afterChange());
+          },
+        }),
+        btn(t('recentlyDeleted.deleteNow'), {
+          className: 'button--danger',
+          onClick: () => {
+            void this.confirmPermanent(
+              t('recentlyDeleted.confirmItem', { name: title || t('common.untitled') }),
+              () => this.store.permanentlyDeleteItem(storeName, id),
+            );
+          },
+        }),
+      ],
+    });
 
-  private button(label: string, className: string, onClick: () => void): HTMLButtonElement {
-    const button = el('button', { className, text: label, attrs: { type: 'button' } });
-    button.addEventListener('click', onClick);
-    return button;
+    return el('div', { className: 'recently-deleted__row', children: [info, actions] });
   }
 
   private restoreItem(storeName: 'bookmarks' | 'tasks' | 'notes', id: string): Promise<void> {
-    if (storeName === 'bookmarks') {
-      return this.store.restoreBookmark(id);
-    }
-    if (storeName === 'tasks') {
-      return this.store.restoreTask(id);
-    }
-    return this.store.restoreNote(id);
+    return storeName === 'bookmarks'
+      ? this.store.restoreBookmark(id)
+      : storeName === 'tasks'
+        ? this.store.restoreTask(id)
+        : this.store.restoreNote(id);
   }
 
   private async confirmPermanent(message: string, action: () => Promise<void>): Promise<void> {

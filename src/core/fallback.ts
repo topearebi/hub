@@ -77,14 +77,15 @@ export async function resolveBookmarkUrl(
   bookmark: BookmarkItem,
   timeoutMs = 2500,
 ): Promise<FallbackResult> {
+  const primaryResult = {
+    url: bookmark.url,
+    usedAlternate: false,
+    hostname: hostnameOf(bookmark.url),
+  };
   const alternates = bookmark.alternate_urls ?? [];
 
-  if (alternates.length === 0) {
-    return { url: bookmark.url, usedAlternate: false, hostname: hostnameOf(bookmark.url) };
-  }
-
-  if (await probeUrl(bookmark.url, timeoutMs)) {
-    return { url: bookmark.url, usedAlternate: false, hostname: hostnameOf(bookmark.url) };
+  if (alternates.length === 0 || (await probeUrl(bookmark.url, timeoutMs))) {
+    return primaryResult;
   }
 
   for (const alternate of alternates) {
@@ -93,7 +94,5 @@ export async function resolveBookmarkUrl(
     }
   }
 
-  // Every target failed: fall back to the primary so the user still lands
-  // somewhere predictable rather than being stranded.
-  return { url: bookmark.url, usedAlternate: false, hostname: hostnameOf(bookmark.url) };
+  return primaryResult;
 }

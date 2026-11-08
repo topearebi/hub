@@ -11,7 +11,7 @@
  * sync layer stays testable and decoupled.
  */
 
-import { el, svg, ICON_CHEVRON, ICON_CLOSE } from '../utils/dom';
+import { btn, el, field, iconBtn, svg, ICON_CHEVRON, ICON_CLOSE } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
 import { t } from '../utils/i18n';
 import { formatBytes } from '../core/pwa';
@@ -56,17 +56,6 @@ export interface SettingsCallbacks {
   onManageSearchEngines?: () => void;
 }
 
-/** Wrap an input in a labelled field. */
-function field(labelText: string, input: HTMLElement, help?: string): HTMLElement {
-  const label = el('label', { className: 'field' });
-  label.appendChild(el('span', { className: 'field__label', text: labelText }));
-  label.appendChild(input);
-  if (help) {
-    label.appendChild(el('span', { className: 'field__help', text: help }));
-  }
-  return label;
-}
-
 export class SettingsModal {
   readonly element: HTMLElement;
 
@@ -103,7 +92,7 @@ export class SettingsModal {
     private readonly callbacks: SettingsCallbacks,
   ) {
     settingsDialogSeq += 1;
-    this.titleId = `settings-title-${settingsDialogSeq}`;
+    this.titleId = `dlg-title-set-${settingsDialogSeq}`;
     this.dialog = new Dialog({
       labelledBy: this.titleId,
       onRequestClose: () => this.close(),
@@ -120,42 +109,20 @@ export class SettingsModal {
         spellcheck: 'false',
       },
     });
-    this.ownerInput = el('input', {
-      attrs: {
-        type: 'text',
-        placeholder: t('settings.placeholderOwner'),
-        autocapitalize: 'none',
-        autocorrect: 'off',
-        spellcheck: 'false',
-      },
-    });
-    this.repoInput = el('input', {
-      attrs: {
-        type: 'text',
-        placeholder: t('settings.placeholderRepo'),
-        autocapitalize: 'none',
-        autocorrect: 'off',
-        spellcheck: 'false',
-      },
-    });
-    this.branchInput = el('input', {
-      attrs: {
-        type: 'text',
-        placeholder: t('settings.placeholderBranch'),
-        autocapitalize: 'none',
-        autocorrect: 'off',
-        spellcheck: 'false',
-      },
-    });
-    this.pathInput = el('input', {
-      attrs: {
-        type: 'text',
-        placeholder: t('settings.placeholderPath'),
-        autocapitalize: 'none',
-        autocorrect: 'off',
-        spellcheck: 'false',
-      },
-    });
+    const textConfig = (phKey: string) =>
+      el('input', {
+        attrs: {
+          type: 'text',
+          placeholder: t(phKey),
+          autocapitalize: 'none',
+          autocorrect: 'off',
+          spellcheck: 'false',
+        },
+      });
+    this.ownerInput = textConfig('settings.placeholderOwner');
+    this.repoInput = textConfig('settings.placeholderRepo');
+    this.branchInput = textConfig('settings.placeholderBranch');
+    this.pathInput = textConfig('settings.placeholderPath');
     this.statusEl = el('p', {
       className: 'settings-status',
       attrs: { role: 'status', 'aria-live': 'polite' },
@@ -170,33 +137,29 @@ export class SettingsModal {
     this.gamepadEnabled = el('input', { attrs: { type: 'checkbox' } });
     this.lockEnabled = el('input', { attrs: { type: 'checkbox' } });
     this.lockEnabled.disabled = true;
-    this.lockButton = el('button', {
-      className: 'button',
-      text: t('settings.registerLock'),
-      attrs: { type: 'button' },
-    });
-    this.lockButton.addEventListener('click', () => {
-      void this.handleLockToggle();
+    this.lockButton = btn(t('settings.registerLock'), {
+      onClick: () => void this.handleLockToggle(),
     });
 
-    this.themeSelect = el('select', { className: 'settings-select' });
-    for (const value of ['auto', 'light', 'dark'] as const) {
-      this.themeSelect.appendChild(el('option', { text: t(`theme.${value}`), attrs: { value } }));
-    }
+    this.themeSelect = el('select', {
+      className: 'settings-select',
+      children: (['auto', 'light', 'dark'] as const).map((value) =>
+        el('option', { text: t(`theme.${value}`), attrs: { value } }),
+      ),
+    });
 
     this.tokenStatus = el('div', { className: 'settings-token-status' });
     this.storageStatus = el('p', { className: 'settings-status' });
     this.quotaStatus = el('p', { className: 'settings-status' });
     this.searchEnginesHelp = el('p', { className: 'field__hint' });
 
-    this.advancedRegion = el('div', { className: 'settings-advanced__region' });
+    this.advancedRegion = el('div', { className: 'settings-section' });
     this.advancedRegion.hidden = true;
     this.advancedToggle = el('button', {
       className: 'settings-advanced__toggle',
       attrs: { type: 'button', 'aria-expanded': 'false' },
+      children: [svg(ICON_CHEVRON, { size: 16 }), el('span', { text: t('settings.advanced') })],
     });
-    this.advancedToggle.appendChild(svg(ICON_CHEVRON, { size: 16 }));
-    this.advancedToggle.appendChild(el('span', { text: t('settings.advanced') }));
     this.advancedToggle.addEventListener('click', () => this.toggleAdvanced());
 
     this.element = this.build();
@@ -225,12 +188,12 @@ export class SettingsModal {
   /* ---------------------------------------------------------------- */
 
   private build(): HTMLElement {
-    const closeButton = el('button', {
-      className: 'icon-button modal__close',
-      attrs: { type: 'button', 'aria-label': t('settings.closeAria') },
-    });
-    closeButton.appendChild(svg(ICON_CLOSE));
-    closeButton.addEventListener('click', () => this.close());
+    const closeButton = iconBtn(
+      ICON_CLOSE,
+      t('settings.closeAria'),
+      () => this.close(),
+      'icon-button modal__close',
+    );
 
     const title = el('h2', {
       className: 'modal__title',
@@ -258,54 +221,36 @@ export class SettingsModal {
     return this.dialog.overlay;
   }
 
-  private buildGeneral(): HTMLElement {
-    const save = this.saveButton(t('settings.saveGeneral'), () => {
-      void this.handleSaveGeneral();
+  private actions(...children: (HTMLElement | null | undefined)[]): HTMLElement {
+    return el('div', {
+      className: 'settings-actions',
+      children: children.filter(Boolean) as HTMLElement[],
     });
+  }
+
+  private buildGeneral(): HTMLElement {
     return this.section(t('settings.general'), [
       field(t('settings.theme'), this.themeSelect),
-      el('div', { className: 'settings-actions', children: [save] }),
+      this.actions(this.saveButton(t('settings.saveGeneral'), () => void this.handleSaveGeneral())),
     ]);
   }
 
   private buildSearchEngines(): HTMLElement {
-    const manageBtn = el('button', {
-      className: 'button button--subtle',
-      attrs: { type: 'button' },
-      text: t('settings.manageEngines'),
-    });
-    manageBtn.addEventListener('click', () => {
-      this.close();
-      this.callbacks.onManageSearchEngines?.();
-    });
-
     return this.section(t('settings.searchEngines'), [
       this.searchEnginesHelp,
-      el('div', { className: 'settings-actions', children: [manageBtn] }),
+      this.actions(
+        btn(t('settings.manageEngines'), {
+          className: 'button--subtle',
+          onClick: () => {
+            this.close();
+            this.callbacks.onManageSearchEngines?.();
+          },
+        }),
+      ),
     ]);
   }
 
   private buildSync(): HTMLElement {
-    const testButton = el('button', {
-      className: 'button',
-      text: t('settings.testConnection'),
-      attrs: { type: 'button' },
-    });
-    testButton.addEventListener('click', () => {
-      void this.handleTest();
-    });
-
-    const saveButton = this.saveButton(t('settings.saveSync'), () => {
-      void this.handleSaveSync();
-    });
-
-    const syncNowButton = el('button', {
-      className: 'button',
-      text: t('settings.syncNow'),
-      attrs: { type: 'button' },
-    });
-    syncNowButton.addEventListener('click', () => this.callbacks.onSyncNow());
-
     return this.section(t('settings.sync'), [
       field(t('settings.enableSync'), this.syncEnabled),
       this.tokenStatus,
@@ -314,115 +259,73 @@ export class SettingsModal {
       field(t('settings.repo'), this.repoInput),
       field(t('settings.branch'), this.branchInput),
       field(t('settings.filePath'), this.pathInput),
-      el('div', {
-        className: 'settings-actions',
-        children: [testButton, saveButton, syncNowButton],
-      }),
+      this.actions(
+        btn(t('settings.testConnection'), { onClick: () => void this.handleTest() }),
+        this.saveButton(t('settings.saveSync'), () => void this.handleSaveSync()),
+        btn(t('settings.syncNow'), { onClick: () => this.callbacks.onSyncNow() }),
+      ),
       this.statusEl,
     ]);
   }
 
   private buildNotifications(): HTMLElement {
-    const save = this.saveButton(t('settings.saveNotifications'), () => {
-      void this.handleSaveNotifications();
-    });
     return this.section(t('settings.notifications'), [
       field(t('settings.localNotifications'), this.notificationsEnabled),
-      el('div', { className: 'settings-actions', children: [save] }),
+      this.actions(
+        this.saveButton(t('settings.saveNotifications'), () => void this.handleSaveNotifications()),
+      ),
     ]);
   }
 
   private buildSecurity(): HTMLElement {
     return this.section(t('settings.security'), [
       field(t('settings.appLock'), this.lockEnabled),
-      el('div', { className: 'settings-actions', children: [this.lockButton] }),
+      this.actions(this.lockButton),
     ]);
   }
 
   private buildData(): HTMLElement {
-    const exportButton = el('button', {
-      className: 'button',
-      text: t('settings.exportJson'),
-      attrs: { type: 'button' },
-    });
-    exportButton.addEventListener('click', () => this.callbacks.onExport());
-
-    const importButton = el('button', {
-      className: 'button',
-      text: t('settings.importJson'),
-      attrs: { type: 'button' },
-    });
-    importButton.addEventListener('click', () => this.fileInput.click());
-
     this.fileInput.addEventListener('change', () => {
       const file = this.fileInput.files?.[0];
-      if (file) {
-        this.callbacks.onImport(file);
-      }
+      if (file) this.callbacks.onImport(file);
       this.fileInput.value = '';
     });
 
-    const categoriesButton = el('button', {
-      className: 'button',
-      text: t('settings.manageCategories'),
-      attrs: { type: 'button' },
-    });
-    categoriesButton.addEventListener('click', () => this.callbacks.onOpenCategories?.());
-
-    const recentlyDeletedButton = el('button', {
-      className: 'button',
-      text: t('settings.recentlyDeleted'),
-      attrs: { type: 'button' },
-    });
-    recentlyDeletedButton.addEventListener('click', () => this.callbacks.onOpenRecentlyDeleted?.());
-
-    const persistButton = el('button', {
-      className: 'button',
-      text: t('settings.requestPersist'),
-      attrs: { type: 'button' },
-    });
-    persistButton.addEventListener('click', () => {
-      void this.handleRequestPersist();
-    });
-
     return this.section(t('settings.data'), [
-      el('div', {
-        className: 'settings-actions',
-        children: [exportButton, importButton, this.fileInput],
-      }),
-      el('div', {
-        className: 'settings-actions',
-        children: [categoriesButton, recentlyDeletedButton],
-      }),
+      this.actions(
+        btn(t('settings.exportJson'), { onClick: () => this.callbacks.onExport() }),
+        btn(t('settings.importJson'), { onClick: () => this.fileInput.click() }),
+        this.fileInput,
+      ),
+      this.actions(
+        btn(t('settings.manageCategories'), { onClick: () => this.callbacks.onOpenCategories?.() }),
+        btn(t('settings.recentlyDeleted'), {
+          onClick: () => this.callbacks.onOpenRecentlyDeleted?.(),
+        }),
+      ),
       this.storageStatus,
       this.quotaStatus,
-      el('div', { className: 'settings-actions', children: [persistButton] }),
+      this.actions(
+        btn(t('settings.requestPersist'), { onClick: () => void this.handleRequestPersist() }),
+      ),
     ]);
   }
 
   private buildInstall(): HTMLElement {
-    const installButton = el('button', {
-      className: 'button',
-      text: t('settings.installHub'),
-      attrs: { type: 'button' },
-    });
-    installButton.addEventListener('click', () => this.callbacks.onInstall?.());
     return this.section(t('settings.install'), [
-      el('p', {
-        className: 'settings-help',
-        text: t('settings.installHelp'),
-      }),
-      el('div', { className: 'settings-actions', children: [installButton] }),
+      el('p', { className: 'settings-help', text: t('settings.installHelp') }),
+      this.actions(btn(t('settings.installHub'), { onClick: () => this.callbacks.onInstall?.() })),
     ]);
   }
 
   private buildAdvanced(): HTMLElement {
-    const save = this.saveButton(t('settings.saveAdvanced'), () => {
-      void this.handleSaveAdvanced();
-    });
-    this.advancedRegion.appendChild(field(t('settings.vapid'), this.vapidInput));
-    this.advancedRegion.appendChild(field(t('settings.gamepad'), this.gamepadEnabled));
-    this.advancedRegion.appendChild(el('div', { className: 'settings-actions', children: [save] }));
+    this.advancedRegion.append(
+      field(t('settings.vapid'), this.vapidInput),
+      field(t('settings.gamepad'), this.gamepadEnabled),
+      this.actions(
+        this.saveButton(t('settings.saveAdvanced'), () => void this.handleSaveAdvanced()),
+      ),
+    );
     return el('section', {
       className: 'settings-section settings-advanced',
       children: [this.advancedToggle, this.advancedRegion],
@@ -437,13 +340,7 @@ export class SettingsModal {
   }
 
   private saveButton(label: string, onClick: () => void): HTMLButtonElement {
-    const button = el('button', {
-      className: 'button button--primary',
-      text: label,
-      attrs: { type: 'button' },
-    });
-    button.addEventListener('click', onClick);
-    return button;
+    return btn(label, { className: 'button--primary', onClick });
   }
 
   private toggleAdvanced(): void {
@@ -520,32 +417,22 @@ export class SettingsModal {
     this.tokenStatus.hidden = false;
     // Hide only the input; the label and scoped-token help stay visible.
     this.patInput.hidden = true;
-    this.tokenStatus.appendChild(
-      el('span', { className: 'settings-token-status__label', text: t('settings.tokenSaved') }),
-    );
-
-    const replace = el('button', {
-      className: 'button',
-      text: t('common.replace'),
-      attrs: { type: 'button' },
-    });
-    replace.addEventListener('click', () => {
-      this.replacingToken = true;
-      this.renderTokenStatus();
-      this.patInput.focus();
+    const replace = btn(t('common.replace'), {
+      onClick: () => {
+        this.replacingToken = true;
+        this.renderTokenStatus();
+        this.patInput.focus();
+      },
     });
 
-    const remove = el('button', {
-      className: 'button button--danger',
-      text: t('common.remove'),
-      attrs: { type: 'button' },
-    });
-    remove.addEventListener('click', () => {
-      void this.handleRemoveToken();
+    const remove = btn(t('common.remove'), {
+      className: 'button--danger',
+      onClick: () => {
+        void this.handleRemoveToken();
+      },
     });
 
-    this.tokenStatus.appendChild(replace);
-    this.tokenStatus.appendChild(remove);
+    this.tokenStatus.append(el('span', { text: t('settings.tokenSaved') }), replace, remove);
   }
 
   private readConfig(): GitHubConfig {
@@ -558,14 +445,21 @@ export class SettingsModal {
     };
   }
 
-  private async handleSaveGeneral(): Promise<void> {
+  private async savePatch(patch: Partial<AppConfig>, okMsg: string): Promise<void> {
     try {
-      await this.store.updateConfig({ theme: this.themeSelect.value as AppConfig['theme'] });
+      await this.store.updateConfig(patch);
       this.callbacks.onSaved();
-      this.setStatus(t('settings.generalSaved'), 'ok');
+      this.setStatus(okMsg, 'ok');
     } catch {
       this.setStatus(t('settings.saveFailed'), 'error');
     }
+  }
+
+  private async handleSaveGeneral(): Promise<void> {
+    await this.savePatch(
+      { theme: this.themeSelect.value as AppConfig['theme'] },
+      t('settings.generalSaved'),
+    );
   }
 
   private async handleSaveSync(): Promise<void> {
@@ -578,15 +472,10 @@ export class SettingsModal {
         github_branch: gh.branch,
         github_file_path: gh.filePath,
       };
-      // Only overwrite the token when the user entered a new one. The token is
-      // encrypted before it is persisted (SCHEMAS.md §3.5); the plaintext never
-      // reaches IndexedDB.
       if (gh.token.length > 0) {
         patch.github_pat = await this.callbacks.encryptToken(gh.token);
       }
-      await this.store.updateConfig(patch);
-      this.callbacks.onSaved();
-      this.setStatus(t('settings.syncSaved'), 'ok');
+      await this.savePatch(patch, t('settings.syncSaved'));
       this.render();
     } catch {
       this.setStatus(t('settings.saveFailed'), 'error');
@@ -594,26 +483,20 @@ export class SettingsModal {
   }
 
   private async handleSaveNotifications(): Promise<void> {
-    try {
-      await this.store.updateConfig({ notifications_enabled: this.notificationsEnabled.checked });
-      this.callbacks.onSaved();
-      this.setStatus(t('settings.notificationsSaved'), 'ok');
-    } catch {
-      this.setStatus(t('settings.saveFailed'), 'error');
-    }
+    await this.savePatch(
+      { notifications_enabled: this.notificationsEnabled.checked },
+      t('settings.notificationsSaved'),
+    );
   }
 
   private async handleSaveAdvanced(): Promise<void> {
-    try {
-      await this.store.updateConfig({
+    await this.savePatch(
+      {
         vapid_public_key: this.vapidInput.value.trim(),
         gamepad_enabled: this.gamepadEnabled.checked,
-      });
-      this.callbacks.onSaved();
-      this.setStatus(t('settings.advancedSaved'), 'ok');
-    } catch {
-      this.setStatus(t('settings.saveFailed'), 'error');
-    }
+      },
+      t('settings.advancedSaved'),
+    );
   }
 
   private async handleRemoveToken(): Promise<void> {

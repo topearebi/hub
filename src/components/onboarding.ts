@@ -10,7 +10,7 @@
  * Built only with the XSS-safe `el()` helper; no `innerHTML`.
  */
 
-import { el, svg, ICON_PLUS, ICON_SYNC } from '../utils/dom';
+import { btn, el, ICON_PLUS, ICON_SYNC } from '../utils/dom';
 import { t } from '../utils/i18n';
 
 const ICON_IMPORT = 'M12 3v12M7 10l5 5 5-5M5 21h14';
@@ -57,25 +57,6 @@ export class OnboardingCard {
   }
 
   private build(): HTMLElement {
-    const card = el('section', {
-      className: 'onboarding',
-      attrs: { 'aria-labelledby': 'onboarding-title' },
-    });
-
-    card.appendChild(
-      el('h2', {
-        className: 'onboarding__title',
-        attrs: { id: 'onboarding-title' },
-        text: t('onboarding.title'),
-      }),
-    );
-    card.appendChild(
-      el('p', {
-        className: 'onboarding__lead',
-        text: t('onboarding.lead'),
-      }),
-    );
-
     const primary = this.action(t('onboarding.addFirst'), ICON_PLUS, 'button--primary', () =>
       this.callbacks.onAddBookmark(),
     );
@@ -89,33 +70,36 @@ export class OnboardingCard {
       this.callbacks.onTrySample(),
     );
 
-    card.appendChild(el('div', { className: 'onboarding__actions', children: [primary] }));
-    card.appendChild(
-      el('div', { className: 'onboarding__actions', children: [importButton, syncButton] }),
-    );
-    card.appendChild(el('div', { className: 'onboarding__actions', children: [sampleButton] }));
-
-    const installButton = el('button', {
+    const installButton = btn(t('onboarding.howToInstall'), {
       className: 'onboarding__link',
-      text: t('onboarding.howToInstall'),
-      attrs: { type: 'button' },
+      onClick: () => this.callbacks.onInstall(),
     });
-    installButton.addEventListener('click', () => this.callbacks.onInstall());
-
-    const skipButton = el('button', {
+    const skipButton = btn(t('onboarding.skip'), {
       className: 'onboarding__link',
-      text: t('onboarding.skip'),
-      attrs: { type: 'button' },
+      onClick: () => this.complete(),
     });
-    skipButton.addEventListener('click', () => this.complete());
 
-    const tip = el('div', { className: 'onboarding__tip' });
-    tip.appendChild(el('span', { text: t('onboarding.tip') }));
-    tip.appendChild(installButton);
-    tip.appendChild(skipButton);
-    card.appendChild(tip);
+    const tip = el('div', {
+      className: 'onboarding__tip',
+      children: [el('span', { text: t('onboarding.tip') }), installButton, skipButton],
+    });
 
-    return card;
+    return el('section', {
+      className: 'onboarding',
+      attrs: { 'aria-labelledby': 'onboarding-title' },
+      children: [
+        el('h2', {
+          className: 'onboarding__title',
+          attrs: { id: 'onboarding-title' },
+          text: t('onboarding.title'),
+        }),
+        el('p', { className: 'onboarding__lead', text: t('onboarding.lead') }),
+        el('div', { className: 'onboarding__actions', children: [primary] }),
+        el('div', { className: 'onboarding__actions', children: [importButton, syncButton] }),
+        el('div', { className: 'onboarding__actions', children: [sampleButton] }),
+        tip,
+      ],
+    });
   }
 
   private action(
@@ -124,14 +108,11 @@ export class OnboardingCard {
     extraClass: string,
     onClick: () => void,
   ): HTMLButtonElement {
-    const button = el('button', {
-      className: `button onboarding__action${extraClass ? ` ${extraClass}` : ''}`,
-      attrs: { type: 'button' },
+    return btn(label, {
+      className: `onboarding__action ${extraClass}`.trim(),
+      icon,
+      onClick,
     });
-    button.appendChild(svg(icon, { size: 16 }));
-    button.appendChild(el('span', { text: label }));
-    button.addEventListener('click', onClick);
-    return button;
   }
 
   /** Persist completion and hide. */

@@ -7,7 +7,7 @@
  */
 
 import { buildDrawerShell } from './drawer';
-import { clearChildren, el, svg, ICON_PIN, ICON_TRASH } from '../utils/dom';
+import { btn, clearChildren, el, iconBtn, ICON_PIN, ICON_TRASH } from '../utils/dom';
 import { haptic } from '../utils/haptics';
 import { t } from '../utils/i18n';
 import { canShare, share } from '../utils/share';
@@ -21,7 +21,7 @@ import type { NoteItem } from '../types/schemas';
 const ICON_COPY =
   'M9 9h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V11a2 2 0 0 1 2-2zM5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1';
 const ICON_PALETTE =
-  'M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1.1.9-2 2-2h2.5A4.5 4.5 0 0 0 22 11 9 9 0 0 0 12 2zM6.5 13a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z';
+  'M12 2C6.5 2 2 6.5 2 12s4.5 10 9.5 10c.8 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-5.5-4.5-10-10-10z';
 const ICON_SHARE = 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13';
 
 /* ------------------------------------------------------------------ */
@@ -109,31 +109,24 @@ export class NotesDrawer {
       className: 'note-capture__colors',
       attrs: { role: 'radiogroup', 'aria-label': t('notes.captureColorAria') },
     });
-    this.capturePin = el('button', {
-      className: 'icon-button note-capture__pin',
-      attrs: { type: 'button', 'aria-label': t('notes.pinAria'), 'aria-pressed': 'false' },
-    });
-    this.capturePin.appendChild(svg(ICON_PIN));
-    this.capturePin.addEventListener('click', () => {
-      this.capturePinned = !this.capturePinned;
-      this.capturePin.setAttribute('aria-pressed', this.capturePinned ? 'true' : 'false');
-      this.capturePin.classList.toggle('is-active', this.capturePinned);
-    });
+    this.capturePin = iconBtn(
+      ICON_PIN,
+      t('notes.pinAria'),
+      () => {
+        this.capturePinned = !this.capturePinned;
+        this.capturePin.setAttribute('aria-pressed', this.capturePinned ? 'true' : 'false');
+        this.capturePin.classList.toggle('is-active', this.capturePinned);
+      },
+      'icon-button note-capture__pin',
+    );
+    this.capturePin.setAttribute('aria-pressed', 'false');
 
-    const closeButton = el('button', {
-      className: 'button',
-      text: t('common.close'),
-      attrs: { type: 'button' },
-    });
-    closeButton.addEventListener('click', () => this.closeCapture());
-
-    const saveButton = el('button', {
-      className: 'button button--primary',
-      text: t('common.save'),
-      attrs: { type: 'button' },
-    });
-    saveButton.addEventListener('click', () => {
-      void this.saveCapture();
+    const closeButton = btn(t('common.close'), { onClick: () => this.closeCapture() });
+    const saveButton = btn(t('common.save'), {
+      className: 'button--primary',
+      onClick: () => {
+        void this.saveCapture();
+      },
     });
 
     const captureActions = el('div', {
@@ -296,54 +289,44 @@ export class NotesDrawer {
   /* ---------------------------------------------------------------- */
 
   private renderSection(label: string, notes: readonly NoteItem[]): HTMLElement {
-    const section = el('section', { className: 'note-section' });
-    section.appendChild(el('h3', { className: 'note-section__title', text: label }));
-    const grid = el('div', { className: 'note-grid' });
-    for (const note of notes) {
-      grid.appendChild(this.renderNote(note));
-    }
-    section.appendChild(grid);
-    return section;
+    return el('section', {
+      className: 'note-section',
+      children: [
+        el('h3', { className: 'note-section__title', text: label }),
+        el('div', { className: 'note-grid', children: notes.map((n) => this.renderNote(n)) }),
+      ],
+    });
   }
 
   private renderNote(note: NoteItem): HTMLElement {
     const card = el('article', { className: `note ${noteColorClass(note.color_tag)}` });
 
-    // The open action is a real button; the toolbar is a sibling, so
-    // interactive content is never nested inside another control (G-32).
+    const openChildren: HTMLElement[] = [];
+    if (note.title.trim().length > 0) {
+      openChildren.push(el('h4', { className: 'note__title', text: note.title }));
+    }
+    if (note.content.trim().length > 0) {
+      openChildren.push(el('pre', { className: 'note__content', text: note.content }));
+    }
     const open = el('button', {
       className: 'note__open',
       attrs: { type: 'button', 'aria-label': t('notes.editAria', { title: note.title }) },
+      children: openChildren,
     });
-    if (note.title.trim().length > 0) {
-      open.appendChild(el('h4', { className: 'note__title', text: note.title }));
-    }
-    if (note.content.trim().length > 0) {
-      open.appendChild(el('pre', { className: 'note__content', text: note.content }));
-    }
     open.addEventListener('click', () => this.editor.open(note));
 
+    const actions: Array<[string, string, () => void]> = [
+      [ICON_PALETTE, t('notes.changeColor'), () => this.cycleColor(note)],
+      [ICON_PIN, note.is_pinned ? t('notes.unpin') : t('notes.pin'), () => this.togglePin(note)],
+      [ICON_COPY, t('notes.copy'), () => void this.copyNote(note)],
+      [ICON_SHARE, t('notes.share'), () => void this.shareNote(note)],
+      [ICON_TRASH, t('common.delete'), () => void this.deleteNote(note.id)],
+    ];
     const toolbar = el('div', {
       className: 'note__toolbar',
       attrs: { role: 'group', 'aria-label': t('common.actionsFor', { name: note.title }) },
+      children: actions.map(([ic, lbl, fn]) => this.toolbarButton(ic, lbl, fn)),
     });
-    toolbar.appendChild(
-      this.toolbarButton(ICON_PALETTE, t('notes.changeColor'), () => this.cycleColor(note)),
-    );
-    toolbar.appendChild(
-      this.toolbarButton(ICON_PIN, note.is_pinned ? t('notes.unpin') : t('notes.pin'), () =>
-        this.togglePin(note),
-      ),
-    );
-    toolbar.appendChild(
-      this.toolbarButton(ICON_COPY, t('notes.copy'), () => void this.copyNote(note)),
-    );
-    toolbar.appendChild(
-      this.toolbarButton(ICON_SHARE, t('notes.share'), () => void this.shareNote(note)),
-    );
-    toolbar.appendChild(
-      this.toolbarButton(ICON_TRASH, t('common.delete'), () => void this.deleteNote(note.id)),
-    );
 
     card.appendChild(open);
     card.appendChild(toolbar);
@@ -392,16 +375,18 @@ export class NotesDrawer {
   }
 
   private toolbarButton(icon: string, label: string, onClick: () => void): HTMLElement {
-    const button = el('button', {
-      className: 'icon-button note__action',
-      attrs: { type: 'button', 'aria-label': label, title: label },
-    });
-    button.appendChild(svg(icon, { size: 16 }));
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      onClick();
-    });
-    return button;
+    const b = iconBtn(
+      icon,
+      label,
+      (e) => {
+        e.stopPropagation();
+        onClick();
+      },
+      'icon-button note__action',
+      16,
+    );
+    b.title = label;
+    return b;
   }
 
   private async cycleColor(note: NoteItem): Promise<void> {

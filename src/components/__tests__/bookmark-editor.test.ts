@@ -197,6 +197,44 @@ describe('validateBookmarkForm', () => {
     expect(result.description).toBeUndefined();
     expect(result.cardSize).toBe('small');
   });
+
+  it('normalises widget styling fields', () => {
+    const result = validateBookmarkForm(
+      {
+        title: 'Styled',
+        url: 'https://styled.test',
+        alternateText: '',
+        hotkey: '',
+        bgColor: ' #1e293b ',
+        textColor: ' #ffffff ',
+        borderColor: ' #334155 ',
+      },
+      { bookmarks },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bgColor).toBe('#1e293b');
+    expect(result.textColor).toBe('#ffffff');
+    expect(result.borderColor).toBe('#334155');
+  });
+
+  it('clears empty widget styling fields to undefined', () => {
+    const result = validateBookmarkForm(
+      {
+        title: 'Blank',
+        url: 'https://blank.test',
+        alternateText: '',
+        hotkey: '',
+        bgColor: '   ',
+        textColor: '',
+        borderColor: '  ',
+      },
+      { bookmarks },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.bgColor).toBeUndefined();
+    expect(result.textColor).toBeUndefined();
+    expect(result.borderColor).toBeUndefined();
+  });
 });
 
 describe('normalizeCardSize', () => {

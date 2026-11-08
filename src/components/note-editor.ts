@@ -5,7 +5,7 @@
  * pastel color. Keeps the drawer uncluttered and avoids layout jumps.
  */
 
-import { el, svg, ICON_CLOSE } from '../utils/dom';
+import { btn, el, iconBtn, ICON_CLOSE } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
 import { t } from '../utils/i18n';
 import type { NoteItem } from '../types/schemas';
@@ -132,12 +132,12 @@ export class NoteEditor {
   }
 
   private build(): HTMLElement {
-    const closeButton = el('button', {
-      className: 'icon-button modal__close',
-      attrs: { type: 'button', 'aria-label': t('noteEditor.closeAria') },
-    });
-    closeButton.appendChild(svg(ICON_CLOSE));
-    closeButton.addEventListener('click', () => this.requestClose());
+    const closeButton = iconBtn(
+      ICON_CLOSE,
+      t('noteEditor.closeAria'),
+      () => this.requestClose(),
+      'icon-button modal__close',
+    );
 
     const title = el('h2', {
       className: 'modal__title',
@@ -146,28 +146,22 @@ export class NoteEditor {
     });
     const header = el('header', { className: 'modal__header', children: [title, closeButton] });
 
-    const saveButton = el('button', {
-      className: 'button button--primary',
-      text: t('common.save'),
-      attrs: { type: 'submit' },
-    });
-    // `type=submit` gives Enter-to-submit; the click handler guarantees a save
-    // even where implicit form submission is unavailable.
-    saveButton.addEventListener('click', (event) => {
-      event.preventDefault();
-      void this.save();
+    const saveButton = btn(t('common.save'), {
+      className: 'button--primary',
+      submit: true,
+      onClick: (event) => {
+        event.preventDefault();
+        void this.save();
+      },
     });
 
-    const deleteButton = el('button', {
-      className: 'button',
-      text: t('common.delete'),
-      attrs: { type: 'button' },
-    });
-    deleteButton.addEventListener('click', () => {
-      if (this.note) {
-        void this.callbacks.onDelete(this.note.id);
-      }
-      this.close();
+    const deleteButton = btn(t('common.delete'), {
+      onClick: () => {
+        if (this.note) {
+          void this.callbacks.onDelete(this.note.id);
+        }
+        this.close();
+      },
     });
 
     const actions = el('div', {

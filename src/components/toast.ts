@@ -13,7 +13,7 @@
  * A single container is lazily created and reused.
  */
 
-import { el, svg, ICON_CLOSE } from '../utils/dom';
+import { btn, el, iconBtn, ICON_CLOSE } from '../utils/dom';
 import { t } from '../utils/i18n';
 
 export type ToastVariant = 'info' | 'success' | 'warning' | 'error';
@@ -102,29 +102,30 @@ export function showToast(message: string, options: ToastOptions = {}): () => vo
   };
 
   if (options.action) {
-    const actionButton = el('button', {
-      className: 'toast__action',
-      text: options.action.label,
-      attrs: { type: 'button' },
-    });
-    actionButton.addEventListener('click', () => {
-      options.action?.onSelect();
-      dismiss();
-    });
-    node.appendChild(actionButton);
+    node.appendChild(
+      btn(options.action.label, {
+        className: 'toast__action',
+        onClick: () => {
+          options.action?.onSelect();
+          dismiss();
+        },
+      }),
+    );
   }
 
   if (options.dismissible ?? true) {
-    const dismissButton = el('button', {
-      className: 'toast__dismiss',
-      attrs: { type: 'button', 'aria-label': t('toast.dismiss') },
-    });
-    dismissButton.appendChild(svg(ICON_CLOSE, { size: 16 }));
-    dismissButton.addEventListener('click', () => {
-      options.onDismiss?.();
-      dismiss();
-    });
-    node.appendChild(dismissButton);
+    node.appendChild(
+      iconBtn(
+        ICON_CLOSE,
+        t('toast.dismiss'),
+        () => {
+          options.onDismiss?.();
+          dismiss();
+        },
+        'toast__dismiss',
+        16,
+      ),
+    );
   }
 
   getContainer().appendChild(node);

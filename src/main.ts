@@ -43,7 +43,7 @@ import { Brand } from './components/brand';
 import { ProfilePopover } from './components/profile-popover';
 import { ProfileEditor } from './components/profile-editor';
 import { showToast } from './components/toast';
-import { el, svg, ICON_NOTES, ICON_PLUS, ICON_TASKS } from './utils/dom';
+import { btn, el, isEditable, svg, ICON_NOTES, ICON_PLUS, ICON_TASKS } from './utils/dom';
 import { confirmDialog, Dialog } from './utils/dialog';
 import { applyDocumentLocale, t } from './utils/i18n';
 import { bindVisualViewport } from './utils/viewport';
@@ -102,8 +102,6 @@ function isStandaloneDisplay(): boolean {
 
 /** Inline 'plus' icon for the add-bookmark control (no external icons). */
 const ICON_TAB_BOOKMARKS = 'M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z';
-const ICON_TAB_TASKS = ICON_TASKS;
-const ICON_TAB_NOTES = ICON_NOTES;
 
 /**
  * Activate a bookmark: record the local visit, resolve the best reachable URL
@@ -197,6 +195,18 @@ async function importJson(file: File): Promise<void> {
   }
 }
 
+function makeCategory(name: string, order = 0): CategoryItem {
+  const now = Date.now();
+  return {
+    id: newId(),
+    created_at: now,
+    updated_at: now,
+    profile_id: store.activeProfileId ?? '',
+    name,
+    order,
+  };
+}
+
 /**
  * Ensure at least one category exists so new bookmarks have a home. The
  * auto-created category is named "Links" (user-renamable) rather than the
@@ -204,18 +214,8 @@ async function importJson(file: File): Promise<void> {
  */
 async function ensureDefaultCategory(): Promise<CategoryItem> {
   const existing = store.sortedCategories[0];
-  if (existing) {
-    return existing;
-  }
-  const now = Date.now();
-  const category: CategoryItem = {
-    id: newId(),
-    created_at: now,
-    updated_at: now,
-    profile_id: store.activeProfileId ?? '',
-    name: 'Links',
-    order: 0,
-  };
+  if (existing) return existing;
+  const category = makeCategory('Links');
   await store.upsertCategory(category);
   return category;
 }
@@ -226,36 +226,27 @@ async function ensureDefaultCategory(): Promise<CategoryItem> {
  * seeded silently.
  */
 async function seedSampleSet(): Promise<void> {
-  const now = Date.now();
-  const category: CategoryItem = {
-    id: newId(),
-    created_at: now,
-    updated_at: now,
-    profile_id: store.activeProfileId ?? '',
-    name: 'Sample links',
-    order: store.sortedCategories.reduce((max, c) => Math.max(max, c.order), -1) + 1,
-  };
+  const order = store.sortedCategories.reduce((max, c) => Math.max(max, c.order), -1) + 1;
+  const category = makeCategory('Sample links', order);
   await store.upsertCategory(category);
 
-  const samples: ReadonlyArray<{ title: string; url: string }> = [
-    { title: 'Wikipedia', url: 'https://wikipedia.org' },
-    { title: 'Hacker News', url: 'https://news.ycombinator.com' },
-    { title: 'GitHub', url: 'https://github.com' },
-  ];
-  for (const sample of samples) {
+  const now = Date.now();
+  for (const [title, url] of [
+    ['Wikipedia', 'https://wikipedia.org'],
+    ['Hacker News', 'https://news.ycombinator.com'],
+    ['GitHub', 'https://github.com'],
+  ] as const) {
     await store.upsertBookmark({
       id: newId(),
       created_at: now,
       updated_at: now,
       profile_id: store.activeProfileId ?? '',
-      title: sample.title,
-      url: sample.url,
+      title,
+      url,
       category_id: category.id,
     });
   }
-  showToast(t('app.sampleAdded'), {
-    variant: 'info',
-  });
+  showToast(t('app.sampleAdded'), { variant: 'info' });
 }
 
 /** Create a scratchpad note from shared or manually entered input. */
@@ -276,23 +267,19 @@ async function createNote(title: string, content: string): Promise<void> {
 
 /** Render a friendly, actionable screen when startup fails (G-41). */
 function renderBootstrapError(root: HTMLElement): void {
-  const card = el('div', { className: 'error-boundary' });
-  card.appendChild(
-    el('h1', { className: 'error-boundary__title', text: t('app.startFailedTitle') }),
-  );
-  card.appendChild(
-    el('p', {
-      text: t('app.startFailedMessage'),
+  root.replaceChildren(
+    el('div', {
+      className: 'error-boundary',
+      children: [
+        el('h1', { className: 'error-boundary__title', text: t('app.startFailedTitle') }),
+        el('p', { text: t('app.startFailedMessage') }),
+        btn(t('common.retry'), {
+          className: 'button--primary',
+          onClick: () => window.location.reload(),
+        }),
+      ],
     }),
   );
-  const retry = el('button', {
-    className: 'button button--primary',
-    text: t('common.retry'),
-    attrs: { type: 'button' },
-  });
-  retry.addEventListener('click', () => window.location.reload());
-  card.appendChild(retry);
-  root.replaceChildren(card);
 }
 
 /**
@@ -337,33 +324,26 @@ async function showInstallGuidance(): Promise<void> {
     return;
   }
 
-  const dialog = new Dialog({
-    label: t('app.installHub'),
-    onRequestClose: () => dialog.close(),
-  });
-  const title = el('h2', { className: 'modal__title', text: t('app.installHub') });
-  const body = el('div', { className: 'modal__body' });
-  body.appendChild(title);
-
+  const dialog = new Dialog({ label: t('app.installHub'), onRequestClose: () => dialog.close() });
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const steps = isIos
     ? [t('app.installStepIos1'), t('app.installStepIos2'), t('app.installStepIos3')]
     : [t('app.installStepOther1'), t('app.installStepOther2'), t('app.installStepOther3')];
-  const list = el('ol', { className: 'install-steps' });
-  for (const step of steps) {
-    list.appendChild(el('li', { text: step }));
-  }
-  body.appendChild(list);
-
-  const close = el('button', {
-    className: 'button button--primary',
-    text: t('app.gotIt'),
-    attrs: { type: 'button' },
-  });
-  close.addEventListener('click', () => dialog.close());
-  body.appendChild(el('div', { className: 'modal__actions', children: [close] }));
-
-  dialog.content.appendChild(body);
+  dialog.content.appendChild(
+    el('div', {
+      className: 'modal__body',
+      children: [
+        el('h2', { className: 'modal__title', text: t('app.installHub') }),
+        el('ol', { className: 'install-steps', children: steps.map((s) => el('li', { text: s })) }),
+        el('div', {
+          className: 'modal__actions',
+          children: [
+            btn(t('app.gotIt'), { className: 'button--primary', onClick: () => dialog.close() }),
+          ],
+        }),
+      ],
+    }),
+  );
   dialog.open();
 }
 
@@ -448,19 +428,12 @@ async function bootstrap(): Promise<void> {
   }
 
   /* ---- Request durable storage so IndexedDB is not evicted (G-52) ---- */
-  void (async () => {
-    const persisted = await isStoragePersisted();
-    if (persisted) {
-      if (!store.appConfig.storage_persisted) {
-        await store.updateConfig({ storage_persisted: true });
-      }
-      return;
-    }
-    const granted = await requestPersistentStorage();
-    if (granted) {
+  void isStoragePersisted().then(async (persisted) => {
+    const ok = persisted || (await requestPersistentStorage());
+    if (ok && !store.appConfig.storage_persisted) {
       await store.updateConfig({ storage_persisted: true });
     }
-  })();
+  });
 
   /* ---- Shell ---- */
   const shell = el('div', { className: 'app-shell', attrs: { 'data-view': 'bookmarks' } });
@@ -499,31 +472,24 @@ async function bootstrap(): Promise<void> {
 
   /* ---- Drawers ---- */
   const tasksDrawer = new TasksDrawer(store, {
-    onPinToggle: () => {
-      void togglePin('tasks');
-    },
+    onPinToggle: () => void togglePin('tasks'),
     onClose: () => setOpen('tasks', false),
   });
   const notesDrawer = new NotesDrawer(store, {
-    onPinToggle: () => {
-      void togglePin('notes');
-    },
+    onPinToggle: () => void togglePin('notes'),
     onClose: () => setOpen('notes', false),
   });
 
   // Scrim behind overlay drawers on tablet+ (G-09). Inserted before the drawers
   // so it shares their z-index but paints underneath them.
   const drawerScrim = el('div', { className: 'drawer-scrim' });
-  shell.appendChild(drawerScrim);
-  shell.appendChild(tasksDrawer.element);
-  shell.appendChild(launchpad);
-  shell.appendChild(notesDrawer.element);
+  shell.append(drawerScrim, tasksDrawer.element, launchpad, notesDrawer.element);
 
   /* ---- Mobile tab bar (icon + label + open-task count) ---- */
   const tabDefs: ReadonlyArray<{ key: ViewKey; label: string; icon: string }> = [
-    { key: 'tasks', label: t('app.tabTasks'), icon: ICON_TAB_TASKS },
+    { key: 'tasks', label: t('app.tabTasks'), icon: ICON_TASKS },
     { key: 'bookmarks', label: t('app.tabBookmarks'), icon: ICON_TAB_BOOKMARKS },
-    { key: 'notes', label: t('app.tabNotes'), icon: ICON_TAB_NOTES },
+    { key: 'notes', label: t('app.tabNotes'), icon: ICON_NOTES },
   ];
   const tabButtons = new Map<ViewKey, HTMLButtonElement>();
   const tabCounts = new Map<ViewKey, HTMLElement>();
@@ -532,28 +498,29 @@ async function bootstrap(): Promise<void> {
     attrs: { 'aria-label': t('app.primaryNav') },
   });
   for (const tab of tabDefs) {
+    const icon = svg(tab.icon, { className: 'mobile-tabs__icon', size: 20 });
+    const label = el('span', { className: 'mobile-tabs__label', text: tab.label });
+    let count: HTMLSpanElement | undefined;
+    if (tab.key === 'tasks') {
+      count = el('span', { className: 'mobile-tabs__count', text: '0' });
+      count.hidden = true;
+      tabCounts.set('tasks', count);
+    }
     const button = el('button', {
       className: 'mobile-tabs__button',
       attrs: { type: 'button' },
+      children: count ? [icon, label, count] : [icon, label],
     });
-    button.appendChild(svg(tab.icon, { className: 'mobile-tabs__icon', size: 20 }));
-    button.appendChild(el('span', { className: 'mobile-tabs__label', text: tab.label }));
-    if (tab.key === 'tasks') {
-      const count = el('span', { className: 'mobile-tabs__count', text: '0' });
-      count.hidden = true;
-      button.appendChild(count);
-      tabCounts.set('tasks', count);
-    }
     button.addEventListener('click', () => setView(tab.key));
     tabButtons.set(tab.key, button);
     mobileTabs.appendChild(button);
   }
 
-  root.appendChild(
+  root.append(
     el('a', { className: 'skip-link', text: t('app.skipToContent'), attrs: { href: '#main' } }),
+    shell,
+    mobileTabs,
   );
-  root.appendChild(shell);
-  root.appendChild(mobileTabs);
 
   /* ---- Components ---- */
   const omnibar = new Omnibar(store, {
@@ -635,53 +602,35 @@ async function bootstrap(): Promise<void> {
       }
     },
     onCreateCategory: async (name) => {
-      // New categories land at the end of the ordered list.
       const order = store.sortedCategories.reduce((max, c) => Math.max(max, c.order), -1) + 1;
-      const now = Date.now();
-      const category: CategoryItem = {
-        id: newId(),
-        created_at: now,
-        updated_at: now,
-        profile_id: store.activeProfileId ?? '',
-        name,
-        order,
-      };
+      const category = makeCategory(name, order);
       await store.upsertCategory(category);
       return category;
     },
   });
   document.body.appendChild(bookmarkEditor.element);
 
-  const addBookmarkButton = el('button', {
-    className: 'button launchpad__add-bookmark',
-    attrs: { type: 'button', 'aria-label': t('app.addBookmark') },
-  });
-  addBookmarkButton.appendChild(svg(ICON_PLUS, { size: 16 }));
-  addBookmarkButton.appendChild(el('span', { text: t('app.addBookmark') }));
-  addBookmarkButton.addEventListener('click', () => {
-    void openBookmarkEditor();
+  const addBookmarkButton = btn(t('app.addBookmark'), {
+    className: 'launchpad__add-bookmark',
+    icon: ICON_PLUS,
+    attrs: { 'aria-label': t('app.addBookmark') },
+    onClick: () => {
+      void openBookmarkEditor();
+    },
   });
   bookmarksHost.insertBefore(
-    el('div', { className: 'launchpad__bookmarks-actions', children: [addBookmarkButton] }),
+    el('div', { className: 'launchpad__actions', children: [addBookmarkButton] }),
     bookmarksView.element,
   );
 
   /* ---- First-run onboarding card (G-39, DESIGN.md §7) ---- */
   const onboarding = new OnboardingCard({
-    onAddBookmark: () => {
-      void openBookmarkEditor();
-    },
+    onAddBookmark: () => void openBookmarkEditor(),
     onImport: () => settings.triggerImport(),
     onConnectSync: () => settings.open(),
-    onTrySample: () => {
-      void seedSampleSet();
-    },
-    onInstall: () => {
-      void showInstallGuidance();
-    },
-    onComplete: () => {
-      void store.updateConfig({ onboarding_completed: true });
-    },
+    onTrySample: () => void seedSampleSet(),
+    onInstall: () => void showInstallGuidance(),
+    onComplete: () => void store.updateConfig({ onboarding_completed: true }),
   });
   bookmarksHost.insertBefore(onboarding.element, bookmarksHost.firstChild);
 
@@ -722,9 +671,7 @@ async function bootstrap(): Promise<void> {
       variant: 'info',
       action: {
         label: t('common.undo'),
-        onSelect: () => {
-          void store.restoreBookmark(bookmark.id);
-        },
+        onSelect: () => void store.restoreBookmark(bookmark.id),
       },
     });
   }
@@ -816,10 +763,8 @@ async function bootstrap(): Promise<void> {
   const settings = new SettingsModal(store, {
     onClose: () => undefined,
     onExport: exportJson,
-    onImport: (file) => {
-      void importJson(file);
-    },
-    onTestConnection: (config) => testConnection(config),
+    onImport: (file) => void importJson(file),
+    onTestConnection: testConnection,
     onCheckFile: async (config) => (await fetchRemoteFile(config)) !== null,
     onInitialize: async (config) => {
       const content = serializePayload(cullPayloadTombstones(store.getPayload()));
@@ -845,15 +790,11 @@ async function bootstrap(): Promise<void> {
       void syncEngine.pullNow();
       applyFeatureToggles();
     },
-    onSyncNow: () => {
-      void syncEngine.pullNow();
-    },
+    onSyncNow: () => void syncEngine.pullNow(),
     onOpenRecentlyDeleted: () => recentlyDeleted.open(),
     onOpenCategories: () => categoryManager.open(),
     onManageSearchEngines: () => searchEngineManager.open(),
-    onInstall: () => {
-      void showInstallGuidance();
-    },
+    onInstall: () => void showInstallGuidance(),
     onRequestPersist: async () => {
       const granted = await requestPersistentStorage();
       await store.updateConfig({ storage_persisted: granted });
@@ -966,8 +907,7 @@ async function bootstrap(): Promise<void> {
 
   /** Whether a drawer is currently pinned (lives in the grid flow). */
   function isPinned(key: DrawerKey): boolean {
-    const pinned = store.appConfig.pinned_drawers;
-    return key === 'tasks' ? pinned.tasks : pinned.notes;
+    return store.appConfig.pinned_drawers[key];
   }
 
   /** Show the scrim only while an unpinned (overlay) drawer is open (G-09). */
@@ -999,18 +939,9 @@ async function bootstrap(): Promise<void> {
   function applyPinnedState(): void {
     const { tasks, notes } = store.appConfig.pinned_drawers;
 
-    shell.classList.remove(
-      'app-shell--tasks-pinned',
-      'app-shell--notes-pinned',
-      'app-shell--both-pinned',
-    );
-    if (tasks && notes) {
-      shell.classList.add('app-shell--both-pinned');
-    } else if (tasks) {
-      shell.classList.add('app-shell--tasks-pinned');
-    } else if (notes) {
-      shell.classList.add('app-shell--notes-pinned');
-    }
+    shell.classList.toggle('app-shell--both-pinned', tasks && notes);
+    shell.classList.toggle('app-shell--tasks-pinned', tasks && !notes);
+    shell.classList.toggle('app-shell--notes-pinned', !tasks && notes);
 
     // Capture the previous pin flags before overwriting the drawer attributes
     // so the pinned -> unpinned transition can be detected. Without this, an
@@ -1146,18 +1077,19 @@ async function bootstrap(): Promise<void> {
   updateTabCounts();
   updateOnboarding();
 
+  const renderBookmarks = () => bookmarksView.render();
   store.subscribe('bookmarks', () => {
-    bookmarksView.render();
+    renderBookmarks();
     updateOnboarding();
   });
-  store.subscribe('categories', () => bookmarksView.render());
-  store.subscribe('metrics', () => bookmarksView.render());
+  store.subscribe('categories', renderBookmarks);
+  store.subscribe('metrics', renderBookmarks);
   store.subscribe('tasks', () => {
     tasksDrawer.render();
     updateTabCounts();
   });
   store.subscribe('notes', () => notesDrawer.render());
-  store.subscribe('profiles', () => applyProfile());
+  store.subscribe('profiles', applyProfile);
   store.subscribe('config', () => {
     updateOnboarding();
     omnibar.renderEngine();
@@ -1174,14 +1106,10 @@ async function bootstrap(): Promise<void> {
     });
   }
 
-  // Reconcile remote changes on focus / visibility (PRD §3.2 lifecycle hooks).
-  window.addEventListener('focus', () => {
-    void syncEngine.pullNow();
-  });
+  const pullRemote = () => void syncEngine.pullNow();
+  window.addEventListener('focus', pullRemote);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      void syncEngine.pullNow();
-    }
+    if (document.visibilityState === 'visible') pullRemote();
   });
 
   /* ---- PWA feature wiring (badge, notifications, gamepad, lock, share) ---- */
@@ -1217,45 +1145,23 @@ async function bootstrap(): Promise<void> {
 
   /** Close the top-most layer (modal, drawer, or blur). */
   function closeTopLayer(): void {
-    // While locked, nothing behind the overlay may be dismissed (G-29).
-    if (isLockScreenOpen()) {
-      return;
-    }
-    if (sharePrompt.element.classList.contains('is-open')) {
-      sharePrompt.close();
-      return;
-    }
-    if (searchEngineManager.isOpen()) {
-      searchEngineManager.close();
-      return;
-    }
-    if (settings.element.classList.contains('is-open')) {
-      settings.close();
-      return;
-    }
-    if (profileEditor.element.classList.contains('is-open')) {
-      profileEditor.close();
-      return;
-    }
-    if (bookmarkEditor.isOpen()) {
-      bookmarkEditor.close();
-      return;
-    }
-    if (notesDrawer.isEditorOpen()) {
-      notesDrawer.closeEditor();
-      return;
-    }
-    if (profilePopover.isVisible()) {
-      profilePopover.close();
-      return;
-    }
-    if (openState.notes) {
-      setOpen('notes', false);
-      return;
-    }
-    if (openState.tasks) {
-      setOpen('tasks', false);
-      return;
+    if (isLockScreenOpen()) return;
+    const layers: Array<[boolean, () => void]> = [
+      [sharePrompt.element.classList.contains('is-open'), () => sharePrompt.close()],
+      [searchEngineManager.isOpen(), () => searchEngineManager.close()],
+      [settings.element.classList.contains('is-open'), () => settings.close()],
+      [profileEditor.element.classList.contains('is-open'), () => profileEditor.close()],
+      [bookmarkEditor.isOpen(), () => bookmarkEditor.close()],
+      [notesDrawer.isEditorOpen(), () => notesDrawer.closeEditor()],
+      [profilePopover.isVisible(), () => profilePopover.close()],
+      [openState.notes, () => setOpen('notes', false)],
+      [openState.tasks, () => setOpen('tasks', false)],
+    ];
+    for (const [isOpen, close] of layers) {
+      if (isOpen) {
+        close();
+        return;
+      }
     }
     (document.activeElement as HTMLElement | null)?.blur();
   }
@@ -1265,47 +1171,33 @@ async function bootstrap(): Promise<void> {
     if (isLockScreenOpen()) {
       return;
     }
-    switch (action) {
-      case 'omnibar':
-        omnibar.focus();
-        break;
-      case 'toggle-tasks':
-        setOpen('tasks', !openState.tasks);
-        break;
-      case 'toggle-notes':
-        setOpen('notes', !openState.notes);
-        break;
-      case 'activate':
-        (document.activeElement as HTMLElement | null)?.click();
-        break;
-      case 'back':
-        closeTopLayer();
-        break;
-      case 'up':
-      case 'left':
-        moveFocus(-1);
-        break;
-      case 'down':
-      case 'right':
-        moveFocus(1);
-        break;
-      default:
-        break;
-    }
+    const actions: Partial<Record<GamepadAction, () => void>> = {
+      omnibar: () => omnibar.focus(),
+      'toggle-tasks': () => setOpen('tasks', !openState.tasks),
+      'toggle-notes': () => setOpen('notes', !openState.notes),
+      activate: () => (document.activeElement as HTMLElement | null)?.click(),
+      back: closeTopLayer,
+      up: () => moveFocus(-1),
+      left: () => moveFocus(-1),
+      down: () => moveFocus(1),
+      right: () => moveFocus(1),
+    };
+    actions[action]?.();
   }
 
   /** Apply persisted feature toggles (boot + after settings are saved). */
   function applyFeatureToggles(): void {
+    const startPush = () => {
+      notifications.start();
+      void notifications.subscribeToPush(store.appConfig.vapid_public_key ?? '');
+    };
     if (store.appConfig.notifications_enabled && NotificationManager.isSupported()) {
-      if (NotificationManager.permission() === 'granted') {
-        notifications.start();
-        void notifications.subscribeToPush(store.appConfig.vapid_public_key ?? '');
-      } else if (NotificationManager.permission() !== 'denied') {
-        void NotificationManager.requestPermission().then((permission) => {
-          if (permission === 'granted') {
-            notifications.start();
-            void notifications.subscribeToPush(store.appConfig.vapid_public_key ?? '');
-          }
+      const perm = NotificationManager.permission();
+      if (perm === 'granted') {
+        startPush();
+      } else if (perm !== 'denied') {
+        void NotificationManager.requestPermission().then((p) => {
+          if (p === 'granted') startPush();
         });
       }
     } else {
@@ -1403,26 +1295,34 @@ async function bootstrap(): Promise<void> {
 
   /* ---- Keyboard shortcuts overlay + non-Alt pinned shortcut (G-26) ---- */
   function showShortcuts(): void {
-    const dialog = new Dialog({
-      label: t('app.shortcuts'),
-      onRequestClose: () => dialog.close(),
-    });
-    const title = el('h2', { className: 'modal__title', text: t('app.shortcuts') });
-    const list = el('ul', { className: 'shortcuts-list' });
+    const dialog = new Dialog({ label: t('app.shortcuts'), onRequestClose: () => dialog.close() });
     const rows: ReadonlyArray<[string, string]> = [
       ['/', t('app.shortcutFocusSearch')],
-      ['Alt+1–9 or g then 1–9', t('app.shortcutPinned')],
+      ['Alt+1–9 / g 1–9', t('app.shortcutPinned')],
       ['t / m', t('app.shortcutTogglePanes')],
       ['Esc', t('app.shortcutCloseLayer')],
       ['?', t('app.shortcutShowHelp')],
     ];
-    for (const [keys, description] of rows) {
-      const item = el('li', { className: 'shortcuts-list__item' });
-      item.appendChild(el('kbd', { className: 'shortcut-key', text: keys }));
-      item.appendChild(el('span', { text: description }));
-      list.appendChild(item);
-    }
-    dialog.content.appendChild(el('div', { className: 'modal__body', children: [title, list] }));
+    dialog.content.appendChild(
+      el('div', {
+        className: 'modal__body',
+        children: [
+          el('h2', { className: 'modal__title', text: t('app.shortcuts') }),
+          el('ul', {
+            className: 'shortcuts-list',
+            children: rows.map(([k, d]) =>
+              el('li', {
+                className: 'shortcuts-list__item',
+                children: [
+                  el('kbd', { className: 'shortcut-key', text: k }),
+                  el('span', { text: d }),
+                ],
+              }),
+            ),
+          }),
+        ],
+      }),
+    );
     dialog.open();
   }
 
@@ -1434,14 +1334,7 @@ async function bootstrap(): Promise<void> {
     if (isLockScreenOpen()) {
       return;
     }
-    const target = event.target as HTMLElement | null;
-    const editable =
-      target !== null &&
-      (target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.tagName === 'SELECT' ||
-        target.isContentEditable);
-    if (editable || document.querySelector('.modal-overlay.is-open')) {
+    if (isEditable(event.target) || document.querySelector('.modal-overlay.is-open')) {
       return;
     }
     if (event.key === '?') {
@@ -1517,18 +1410,12 @@ function registerServiceWorker(): void {
     navigator.serviceWorker
       .register(`${import.meta.env.BASE_URL}sw.js`, { updateViaCache: 'none' })
       .then((registration) => {
-        // Immediately check for updates bypassing HTTP cache.
-        void registration.update();
-
-        // Check for updates when returning to the tab or app.
+        const checkUpdate = () => void registration.update();
+        checkUpdate();
         document.addEventListener('visibilitychange', () => {
-          if (document.visibilityState === 'visible') {
-            void registration.update();
-          }
+          if (document.visibilityState === 'visible') checkUpdate();
         });
-        window.addEventListener('focus', () => {
-          void registration.update();
-        });
+        window.addEventListener('focus', checkUpdate);
 
         // If a worker is already waiting from a previous session or reload,
         // activate it so the page receives the updated bundle.

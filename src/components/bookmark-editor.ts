@@ -11,12 +11,13 @@
  * exported pure functions so it can be unit-tested without a DOM.
  */
 
-import { el, svg, ICON_CLOSE } from '../utils/dom';
+import { btn, el, field, iconBtn, ICON_CLOSE } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
 import { t } from '../utils/i18n';
 import { hostnameOf } from '../core/fallback';
 import { newId } from '../utils/crypto';
 import { isUrlLike, normalizeUrl } from './omnibar';
+import { applyBookmarkWidgetStyles } from './bookmarks';
 import type { BookmarkCardSize, BookmarkItem, CategoryItem } from '../types/schemas';
 
 let bookmarkDialogSeq = 0;
@@ -28,6 +29,39 @@ export const HOTKEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as const;
 export type Hotkey = (typeof HOTKEYS)[number];
 
 export const CARD_SIZES: readonly BookmarkCardSize[] = ['small', 'wide', 'large'] as const;
+
+export interface WidgetPreset {
+  id: string;
+  nameKey: string;
+  bg?: string | undefined;
+  textColor?: string | undefined;
+  border?: string | undefined;
+}
+
+const p = (
+  id: string,
+  nameKey: string,
+  bg?: string,
+  textColor?: string,
+  border?: string,
+): WidgetPreset => ({ id, nameKey, bg, textColor, border });
+
+const cm = (pct: number) => `color-mix(in srgb, var(--text-main) ${pct}%, transparent)`;
+
+export const WIDGET_PRESETS: readonly WidgetPreset[] = [
+  p('default', 'bookmarkEditor.presetDefault'),
+  p('slate', 'bookmarkEditor.presetSlate', '#1e293b', '#f8fafc', '#334155'),
+  p(
+    'sunset',
+    'bookmarkEditor.presetSunset',
+    'linear-gradient(135deg, #7c2d12, #9a3412)',
+    '#ffffff',
+    '#ea580c',
+  ),
+  p('sage', 'bookmarkEditor.presetSage', '#233831', '#e8f2ec', '#4f7565'),
+  p('cyber', 'bookmarkEditor.presetCyber', '#0d1117', '#58a6ff', '#388bfd'),
+  p('frost', 'bookmarkEditor.presetFrost', cm(6), 'inherit', cm(25)),
+];
 
 /** Coerce a card size value to a valid BookmarkCardSize, defaulting to 'small'. */
 export function normalizeCardSize(value: string | undefined): BookmarkCardSize {
@@ -77,6 +111,9 @@ export interface BookmarkFormInput {
   descriptionText?: string;
   cardSize?: BookmarkCardSize | string;
   hotkey: string;
+  bgColor?: string;
+  textColor?: string;
+  borderColor?: string;
 }
 
 export interface BookmarkValidationContext {
@@ -95,6 +132,9 @@ export interface BookmarkValidation {
   description?: string | undefined;
   cardSize?: BookmarkCardSize | undefined;
   hotkey?: Hotkey | undefined;
+  bgColor?: string | undefined;
+  textColor?: string | undefined;
+  borderColor?: string | undefined;
 }
 
 /**
@@ -127,16 +167,23 @@ export function validateBookmarkForm(
   }
 
   const title = input.title.trim() || hostnameOf(url) || url;
-  const description = input.descriptionText ? input.descriptionText.trim() : undefined;
   const cardSize = input.cardSize ? normalizeCardSize(input.cardSize) : 'small';
+  const val = (s?: string) => {
+    const t = s?.trim();
+    return t && t.length > 0 ? t : undefined;
+  };
+
   return {
     ok: true,
     title,
     url,
     alternateUrls,
-    description: description && description.length > 0 ? description : undefined,
+    description: val(input.descriptionText),
     cardSize,
     hotkey,
+    bgColor: val(input.bgColor),
+    textColor: val(input.textColor),
+    borderColor: val(input.borderColor),
   };
 }
 
@@ -158,14 +205,6 @@ export interface BookmarkEditorCallbacks {
   onCreateCategory: (name: string) => Promise<CategoryItem>;
 }
 
-/** Wrap an input in a labelled field (mirrors the settings modal). */
-function field(labelText: string, input: HTMLElement): HTMLElement {
-  const label = el('label', { className: 'field' });
-  label.appendChild(el('span', { className: 'field__label', text: labelText }));
-  label.appendChild(input);
-  return label;
-}
-
 export class BookmarkEditor {
   readonly element: HTMLElement;
 
@@ -183,6 +222,14 @@ export class BookmarkEditor {
   private readonly newCategoryRow: HTMLElement;
   private readonly iconInput: HTMLInputElement;
   private readonly hotkeySelect: HTMLSelectElement;
+  private readonly bgInput: HTMLInputElement;
+  private readonly textInput: HTMLInputElement;
+  private readonly borderInput: HTMLInputElement;
+  private readonly previewCard: HTMLElement;
+  private readonly previewTitle: HTMLElement;
+  private readonly previewHotkey: HTMLElement;
+  private readonly previewDesc: HTMLElement;
+  private readonly previewIcon: HTMLElement;
   private readonly statusEl: HTMLElement;
   private readonly deleteButton: HTMLButtonElement;
 
@@ -193,14 +240,21 @@ export class BookmarkEditor {
     private readonly store: BookmarkEditorStore,
     private readonly callbacks: BookmarkEditorCallbacks,
   ) {
-    this.titleInput = el('input', {
-      className: 'drawer__input',
-      attrs: {
-        type: 'text',
-        placeholder: t('bookmarkEditor.titlePlaceholder'),
-        'aria-label': t('bookmarkEditor.titleAria'),
-      },
-    });
+    const textDrawerInput = (ph: string, aria: string) =>
+      el('input', {
+        className: 'drawer__input',
+        attrs: { type: 'text', placeholder: t(ph), 'aria-label': t(aria) },
+      });
+    const textarea = (ph: string, aria: string, rows = '2') =>
+      el('textarea', {
+        className: 'drawer__textarea',
+        attrs: { placeholder: t(ph), 'aria-label': t(aria), rows },
+      });
+
+    this.titleInput = textDrawerInput(
+      'bookmarkEditor.titlePlaceholder',
+      'bookmarkEditor.titleAria',
+    );
     this.urlInput = el('input', {
       className: 'drawer__input',
       attrs: {
@@ -215,89 +269,98 @@ export class BookmarkEditor {
         enterkeyhint: 'go',
       },
     });
-    this.altInput = el('textarea', {
-      className: 'drawer__textarea',
-      attrs: {
-        placeholder: t('bookmarkEditor.altPlaceholder'),
-        'aria-label': t('bookmarkEditor.altAria'),
-        rows: '3',
-      },
-    });
-    this.descriptionInput = el('textarea', {
-      className: 'drawer__textarea',
-      attrs: {
-        placeholder: t('bookmarkEditor.descriptionPlaceholder'),
-        'aria-label': t('bookmarkEditor.descriptionAria'),
-        rows: '2',
-      },
-    });
+    this.altInput = textarea('bookmarkEditor.altPlaceholder', 'bookmarkEditor.altAria', '3');
+    this.descriptionInput = textarea(
+      'bookmarkEditor.descriptionPlaceholder',
+      'bookmarkEditor.descriptionAria',
+    );
+    const sizeKeys: Record<BookmarkCardSize, string> = {
+      small: 'bookmarkEditor.sizeSmall',
+      wide: 'bookmarkEditor.sizeWide',
+      large: 'bookmarkEditor.sizeLarge',
+    };
     this.cardSizeSelect = el('select', {
       className: 'drawer__select',
       attrs: { 'aria-label': t('bookmarkEditor.cardSizeAria') },
+      children: CARD_SIZES.map((sz) =>
+        el('option', { text: t(sizeKeys[sz]), attrs: { value: sz } }),
+      ),
     });
-    this.cardSizeSelect.appendChild(
-      el('option', { text: t('bookmarkEditor.sizeSmall'), attrs: { value: 'small' } }),
-    );
-    this.cardSizeSelect.appendChild(
-      el('option', { text: t('bookmarkEditor.sizeWide'), attrs: { value: 'wide' } }),
-    );
-    this.cardSizeSelect.appendChild(
-      el('option', { text: t('bookmarkEditor.sizeLarge'), attrs: { value: 'large' } }),
-    );
     this.categorySelect = el('select', {
       className: 'drawer__select',
       attrs: { 'aria-label': t('bookmarkEditor.categoryAria') },
     });
-    this.newCategoryInput = el('input', {
-      className: 'drawer__input',
-      attrs: {
-        type: 'text',
-        placeholder: t('bookmarkEditor.newCategoryPlaceholder'),
-        'aria-label': t('bookmarkEditor.newCategoryAria'),
-      },
-    });
+    this.newCategoryInput = textDrawerInput(
+      'bookmarkEditor.newCategoryPlaceholder',
+      'bookmarkEditor.newCategoryAria',
+    );
     this.newCategoryRow = el('div', {
       className: 'bookmark-editor__new-category',
       children: [this.newCategoryInput],
     });
     this.newCategoryRow.hidden = true;
-    this.iconInput = el('input', {
-      className: 'drawer__input',
-      attrs: {
-        type: 'text',
-        placeholder: t('bookmarkEditor.iconPlaceholder'),
-        'aria-label': t('bookmarkEditor.iconAria'),
-      },
-    });
+    this.iconInput = textDrawerInput('bookmarkEditor.iconPlaceholder', 'bookmarkEditor.iconAria');
     this.hotkeySelect = el('select', {
       className: 'drawer__select',
       attrs: { 'aria-label': t('bookmarkEditor.hotkeyAria') },
+      children: [
+        el('option', { text: t('common.none'), attrs: { value: '' } }),
+        ...HOTKEYS.map((k) =>
+          el('option', { text: t('bookmarkEditor.hotkeyOption', { key: k }), attrs: { value: k } }),
+        ),
+      ],
     });
-    this.hotkeySelect.appendChild(el('option', { text: t('common.none'), attrs: { value: '' } }));
-    for (const hotkey of HOTKEYS) {
-      this.hotkeySelect.appendChild(
-        el('option', {
-          text: t('bookmarkEditor.hotkeyOption', { key: hotkey }),
-          attrs: { value: hotkey },
-        }),
-      );
+    this.bgInput = textDrawerInput('bookmarkEditor.bgPlaceholder', 'bookmarkEditor.fieldBgColor');
+    this.textInput = textDrawerInput(
+      'bookmarkEditor.textPlaceholder',
+      'bookmarkEditor.fieldTextColor',
+    );
+    this.borderInput = textDrawerInput(
+      'bookmarkEditor.borderPlaceholder',
+      'bookmarkEditor.fieldBorderColor',
+    );
+
+    this.previewTitle = el('span', {
+      className: 'tile__title',
+      text: t('bookmarkEditor.fieldTitle'),
+    });
+    this.previewHotkey = el('kbd', { className: 'tile__hotkey' });
+    this.previewDesc = el('p', { className: 'tile__description' });
+    this.previewIcon = el('span', { className: 'tile__icon tile__icon--fallback' });
+    this.previewIcon.textContent = '★';
+    const previewOpen = el('div', {
+      className: 'tile__open',
+      children: [this.previewIcon, this.previewTitle, this.previewHotkey, this.previewDesc],
+    });
+    this.previewCard = el('div', {
+      className: 'tile tile--preview tile--size-small',
+      attrs: { 'aria-hidden': 'true' },
+      children: [previewOpen],
+    });
+
+    for (const ctrl of [
+      this.titleInput,
+      this.descriptionInput,
+      this.bgInput,
+      this.textInput,
+      this.borderInput,
+    ]) {
+      ctrl.addEventListener('input', () => this.updateLivePreview());
     }
-    this.statusId = `bookmark-editor-status-${bookmarkDialogSeq}`;
+    this.cardSizeSelect.addEventListener('change', () => this.updateLivePreview());
+    this.hotkeySelect.addEventListener('change', () => this.updateLivePreview());
+
+    this.statusId = `dlg-status-be-${bookmarkDialogSeq}`;
     this.statusEl = el('p', {
       className: 'settings-status',
       attrs: { id: this.statusId, role: 'status', 'aria-live': 'polite' },
     });
     this.urlInput.setAttribute('aria-describedby', this.statusId);
 
-    this.deleteButton = el('button', {
-      className: 'button',
-      text: t('common.delete'),
-      attrs: { type: 'button' },
-    });
-    this.deleteButton.addEventListener('click', () => this.handleDelete());
+    this.deleteButton = btn(t('common.delete'), { onClick: () => this.handleDelete() });
 
     bookmarkDialogSeq += 1;
-    this.titleId = `bookmark-editor-title-${bookmarkDialogSeq}`;
+    this.titleId = `dlg-title-be-${bookmarkDialogSeq}`;
     this.dialog = new Dialog({
       labelledBy: this.titleId,
       sheet: true,
@@ -330,6 +393,10 @@ export class BookmarkEditor {
     this.cardSizeSelect.value = bookmark?.card_size ?? 'small';
     this.iconInput.value = bookmark?.icon ?? '';
     this.hotkeySelect.value = bookmark?.hotkey ?? '';
+    this.bgInput.value = bookmark?.bg_color ?? '';
+    this.textInput.value = bookmark?.text_color ?? '';
+    this.borderInput.value = bookmark?.border_color ?? '';
+    this.updateLivePreview();
     this.newCategoryInput.value = '';
     this.statusEl.textContent = '';
     this.deleteButton.hidden = bookmark === undefined;
@@ -341,18 +408,43 @@ export class BookmarkEditor {
     this.initialSnapshot = this.snapshot();
   }
 
+  private updateLivePreview(): void {
+    const size = normalizeCardSize(this.cardSizeSelect.value);
+    this.previewCard.className = `tile tile--preview tile--size-${size}`;
+    this.previewCard.removeAttribute('style');
+
+    applyBookmarkWidgetStyles(this.previewCard, {
+      bg_color: this.bgInput.value.trim() || undefined,
+      text_color: this.textInput.value.trim() || undefined,
+      border_color: this.borderInput.value.trim() || undefined,
+    });
+
+    this.previewTitle.textContent = this.titleInput.value.trim() || t('bookmarkEditor.fieldTitle');
+    const hk = this.hotkeySelect.value;
+    this.previewHotkey.textContent = hk;
+    this.previewHotkey.hidden = !hk;
+    const desc = this.descriptionInput.value.trim();
+    this.previewDesc.textContent = desc;
+    this.previewDesc.hidden = !desc || size === 'small';
+  }
+
   /** Serialise the editable fields for dirty-checking. */
   private snapshot(): string {
     return [
-      this.titleInput.value,
-      this.urlInput.value,
-      this.altInput.value,
-      this.descriptionInput.value,
-      this.cardSizeSelect.value,
-      this.iconInput.value,
-      this.hotkeySelect.value,
-      this.categorySelect.value,
-    ].join('\u0000');
+      this.titleInput,
+      this.urlInput,
+      this.altInput,
+      this.descriptionInput,
+      this.cardSizeSelect,
+      this.iconInput,
+      this.hotkeySelect,
+      this.categorySelect,
+      this.bgInput,
+      this.textInput,
+      this.borderInput,
+    ]
+      .map((i) => i.value)
+      .join('\u0000');
   }
 
   private isDirty(): boolean {
@@ -391,12 +483,12 @@ export class BookmarkEditor {
   /* ---------------------------------------------------------------- */
 
   private build(): HTMLElement {
-    const closeButton = el('button', {
-      className: 'icon-button modal__close',
-      attrs: { type: 'button', 'aria-label': t('bookmarkEditor.closeAria') },
-    });
-    closeButton.appendChild(svg(ICON_CLOSE));
-    closeButton.addEventListener('click', () => this.requestClose());
+    const closeButton = iconBtn(
+      ICON_CLOSE,
+      t('bookmarkEditor.closeAria'),
+      () => this.requestClose(),
+      'icon-button modal__close',
+    );
 
     const header = el('header', {
       className: 'modal__header',
@@ -404,23 +496,48 @@ export class BookmarkEditor {
     });
 
     // Category field: a <select> plus a hidden inline "new category" input.
-    const categoryLabel = el('label', { className: 'field' });
-    categoryLabel.appendChild(
-      el('span', { className: 'field__label', text: t('bookmarkEditor.fieldCategory') }),
-    );
-    categoryLabel.appendChild(this.categorySelect);
-    categoryLabel.appendChild(this.newCategoryRow);
-
-    const saveButton = el('button', {
-      className: 'button button--primary',
-      text: t('common.save'),
-      attrs: { type: 'submit' },
+    const categoryLabel = el('label', {
+      className: 'field',
+      children: [
+        el('span', { className: 'field__label', text: t('bookmarkEditor.fieldCategory') }),
+        this.categorySelect,
+        this.newCategoryRow,
+      ],
     });
-    // `type=submit` gives Enter-to-submit; the click handler guarantees a save
-    // even where implicit form submission is unavailable.
-    saveButton.addEventListener('click', (event) => {
-      event.preventDefault();
-      void this.save();
+
+    const saveButton = btn(t('common.save'), {
+      className: 'button--primary',
+      submit: true,
+      onClick: (event) => {
+        event.preventDefault();
+        void this.save();
+      },
+    });
+
+    const presetsRow = el('div', {
+      className: 'preset-chips',
+      children: WIDGET_PRESETS.map((preset) => {
+        const b = el('button', {
+          className: 'widget-preset-btn',
+          attrs: { type: 'button' },
+          text: t(preset.nameKey),
+        });
+        b.addEventListener('click', () => {
+          this.bgInput.value = preset.bg ?? '';
+          this.textInput.value = preset.textColor ?? '';
+          this.borderInput.value = preset.border ?? '';
+          this.updateLivePreview();
+        });
+        return b;
+      }),
+    });
+
+    const previewSection = el('div', {
+      className: 'preview-section',
+      children: [
+        el('span', { className: 'field__label', text: t('bookmarkEditor.livePreview') }),
+        this.previewCard,
+      ],
     });
 
     const actions = el('div', {
@@ -434,6 +551,11 @@ export class BookmarkEditor {
       field(t('bookmarkEditor.fieldUrl'), this.urlInput),
       field(t('bookmarkEditor.fieldDescription'), this.descriptionInput),
       field(t('bookmarkEditor.fieldCardSize'), this.cardSizeSelect),
+      previewSection,
+      field(t('bookmarkEditor.presets'), presetsRow),
+      field(t('bookmarkEditor.fieldBgColor'), this.bgInput),
+      field(t('bookmarkEditor.fieldTextColor'), this.textInput),
+      field(t('bookmarkEditor.fieldBorderColor'), this.borderInput),
       field(t('bookmarkEditor.fieldAlt'), this.altInput),
       categoryLabel,
       field(t('bookmarkEditor.fieldIcon'), this.iconInput),
@@ -510,6 +632,9 @@ export class BookmarkEditor {
         descriptionText: this.descriptionInput.value,
         cardSize: this.cardSizeSelect.value,
         hotkey: this.hotkeySelect.value,
+        bgColor: this.bgInput.value,
+        textColor: this.textInput.value,
+        borderColor: this.borderInput.value,
       },
       { bookmarks: this.store.activeBookmarks, excludeId: this.editing?.id },
     );
@@ -527,53 +652,36 @@ export class BookmarkEditor {
     }
 
     const now = Date.now();
-    const bookmark: BookmarkItem = this.editing
-      ? { ...this.editing, updated_at: now }
-      : {
-          id: newId(),
-          created_at: now,
-          updated_at: now,
-          profile_id: this.store.activeProfileId ?? '',
-          title: validation.title,
-          url: validation.url,
-          category_id: categoryId,
-        };
+    const bookmark: BookmarkItem = {
+      ...(this.editing ?? {
+        id: newId(),
+        created_at: now,
+        profile_id: this.store.activeProfileId ?? '',
+      }),
+      updated_at: now,
+      title: validation.title,
+      url: validation.url,
+      category_id: categoryId,
+    };
 
-    bookmark.title = validation.title;
-    bookmark.url = validation.url;
-    bookmark.category_id = categoryId;
-
-    if (validation.description && validation.description.length > 0) {
-      bookmark.description = validation.description;
-    } else {
-      delete bookmark.description;
-    }
-
-    if (validation.cardSize && validation.cardSize !== 'small') {
-      bookmark.card_size = validation.cardSize;
-    } else {
-      delete bookmark.card_size;
-    }
-
-    // Optional fields are omitted entirely when cleared so tombstones/sync do
-    // not carry stale empty values.
-    if (validation.alternateUrls && validation.alternateUrls.length > 0) {
-      bookmark.alternate_urls = validation.alternateUrls;
-    } else {
-      delete bookmark.alternate_urls;
-    }
-
-    const icon = this.iconInput.value.trim();
-    if (icon.length > 0) {
-      bookmark.icon = icon;
-    } else {
-      delete bookmark.icon;
-    }
-
-    if (validation.hotkey) {
-      bookmark.hotkey = validation.hotkey;
-    } else {
-      delete bookmark.hotkey;
+    const v = validation;
+    const target = bookmark as unknown as Record<string, unknown>;
+    const optionalFields: Array<[keyof BookmarkItem, unknown]> = [
+      ['description', v.description],
+      ['card_size', v.cardSize !== 'small' ? v.cardSize : undefined],
+      ['alternate_urls', v.alternateUrls?.length ? v.alternateUrls : undefined],
+      ['icon', this.iconInput.value.trim() || undefined],
+      ['hotkey', v.hotkey],
+      ['bg_color', v.bgColor],
+      ['text_color', v.textColor],
+      ['border_color', v.borderColor],
+    ];
+    for (const [k, val] of optionalFields) {
+      if (val !== undefined && val !== null && val !== '') {
+        target[k] = val;
+      } else {
+        delete target[k];
+      }
     }
 
     await this.callbacks.onSave(bookmark);

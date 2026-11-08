@@ -6,7 +6,7 @@
  * and compressed client-side (see `core/image.ts`) before being stored.
  */
 
-import { el, svg, ICON_CLOSE } from '../utils/dom';
+import { btn, el, field, iconBtn, ICON_CLOSE } from '../utils/dom';
 import { Dialog } from '../utils/dialog';
 import { t } from '../utils/i18n';
 import { compressImageFile } from '../core/image';
@@ -22,14 +22,6 @@ export interface ProfileEditorStore {
 export interface ProfileEditorCallbacks {
   onSave: (patch: Partial<ProfileItem>) => Promise<void> | void;
   onDelete: () => Promise<void> | void;
-}
-
-/** Wrap an input in a labelled field. */
-function field(labelText: string, input: HTMLElement): HTMLElement {
-  const label = el('label', { className: 'field' });
-  label.appendChild(el('span', { className: 'field__label', text: labelText }));
-  label.appendChild(input);
-  return label;
 }
 
 export class ProfileEditor {
@@ -57,7 +49,7 @@ export class ProfileEditor {
     private readonly callbacks: ProfileEditorCallbacks,
   ) {
     profileDialogSeq += 1;
-    this.titleId = `profile-editor-title-${profileDialogSeq}`;
+    this.titleId = `dlg-title-pe-${profileDialogSeq}`;
     this.dialog = new Dialog({
       labelledBy: this.titleId,
       sheet: true,
@@ -79,12 +71,12 @@ export class ProfileEditor {
       },
     });
     this.engineSelect = el('select', { attrs: { 'aria-label': t('profileEditor.engineAria') } });
-    this.themeSelect = el('select', { attrs: { 'aria-label': t('profileEditor.themeAria') } });
-    for (const theme of ['auto', 'light', 'dark'] as const) {
-      this.themeSelect.appendChild(
+    this.themeSelect = el('select', {
+      attrs: { 'aria-label': t('profileEditor.themeAria') },
+      children: (['auto', 'light', 'dark'] as const).map((theme) =>
         el('option', { text: t(`theme.${theme}`), attrs: { value: theme } }),
-      );
-    }
+      ),
+    });
 
     this.avatarInput = el('input', {
       attrs: { type: 'file', accept: 'image/*', 'aria-label': t('profileEditor.uploadAvatarAria') },
@@ -97,25 +89,22 @@ export class ProfileEditor {
 
     // "Remove" controls let the user clear a previously stored image. They are
     // only shown while an image is present (see `updateRemoveButtons`).
-    this.removeAvatarButton = el('button', {
-      className: 'button',
-      text: t('common.remove'),
-      attrs: { type: 'button', 'aria-label': t('profileEditor.removeAvatarAria') },
+    this.removeAvatarButton = btn(t('common.remove'), {
+      attrs: { 'aria-label': t('profileEditor.removeAvatarAria') },
+      onClick: () => {
+        this.avatarData = undefined;
+        this.renderPreview(this.avatarPreview, undefined);
+        this.updateRemoveButtons();
+      },
     });
-    this.removeAvatarButton.addEventListener('click', () => {
-      this.avatarData = undefined;
-      this.renderPreview(this.avatarPreview, undefined);
-      this.updateRemoveButtons();
-    });
-    this.removeLogoButton = el('button', {
-      className: 'button',
-      text: t('common.remove'),
-      attrs: { type: 'button', 'aria-label': t('profileEditor.removeLogoAria') },
-    });
-    this.removeLogoButton.addEventListener('click', () => {
-      this.logoData = undefined;
-      this.renderPreview(this.logoPreview, undefined);
-      this.updateRemoveButtons();
+
+    this.removeLogoButton = btn(t('common.remove'), {
+      attrs: { 'aria-label': t('profileEditor.removeLogoAria') },
+      onClick: () => {
+        this.logoData = undefined;
+        this.renderPreview(this.logoPreview, undefined);
+        this.updateRemoveButtons();
+      },
     });
 
     this.statusEl = el('p', {
@@ -149,12 +138,12 @@ export class ProfileEditor {
   }
 
   private build(): HTMLElement {
-    const closeButton = el('button', {
-      className: 'icon-button modal__close',
-      attrs: { type: 'button', 'aria-label': t('profileEditor.closeAria') },
-    });
-    closeButton.appendChild(svg(ICON_CLOSE));
-    closeButton.addEventListener('click', () => this.close());
+    const closeButton = iconBtn(
+      ICON_CLOSE,
+      t('profileEditor.closeAria'),
+      () => this.close(),
+      'icon-button modal__close',
+    );
 
     const title = el('h2', {
       className: 'modal__title',
@@ -163,22 +152,14 @@ export class ProfileEditor {
     });
     const header = el('header', { className: 'modal__header', children: [title, closeButton] });
 
-    const saveButton = el('button', {
-      className: 'button button--primary',
-      text: t('common.save'),
-      attrs: { type: 'button' },
-    });
-    saveButton.addEventListener('click', () => {
-      void this.handleSave();
+    const saveButton = btn(t('common.save'), {
+      className: 'button--primary',
+      onClick: () => void this.handleSave(),
     });
 
-    const deleteButton = el('button', {
-      className: 'button button--danger',
-      text: t('profileEditor.deleteProfile'),
-      attrs: { type: 'button' },
-    });
-    deleteButton.addEventListener('click', () => {
-      void this.handleDelete();
+    const deleteButton = btn(t('profileEditor.deleteProfile'), {
+      className: 'button--danger',
+      onClick: () => void this.handleDelete(),
     });
 
     const actions = el('div', {

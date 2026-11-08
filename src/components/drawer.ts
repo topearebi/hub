@@ -8,7 +8,7 @@
  * (off-canvas slide, grid placement) lives in the stylesheet.
  */
 
-import { el, svg, ICON_CLOSE, ICON_PIN } from '../utils/dom';
+import { el, iconBtn, ICON_CLOSE, ICON_PIN } from '../utils/dom';
 import { t } from '../utils/i18n';
 
 export interface DrawerShellOptions {
@@ -72,19 +72,18 @@ export function maxPinnedDrawers(viewportWidth: number): number {
 
 /** Build the shared drawer chrome. */
 export function buildDrawerShell(options: DrawerShellOptions): DrawerShell {
-  const pinButton = el('button', {
-    className: 'icon-button drawer__pin',
-    attrs: { type: 'button', 'aria-label': t('drawer.pin', { title: options.title }) },
-  });
-  pinButton.appendChild(svg(ICON_PIN));
-  pinButton.addEventListener('click', options.onPinToggle);
-
-  const closeButton = el('button', {
-    className: 'icon-button drawer__close',
-    attrs: { type: 'button', 'aria-label': t('drawer.close', { title: options.title }) },
-  });
-  closeButton.appendChild(svg(ICON_CLOSE));
-  closeButton.addEventListener('click', options.onClose);
+  const pinButton = iconBtn(
+    ICON_PIN,
+    t('drawer.pin', { title: options.title }),
+    options.onPinToggle,
+    'icon-button drawer__pin',
+  );
+  const closeButton = iconBtn(
+    ICON_CLOSE,
+    t('drawer.close', { title: options.title }),
+    options.onClose,
+    'icon-button drawer__close',
+  );
 
   const title = el('h2', { className: 'drawer__title', text: options.title });
   const actions = el('div', { className: 'drawer__actions', children: [pinButton, closeButton] });

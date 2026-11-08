@@ -6,7 +6,7 @@
  * open global app settings.
  */
 
-import { clearChildren, el } from '../utils/dom';
+import { btn, clearChildren, el } from '../utils/dom';
 import { t } from '../utils/i18n';
 import { MenuKeyboard } from '../utils/menu';
 import { initialOf } from '../utils/text';
@@ -108,14 +108,14 @@ export class ProfilePopover {
       const item = el('button', {
         className: `profile-popover__item${profile.id === activeId ? ' is-active' : ''}`,
         attrs: { type: 'button', role: 'menuitem' },
+        children: [
+          el('span', {
+            className: 'profile-popover__avatar',
+            text: initialOf(profile.name, 'H'),
+          }),
+          el('span', { className: 'profile-popover__name', text: profile.name }),
+        ],
       });
-      item.appendChild(
-        el('span', {
-          className: 'profile-popover__avatar',
-          text: initialOf(profile.name, 'H'),
-        }),
-      );
-      item.appendChild(el('span', { className: 'profile-popover__name', text: profile.name }));
       item.addEventListener('click', () => {
         this.callbacks.onSwitch(profile.id);
         this.close();
@@ -123,7 +123,7 @@ export class ProfilePopover {
       this.element.appendChild(item);
     }
 
-    this.element.appendChild(el('div', { className: 'profile-popover__divider' }));
+    this.element.appendChild(el('div', { className: 'context-menu__separator' }));
     this.element.appendChild(
       this.action(t('profilePopover.add'), () => {
         this.callbacks.onAdd();
@@ -145,12 +145,10 @@ export class ProfilePopover {
   }
 
   private action(label: string, handler: () => void): HTMLElement {
-    const button = el('button', {
+    return btn(label, {
       className: 'profile-popover__action',
-      text: label,
-      attrs: { type: 'button', role: 'menuitem' },
+      attrs: { role: 'menuitem' },
+      onClick: handler,
     });
-    button.addEventListener('click', handler);
-    return button;
   }
 }

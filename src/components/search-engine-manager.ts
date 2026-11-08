@@ -8,7 +8,16 @@
  * All icons and presets are offline/local (PRD §2, AGENTS.md §1).
  */
 
-import { clearChildren, el, svg, ICON_CLOSE, ICON_PLUS, ICON_TRASH } from '../utils/dom';
+import {
+  btn,
+  clearChildren,
+  el,
+  field,
+  iconBtn,
+  ICON_CLOSE,
+  ICON_PLUS,
+  ICON_TRASH,
+} from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
 import { t } from '../utils/i18n';
 import { showToast } from './toast';
@@ -100,7 +109,7 @@ export class SearchEngineManager {
     private readonly callbacks: SearchEngineManagerCallbacks = {},
   ) {
     searchEngineDialogSeq += 1;
-    this.titleId = `search-engines-title-${searchEngineDialogSeq}`;
+    this.titleId = `dlg-title-se-${searchEngineDialogSeq}`;
 
     this.dialog = new Dialog({
       labelledBy: this.titleId,
@@ -113,46 +122,35 @@ export class SearchEngineManager {
       text: t('searchEngines.title'),
     });
 
-    const closeBtn = el('button', {
-      className: 'icon-button',
-      attrs: {
-        type: 'button',
-        'aria-label': t('searchEngines.closeAria'),
-      },
-      children: [svg(ICON_CLOSE, { size: 18 })],
-    });
-    closeBtn.addEventListener('click', () => this.close());
+    const closeBtn = iconBtn(
+      ICON_CLOSE,
+      t('searchEngines.closeAria'),
+      () => this.close(),
+      'icon-button',
+      18,
+    );
 
     const header = el('header', {
       className: 'modal__header',
       children: [this.headerTitleEl, closeBtn],
     });
 
-    // List view container
-    this.listContainer = el('div', { className: 'search-engine-manager__list-view' });
-
-    // Form view container
-    this.formContainer = el('div', { className: 'search-engine-manager__form-view' });
+    this.listContainer = el('div');
+    this.formContainer = el('div');
     this.formContainer.hidden = true;
 
     // Build form view fields
-    this.formTitleEl = el('h3', { className: 'search-engine-form__title' });
+    this.formTitleEl = el('h3', { className: 'engine-form__title' });
 
     this.presetSelect = el('select', {
       className: 'drawer__select',
       attrs: { 'aria-label': t('searchEngines.preset') },
+      children: [
+        el('option', { text: t('searchEngines.choosePreset'), attrs: { value: '' } }),
+        ...SEARCH_PRESETS.map((p) => el('option', { text: p.name, attrs: { value: p.id } })),
+        el('option', { text: t('searchEngines.custom'), attrs: { value: 'custom' } }),
+      ],
     });
-    this.presetSelect.appendChild(
-      el('option', { text: t('searchEngines.choosePreset'), attrs: { value: '' } }),
-    );
-    for (const preset of SEARCH_PRESETS) {
-      this.presetSelect.appendChild(
-        el('option', { text: preset.name, attrs: { value: preset.id } }),
-      );
-    }
-    this.presetSelect.appendChild(
-      el('option', { text: t('searchEngines.custom'), attrs: { value: 'custom' } }),
-    );
 
     this.presetSelect.addEventListener('change', () => this.onPresetSelected());
 
@@ -181,7 +179,7 @@ export class SearchEngineManager {
     });
     this.urlInput.addEventListener('input', () => this.updateIconPreview());
 
-    this.iconPreview = el('div', { className: 'search-engine-form__icon-preview' });
+    this.iconPreview = el('div', { className: 'engine-form__preview' });
 
     this.fileInput = el('input', {
       className: 'sr-only',
@@ -192,34 +190,30 @@ export class SearchEngineManager {
     });
     this.fileInput.addEventListener('change', () => void this.onFileSelected());
 
-    const uploadBtn = el('button', {
-      className: 'button button--subtle',
-      attrs: { type: 'button' },
-      text: t('searchEngines.uploadIcon'),
+    const uploadBtn = btn(t('searchEngines.uploadIcon'), {
+      className: 'button--subtle',
+      onClick: () => this.fileInput.click(),
     });
-    uploadBtn.addEventListener('click', () => this.fileInput.click());
 
-    this.removeIconBtn = el('button', {
-      className: 'button button--subtle',
-      attrs: { type: 'button' },
-      text: t('searchEngines.removeIcon'),
-    });
-    this.removeIconBtn.addEventListener('click', () => {
-      this.currentIcon = undefined;
-      this.updateIconPreview();
+    this.removeIconBtn = btn(t('searchEngines.removeIcon'), {
+      className: 'button--subtle',
+      onClick: () => {
+        this.currentIcon = undefined;
+        this.updateIconPreview();
+      },
     });
 
     const iconControls = el('div', {
-      className: 'search-engine-form__icon-controls',
+      className: 'engine-form__icons',
       children: [this.iconPreview, uploadBtn, this.removeIconBtn, this.fileInput],
     });
 
     this.defaultCheckbox = el('input', {
-      className: 'search-engine-form__checkbox',
+      className: 'engine-form__checkbox',
       attrs: { type: 'checkbox' },
     });
     const defaultLabel = el('label', {
-      className: 'search-engine-form__checkbox-label',
+      className: 'engine-form__check-label',
       children: [this.defaultCheckbox, el('span', { text: t('searchEngines.isDefault') })],
     });
 
@@ -228,41 +222,37 @@ export class SearchEngineManager {
       attrs: { role: 'status', 'aria-live': 'polite' },
     });
 
-    const cancelBtn = el('button', {
-      className: 'button button--subtle',
-      attrs: { type: 'button' },
-      text: t('common.cancel'),
+    const cancelBtn = btn(t('common.cancel'), {
+      className: 'button--subtle',
+      onClick: () => this.showList(),
     });
-    cancelBtn.addEventListener('click', () => this.showList());
 
-    const saveBtn = el('button', {
-      className: 'button button--primary',
-      attrs: { type: 'button' },
-      text: t('common.save'),
+    const saveBtn = btn(t('common.save'), {
+      className: 'button--primary',
+      onClick: () => void this.saveEngine(),
     });
-    saveBtn.addEventListener('click', () => void this.saveEngine());
 
     const formButtons = el('div', {
-      className: 'search-engine-form__buttons',
+      className: 'engine-form__buttons',
       children: [cancelBtn, saveBtn],
     });
 
-    const urlHint = el('p', {
-      className: 'field__hint',
-      text: t('searchEngines.queryUrlHint'),
-    });
-
     const formFields = el('div', {
-      className: 'search-engine-form__fields',
+      className: 'engine-form__fields',
       children: [
         this.formTitleEl,
-        this.wrapField(t('searchEngines.preset'), this.presetSelect),
-        this.wrapField(t('searchEngines.name'), this.nameInput),
-        this.wrapField(
+        field(t('searchEngines.preset'), this.presetSelect),
+        field(t('searchEngines.name'), this.nameInput),
+        field(
           t('searchEngines.queryUrl'),
-          el('div', { children: [this.urlInput, urlHint] }),
+          el('div', {
+            children: [
+              this.urlInput,
+              el('p', { className: 'field__hint', text: t('searchEngines.queryUrlHint') }),
+            ],
+          }),
         ),
-        this.wrapField(t('searchEngines.icon'), iconControls),
+        field(t('searchEngines.icon'), iconControls),
         defaultLabel,
         this.statusEl,
         formButtons,
@@ -271,7 +261,7 @@ export class SearchEngineManager {
     this.formContainer.appendChild(formFields);
 
     const body = el('div', {
-      className: 'modal__body search-engine-manager__body',
+      className: 'modal__body',
       children: [this.listContainer, this.formContainer],
     });
 
@@ -318,102 +308,90 @@ export class SearchEngineManager {
       text: t('searchEngines.subtitle'),
     });
 
-    const addBtn = el('button', {
-      className: 'button button--primary search-engine-manager__add-btn',
-      attrs: { type: 'button' },
-      children: [svg(ICON_PLUS, { size: 16 }), el('span', { text: t('searchEngines.add') })],
+    const addBtn = btn(t('searchEngines.add'), {
+      className: 'button--primary search-engine-manager__add-btn',
+      icon: ICON_PLUS,
+      onClick: () => this.showAddForm(),
     });
-    addBtn.addEventListener('click', () => this.showAddForm());
 
     const topBar = el('div', {
-      className: 'search-engine-manager__top-bar',
+      className: 'engine-mgr__bar',
       children: [subtitle, addBtn],
     });
 
-    const list = el('div', { className: 'search-engine-manager__list' });
+    const list = el('div', {
+      className: 'engine-mgr__list',
+      children: providers.map((provider) => this.renderProviderRow(provider, providers.length)),
+    });
 
-    for (const provider of providers) {
-      const row = this.renderProviderRow(provider, providers.length);
-      list.appendChild(row);
-    }
-
-    this.listContainer.appendChild(topBar);
-    this.listContainer.appendChild(list);
+    this.listContainer.append(topBar, list);
   }
 
   private renderProviderRow(provider: SearchProvider, totalCount: number): HTMLElement {
-    const row = el('div', { className: 'search-engine-row' });
-
-    const iconWrap = el('div', {
-      className: 'search-engine-row__icon',
-      children: [renderSearchEngineIcon(provider, 24)],
+    const isDef = provider.is_default;
+    const nameLine = el('div', {
+      className: 'engine-row__line',
+      children: [
+        el('span', { className: 'engine-row__name', text: provider.name }),
+        ...(isDef
+          ? [
+              el('span', {
+                className: 'search-engine-row__badge',
+                text: t('searchEngines.isDefault'),
+              }),
+            ]
+          : []),
+      ],
     });
 
-    const info = el('div', { className: 'search-engine-row__info' });
-    const nameLine = el('div', { className: 'search-engine-row__name-line' });
-    nameLine.appendChild(el('span', { className: 'search-engine-row__name', text: provider.name }));
+    const editBtn = iconBtn(
+      ICON_EDIT,
+      t('searchEngines.editAria', { name: provider.name }),
+      () => this.showEditForm(provider),
+      'icon-button',
+      16,
+    );
 
-    if (provider.is_default) {
-      nameLine.appendChild(
-        el('span', {
-          className: 'search-engine-row__badge',
-          text: t('searchEngines.isDefault'),
-        }),
-      );
-    }
-
-    const urlSnippet = el('div', {
-      className: 'search-engine-row__url',
-      text: provider.query_url,
-    });
-
-    info.appendChild(nameLine);
-    info.appendChild(urlSnippet);
-
-    const actions = el('div', { className: 'search-engine-row__actions' });
-
-    if (!provider.is_default) {
-      const makeDefaultBtn = el('button', {
-        className: 'button button--subtle search-engine-row__default-btn',
-        attrs: { type: 'button' },
-        text: t('searchEngines.makeDefault'),
-      });
-      makeDefaultBtn.addEventListener('click', () => void this.setDefault(provider.id));
-      actions.appendChild(makeDefaultBtn);
-    }
-
-    const editBtn = el('button', {
-      className: 'icon-button',
-      attrs: {
-        type: 'button',
-        'aria-label': t('searchEngines.editAria', { name: provider.name }),
-      },
-      children: [svg(ICON_EDIT, { size: 16 })],
-    });
-    editBtn.addEventListener('click', () => this.showEditForm(provider));
-    actions.appendChild(editBtn);
-
-    const deleteBtn = el('button', {
-      className: 'icon-button icon-button--danger',
-      attrs: {
-        type: 'button',
-        'aria-label': t('searchEngines.deleteAria', { name: provider.name }),
-      },
-      children: [svg(ICON_TRASH, { size: 16 })],
-    });
+    const deleteBtn = iconBtn(
+      ICON_TRASH,
+      t('searchEngines.deleteAria', { name: provider.name }),
+      totalCount <= 1 ? undefined : () => void this.deleteEngine(provider),
+      'icon-button icon-button--danger',
+      16,
+    );
     if (totalCount <= 1) {
       deleteBtn.disabled = true;
       deleteBtn.title = t('searchEngines.needsOne');
-    } else {
-      deleteBtn.addEventListener('click', () => void this.deleteEngine(provider));
     }
-    actions.appendChild(deleteBtn);
 
-    row.appendChild(iconWrap);
-    row.appendChild(info);
-    row.appendChild(actions);
+    const actionsChildren: HTMLElement[] = [];
+    if (!isDef) {
+      actionsChildren.push(
+        btn(t('searchEngines.makeDefault'), {
+          className: 'button--subtle search-engine-row__default-btn',
+          onClick: () => void this.setDefault(provider.id),
+        }),
+      );
+    }
+    actionsChildren.push(editBtn, deleteBtn);
 
-    return row;
+    return el('div', {
+      className: 'search-engine-row',
+      children: [
+        el('div', {
+          className: 'engine-row__icon',
+          children: [renderSearchEngineIcon(provider, 24)],
+        }),
+        el('div', {
+          className: 'engine-row__info',
+          children: [
+            nameLine,
+            el('div', { className: 'engine-row__url', text: provider.query_url }),
+          ],
+        }),
+        el('div', { className: 'engine-row__actions', children: actionsChildren }),
+      ],
+    });
   }
 
   private async setDefault(providerId: string): Promise<void> {
@@ -621,12 +599,5 @@ export class SearchEngineManager {
     showToast(t('searchEngines.saved'), { variant: 'success' });
     this.callbacks.onChanged?.();
     this.showList();
-  }
-
-  private wrapField(labelText: string, control: HTMLElement): HTMLElement {
-    const label = el('label', { className: 'field' });
-    label.appendChild(el('span', { className: 'field__label', text: labelText }));
-    label.appendChild(control);
-    return label;
   }
 }

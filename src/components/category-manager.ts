@@ -10,7 +10,16 @@
  * and the XSS-safe `el()` helper.
  */
 
-import { clearChildren, el, svg, ICON_DOWN, ICON_PLUS, ICON_TRASH, ICON_UP } from '../utils/dom';
+import {
+  clearChildren,
+  el,
+  iconBtn,
+  svg,
+  ICON_DOWN,
+  ICON_PLUS,
+  ICON_TRASH,
+  ICON_UP,
+} from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
 import { t } from '../utils/i18n';
 import { showToast } from './toast';
@@ -51,7 +60,7 @@ export class CategoryManager {
     private readonly callbacks: CategoryManagerCallbacks,
   ) {
     categoryDialogSeq += 1;
-    this.titleId = `categories-title-${categoryDialogSeq}`;
+    this.titleId = `dlg-title-cm-${categoryDialogSeq}`;
     this.dialog = new Dialog({
       labelledBy: this.titleId,
       onRequestClose: () => this.close(),
@@ -77,9 +86,8 @@ export class CategoryManager {
     const addButton = el('button', {
       className: 'button',
       attrs: { type: 'button' },
+      children: [svg(ICON_PLUS, { size: 16 }), el('span', { text: t('common.add') })],
     });
-    addButton.appendChild(svg(ICON_PLUS, { size: 16 }));
-    addButton.appendChild(el('span', { text: t('common.add') }));
     const addRow = el('div', {
       className: 'category-manager__add',
       children: [addInput, addButton],
@@ -196,17 +204,15 @@ export class CategoryManager {
     disabled: boolean,
     onClick: () => void,
   ): HTMLButtonElement {
-    const button = el('button', {
-      className: 'icon-button category-manager__action',
-      attrs: { type: 'button', 'aria-label': label },
-    });
-    button.appendChild(svg(icon, { size: 16 }));
-    if (disabled) {
-      button.disabled = true;
-    } else {
-      button.addEventListener('click', onClick);
-    }
-    return button;
+    const b = iconBtn(
+      icon,
+      label,
+      disabled ? undefined : onClick,
+      'icon-button category-manager__action',
+      16,
+    );
+    if (disabled) b.disabled = true;
+    return b;
   }
 
   /* ---------------------------------------------------------------- */

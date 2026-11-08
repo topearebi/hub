@@ -356,18 +356,18 @@ class HubStore implements LaunchpadStore {
       this.profileList.filter((p) => p.is_deleted !== true).map((p) => p.id),
     );
     const now = Date.now();
-    const within = (item: { updated_at: number }): boolean =>
+    const isDeletedItem = <
+      T extends { profile_id: string; is_deleted?: boolean; updated_at: number },
+    >(
+      item: T,
+    ): boolean =>
+      item.is_deleted === true &&
+      liveProfileIds.has(item.profile_id) &&
       now - item.updated_at <= TOMBSTONE_GRACE_MS;
     return {
-      bookmarks: this.bookmarks.filter(
-        (b) => b.is_deleted === true && liveProfileIds.has(b.profile_id) && within(b),
-      ),
-      tasks: this.tasks.filter(
-        (t) => t.is_deleted === true && liveProfileIds.has(t.profile_id) && within(t),
-      ),
-      notes: this.notes.filter(
-        (n) => n.is_deleted === true && liveProfileIds.has(n.profile_id) && within(n),
-      ),
+      bookmarks: this.bookmarks.filter(isDeletedItem),
+      tasks: this.tasks.filter(isDeletedItem),
+      notes: this.notes.filter(isDeletedItem),
     };
   }
 

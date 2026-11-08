@@ -11,8 +11,10 @@
 
 import { buildDrawerShell } from './drawer';
 import {
+  btn,
   clearChildren,
   el,
+  iconBtn,
   svg,
   ICON_CHECK,
   ICON_DOWN,
@@ -192,40 +194,34 @@ function siblingsOf(tasks: readonly TaskItem[], parentId: string | null): TaskIt
   );
 }
 
-/** Move a task before its previous sibling. Returns null when it is first. */
-export function computeMoveUp(tasks: readonly TaskItem[], id: string): TaskItem[] | null {
+function targetSibling(
+  tasks: readonly TaskItem[],
+  id: string,
+  delta: number,
+): TaskItem | undefined {
   const task = tasks.find((entry) => entry.id === id);
-  if (!task) {
-    return null;
-  }
+  if (!task) return undefined;
   const siblings = siblingsOf(tasks, task.parent_id ?? null);
   const index = siblings.findIndex((entry) => entry.id === id);
-  const previous = index > 0 ? siblings[index - 1] : undefined;
-  return previous ? computeTaskMove(tasks, id, previous.id, 'before') : null;
+  return index >= 0 ? siblings[index + delta] : undefined;
+}
+
+/** Move a task before its previous sibling. Returns null when it is first. */
+export function computeMoveUp(tasks: readonly TaskItem[], id: string): TaskItem[] | null {
+  const prev = targetSibling(tasks, id, -1);
+  return prev ? computeTaskMove(tasks, id, prev.id, 'before') : null;
 }
 
 /** Move a task after its next sibling. Returns null when it is last. */
 export function computeMoveDown(tasks: readonly TaskItem[], id: string): TaskItem[] | null {
-  const task = tasks.find((entry) => entry.id === id);
-  if (!task) {
-    return null;
-  }
-  const siblings = siblingsOf(tasks, task.parent_id ?? null);
-  const index = siblings.findIndex((entry) => entry.id === id);
-  const next = index >= 0 ? siblings[index + 1] : undefined;
+  const next = targetSibling(tasks, id, 1);
   return next ? computeTaskMove(tasks, id, next.id, 'after') : null;
 }
 
 /** Indent a task under its previous sibling. Returns null when it is first. */
 export function computeIndent(tasks: readonly TaskItem[], id: string): TaskItem[] | null {
-  const task = tasks.find((entry) => entry.id === id);
-  if (!task) {
-    return null;
-  }
-  const siblings = siblingsOf(tasks, task.parent_id ?? null);
-  const index = siblings.findIndex((entry) => entry.id === id);
-  const previous = index > 0 ? siblings[index - 1] : undefined;
-  return previous ? computeTaskMove(tasks, id, previous.id, 'child') : null;
+  const prev = targetSibling(tasks, id, -1);
+  return prev ? computeTaskMove(tasks, id, prev.id, 'child') : null;
 }
 
 /** Outdent a task to sit after its parent. Returns null at the root. */
@@ -349,14 +345,8 @@ export class TasksDrawer {
         rows: '2',
       },
     });
-    this.creatorDate = el('input', {
-      className: 'task-creator__date',
-      attrs: { type: 'date', 'aria-label': t('tasks.dueDateAria') },
-    });
-    this.creatorTime = el('input', {
-      className: 'task-creator__time',
-      attrs: { type: 'time', 'aria-label': t('tasks.dueTimeAria') },
-    });
+    this.creatorDate = this.dateInput('date', 'tasks.dueDateAria');
+    this.creatorTime = this.dateInput('time', 'tasks.dueTimeAria', 'task-creator__time');
     this.dateRow = el('div', {
       className: 'task-creator__date-row',
       children: [this.creatorDate, this.creatorTime],
@@ -378,20 +368,13 @@ export class TasksDrawer {
       children: [todayChip, tomorrowChip, dateChip, this.recurrenceChip],
     });
 
-    const saveButton = el('button', {
-      className: 'button button--primary',
-      text: t('common.save'),
-      attrs: { type: 'button' },
+    const saveButton = btn(t('common.save'), {
+      className: 'button--primary',
+      onClick: () => {
+        void this.saveCreator();
+      },
     });
-    saveButton.addEventListener('click', () => {
-      void this.saveCreator();
-    });
-    const cancelButton = el('button', {
-      className: 'button',
-      text: t('common.cancel'),
-      attrs: { type: 'button' },
-    });
-    cancelButton.addEventListener('click', () => this.closeCreator());
+    const cancelButton = btn(t('common.cancel'), { onClick: () => this.closeCreator() });
 
     const actions = el('div', {
       className: 'task-creator__actions',
@@ -418,9 +401,11 @@ export class TasksDrawer {
     const addButton = el('button', {
       className: 'task-add',
       attrs: { type: 'button' },
+      children: [
+        svg(ICON_PLUS, { className: 'task-add__icon' }),
+        el('span', { text: t('tasks.addTask') }),
+      ],
     });
-    addButton.appendChild(svg(ICON_PLUS, { className: 'task-add__icon' }));
-    addButton.appendChild(el('span', { text: t('tasks.addTask') }));
     addButton.addEventListener('click', () => this.openCreator(null));
 
     this.listEl = el('div', { className: 'task-list' });
@@ -621,48 +606,61 @@ export class TasksDrawer {
         'aria-checked': task.completed ? 'true' : 'false',
         'aria-label': t('tasks.toggleAria', { title: task.title }),
       },
+      children: [svg(ICON_CHECK, { className: 'task__check-icon' })],
     });
-    check.appendChild(svg(ICON_CHECK, { className: 'task__check-icon' }));
     check.addEventListener('click', () => {
       void this.toggleTask(task, !task.completed);
     });
 
-    const body = el('div', { className: 'task__body' });
+    const bodyChildren: HTMLElement[] = [];
     const title = el('div', { className: 'task__title' });
     renderLinkified(title, task.title);
-    body.appendChild(title);
+    bodyChildren.push(title);
 
     if (task.description) {
       const details = el('div', { className: 'task__details' });
       renderLinkified(details, task.description);
-      body.appendChild(details);
+      bodyChildren.push(details);
     }
 
-    const meta = el('div', { className: 'task__meta' });
     const due = formatDue(task);
-    if (due) {
-      meta.appendChild(el('span', { className: 'task__due', text: due }));
+    if (due || task.recurrence) {
+      bodyChildren.push(
+        el('div', {
+          className: 'task__meta',
+          children: [
+            ...(due ? [el('span', { className: 'task__due', text: due })] : []),
+            ...(task.recurrence
+              ? [el('span', { className: 'task__recurrence', text: task.recurrence })]
+              : []),
+          ],
+        }),
+      );
     }
-    if (task.recurrence) {
-      meta.appendChild(el('span', { className: 'task__recurrence', text: task.recurrence }));
-    }
-    if (meta.childNodes.length > 0) {
-      body.appendChild(meta);
-    }
+    const body = el('div', { className: 'task__body', children: bodyChildren });
 
     const menuId = `task-menu-${task.id}`;
-    const menuButton = el('button', {
-      className: 'icon-button task__menu-button',
-      attrs: {
-        type: 'button',
-        'aria-label': t('common.actionsFor', { name: task.title }),
-        'aria-haspopup': 'menu',
-        'aria-expanded': 'false',
-        'aria-controls': menuId,
-      },
-    });
-    menuButton.appendChild(svg(ICON_MORE));
+    const menuButton = iconBtn(
+      ICON_MORE,
+      t('common.actionsFor', { name: task.title }),
+      undefined,
+      'icon-button task__menu-button',
+    );
+    menuButton.setAttribute('aria-haspopup', 'menu');
+    menuButton.setAttribute('aria-expanded', 'false');
+    menuButton.setAttribute('aria-controls', menuId);
 
+    const move = (fn: (tasks: readonly TaskItem[], id: string) => TaskItem[] | null) => () =>
+      void this.applyMove(fn(this.store.activeTasks, task.id));
+    const actions: Array<[string, string, () => void]> = [
+      [t('tasks.addSubtask'), ICON_SUBTASK, () => this.openCreator(task.id)],
+      [t('tasks.setDateTime'), ICON_CALENDAR, () => this.toggleDateEditor(body, task)],
+      [t('tasks.moveUp'), ICON_UP, move(computeMoveUp)],
+      [t('tasks.moveDown'), ICON_DOWN, move(computeMoveDown)],
+      [t('tasks.indent'), ICON_INDENT, move(computeIndent)],
+      [t('tasks.outdent'), ICON_OUTDENT, move(computeOutdent)],
+      [t('common.delete'), ICON_TRASH, () => void this.deleteTask(task.id)],
+    ];
     const menu = el('div', {
       className: 'task-menu',
       attrs: {
@@ -670,46 +668,9 @@ export class TasksDrawer {
         id: menuId,
         'aria-label': t('common.actionsFor', { name: task.title }),
       },
+      children: actions.map(([lbl, ic, fn]) => this.menuItem(lbl, ic, fn)),
     });
     menu.hidden = true;
-    menu.appendChild(
-      this.menuItem(t('tasks.addSubtask'), ICON_SUBTASK, () => this.openCreator(task.id)),
-    );
-    menu.appendChild(
-      this.menuItem(t('tasks.setDateTime'), ICON_CALENDAR, () => this.toggleDateEditor(body, task)),
-    );
-    // Keyboard-accessible alternatives to dragging (G-24, WCAG 2.5.7).
-    menu.appendChild(
-      this.menuItem(
-        t('tasks.moveUp'),
-        ICON_UP,
-        () => void this.applyMove(computeMoveUp(this.store.activeTasks, task.id)),
-      ),
-    );
-    menu.appendChild(
-      this.menuItem(
-        t('tasks.moveDown'),
-        ICON_DOWN,
-        () => void this.applyMove(computeMoveDown(this.store.activeTasks, task.id)),
-      ),
-    );
-    menu.appendChild(
-      this.menuItem(
-        t('tasks.indent'),
-        ICON_INDENT,
-        () => void this.applyMove(computeIndent(this.store.activeTasks, task.id)),
-      ),
-    );
-    menu.appendChild(
-      this.menuItem(
-        t('tasks.outdent'),
-        ICON_OUTDENT,
-        () => void this.applyMove(computeOutdent(this.store.activeTasks, task.id)),
-      ),
-    );
-    menu.appendChild(
-      this.menuItem(t('common.delete'), ICON_TRASH, () => void this.deleteTask(task.id)),
-    );
     menuButton.addEventListener('click', (event) => {
       event.stopPropagation();
       // Close any other open menu first so only one is ever visible, then
@@ -731,11 +692,7 @@ export class TasksDrawer {
 
     // Drag handle: pointer-based reordering (G-20, G-24). Keyboard users use
     // the Move/Indent menu actions instead, so dragging is never the only path.
-    const dragHandle = el('button', {
-      className: 'task__drag',
-      attrs: { type: 'button', 'aria-label': t('tasks.dragAria') },
-    });
-    dragHandle.appendChild(svg(ICON_GRIP, { size: 16 }));
+    const dragHandle = iconBtn(ICON_GRIP, t('tasks.dragAria'), undefined, 'task__drag', 16);
     dragHandle.addEventListener('pointerdown', (event) =>
       this.handleHandlePointerDown(event, task, item),
     );
@@ -744,11 +701,7 @@ export class TasksDrawer {
     dragHandle.addEventListener('pointercancel', () => this.handleHandlePointerCancel());
 
     item.dataset.taskId = task.id;
-    item.appendChild(dragHandle);
-    item.appendChild(check);
-    item.appendChild(body);
-    item.appendChild(menuButton);
-    item.appendChild(menu);
+    item.append(dragHandle, check, body, menuButton, menu);
 
     // Swipe gestures (touch only, G-25): right completes, left deletes. Both
     // actions stay reachable by touch and keyboard via the check and the menu.
@@ -806,15 +759,22 @@ export class TasksDrawer {
     const button = el('button', {
       className: 'task-menu__item',
       attrs: { type: 'button', role: 'menuitem' },
+      children: [svg(icon, { size: 16 }), el('span', { text: label })],
     });
-    button.appendChild(svg(icon, { size: 16 }));
-    button.appendChild(el('span', { text: label }));
     button.addEventListener('click', () => {
       // Dismiss the menu before running the action so it never lingers.
       this.closeAllMenus();
       onClick();
     });
     return button;
+  }
+
+  private dateInput(
+    type: 'date' | 'time',
+    ariaKey: string,
+    cls = 'task-creator__date',
+  ): HTMLInputElement {
+    return el('input', { className: cls, attrs: { type, 'aria-label': t(ariaKey) } });
   }
 
   private toggleDateEditor(body: HTMLElement, task: TaskItem): void {
@@ -824,15 +784,9 @@ export class TasksDrawer {
       return;
     }
 
-    const date = el('input', {
-      className: 'task-creator__date',
-      attrs: { type: 'date', 'aria-label': t('tasks.dueDateAria') },
-    });
+    const date = this.dateInput('date', 'tasks.dueDateAria');
     date.value = task.due_date ?? '';
-    const time = el('input', {
-      className: 'task-creator__time',
-      attrs: { type: 'time', 'aria-label': t('tasks.dueTimeAria') },
-    });
+    const time = this.dateInput('time', 'tasks.dueTimeAria', 'task-creator__time');
     time.value = task.due_time ?? '';
 
     const apply = (): void => {
@@ -984,8 +938,8 @@ export class TasksDrawer {
     const header = el('button', {
       className: 'task-completed__header',
       attrs: { type: 'button', 'aria-expanded': this.completedOpen ? 'true' : 'false' },
+      children: [el('span', { text: t('tasks.completed', { count: tasks.length }) })],
     });
-    header.appendChild(el('span', { text: t('tasks.completed', { count: tasks.length }) }));
     header.addEventListener('click', () => {
       this.completedOpen = !this.completedOpen;
       this.render();
@@ -1003,8 +957,8 @@ export class TasksDrawer {
       const check = el('button', {
         className: 'task__check task__check--filled',
         attrs: { type: 'button', role: 'checkbox', 'aria-checked': 'true' },
+        children: [svg(ICON_CHECK, { className: 'task__check-icon' })],
       });
-      check.appendChild(svg(ICON_CHECK, { className: 'task__check-icon' }));
       check.addEventListener('click', () => {
         void this.toggleTask(task, false);
       });

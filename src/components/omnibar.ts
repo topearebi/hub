@@ -12,7 +12,16 @@
  * without a DOM. The class only wires DOM events to that logic.
  */
 
-import { clearChildren, el, on, svg, ICON_CHECK, ICON_CHEVRON, ICON_PLUS } from '../utils/dom';
+import {
+  clearChildren,
+  el,
+  isEditable,
+  on,
+  svg,
+  ICON_CHECK,
+  ICON_CHEVRON,
+  ICON_PLUS,
+} from '../utils/dom';
 import { t, tp } from '../utils/i18n';
 import { hostnameOf } from '../core/fallback';
 import { MenuKeyboard } from '../utils/menu';
@@ -23,8 +32,7 @@ import type { LaunchpadStore } from '../core/store';
 /* Inline icon paths (AGENTS.md: no external icon CDNs). */
 const ICON_ARROW = 'M7 17 17 7M17 7H8M17 7v9';
 const ICON_SEARCH = 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35';
-const ICON_SETTINGS =
-  'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7.4-2a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3 1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8 1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z';
+const ICON_SETTINGS = 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6';
 
 /** Maximum number of result rows rendered at once. */
 const OMNIBAR_MAX_RESULTS = 8;
@@ -401,20 +409,19 @@ export class Omnibar {
 
     const active = providers.find((p) => p.id === this.selectedProviderId) ?? providers[0];
 
-    clearChildren(this.engineTrigger);
+    const triggerChildren: Array<HTMLElement | SVGElement> = [];
     if (active) {
       this.engineTrigger.setAttribute('aria-label', `${t('omnibar.engineAria')}: ${active.name}`);
-      this.engineTrigger.appendChild(
+      triggerChildren.push(
         el('span', {
           className: 'omnibar__engine-icon',
           children: [renderSearchEngineIcon(active, 18)],
         }),
-      );
-      this.engineTrigger.appendChild(
         el('span', { className: 'omnibar__engine-name', text: active.name }),
       );
     }
-    this.engineTrigger.appendChild(svg(ICON_CHEVRON, { className: 'omnibar__engine-chevron' }));
+    triggerChildren.push(svg(ICON_CHEVRON, { className: 'omnibar__engine-chevron' }));
+    this.engineTrigger.replaceChildren(...triggerChildren);
 
     if (this.isMenuOpen) {
       this.renderEngineMenu();
@@ -474,7 +481,7 @@ export class Omnibar {
           el('span', { className: 'omnibar__engine-menu-name', text: provider.name }),
           isSelected
             ? svg(ICON_CHECK, { className: 'omnibar__engine-menu-check' })
-            : el('span', { className: 'omnibar__engine-menu-check-placeholder' }),
+            : el('span', { className: 'omnibar__engine-menu-check' }),
         ],
       });
 
@@ -491,7 +498,7 @@ export class Omnibar {
 
     // Divider
     this.engineMenu.appendChild(
-      el('div', { className: 'omnibar__engine-menu-divider', attrs: { role: 'separator' } }),
+      el('div', { className: 'context-menu__separator', attrs: { role: 'separator' } }),
     );
 
     // Manage search engines...
@@ -525,65 +532,28 @@ export class Omnibar {
   attachGlobalHotkeys(): void {
     this.disposers.push(
       on(document, 'keydown', (event: KeyboardEvent) => {
-        if (!event.altKey || event.ctrlKey || event.metaKey) {
-          return;
-        }
-        if (!/^[1-9]$/.test(event.key)) {
-          return;
-        }
-        // Never act behind the app-lock overlay (G-29).
-        if (document.querySelector('.lock-overlay.is-open')) {
-          return;
-        }
-        // Ignore the hotkey while the user is editing a field (task/note
-        // inputs, settings, etc.) so Alt+digit never navigates away mid-edit.
-        // The omnibar's own input is exempt: it is the launchpad's primary
-        // surface and is auto-focused on boot.
-        const target = event.target as HTMLElement | null;
-        const isEditable =
-          target !== null &&
-          (target.tagName === 'INPUT' ||
-            target.tagName === 'TEXTAREA' ||
-            target.tagName === 'SELECT' ||
-            target.isContentEditable);
-        if (isEditable && target !== this.input) {
-          return;
-        }
-        const bookmark = this.store.activeBookmarks.find((b) => b.hotkey === event.key);
-        if (!bookmark) {
-          return;
-        }
-        event.preventDefault();
-        this.callbacks.onActivateBookmark(bookmark);
-      }),
-    );
+        if (event.ctrlKey || event.metaKey) return;
+        const editable = isEditable(event.target);
 
-    // `/` focuses the search pill from any neutral page state. It is ignored
-    // while typing in a field or when a modal is open.
-    this.disposers.push(
-      on(document, 'keydown', (event: KeyboardEvent) => {
-        if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) {
+        if (event.key === '/' && !event.altKey) {
+          if (editable || document.querySelector('.modal-overlay.is-open, .lock-overlay.is-open'))
+            return;
+          event.preventDefault();
+          this.focusAndSelect();
           return;
         }
-        const target = event.target as HTMLElement | null;
-        if (
-          target &&
-          (target.tagName === 'INPUT' ||
-            target.tagName === 'TEXTAREA' ||
-            target.tagName === 'SELECT' ||
-            target.isContentEditable)
-        ) {
-          return;
+
+        if (event.altKey && /^[1-9]$/.test(event.key)) {
+          if (
+            document.querySelector('.lock-overlay.is-open') ||
+            (editable && event.target !== this.input)
+          )
+            return;
+          const bookmark = this.store.activeBookmarks.find((b) => b.hotkey === event.key);
+          if (!bookmark) return;
+          event.preventDefault();
+          this.callbacks.onActivateBookmark(bookmark);
         }
-        if (document.querySelector('.modal-overlay.is-open')) {
-          return;
-        }
-        // The lock overlay is not a `.modal-overlay`, so guard it explicitly.
-        if (document.querySelector('.lock-overlay.is-open')) {
-          return;
-        }
-        event.preventDefault();
-        this.focusAndSelect();
       }),
     );
   }
@@ -751,49 +721,47 @@ export class Omnibar {
     }
 
     this.actions.forEach((action, index) => {
-      const item = el('li', {
-        className: `omnibar__result omnibar__result--${action.kind}`,
-        attrs: { id: `omnibar-option-${index}`, role: 'option', 'aria-selected': 'false' },
-      });
-
+      const children: Node[] = [];
       if (action.kind === 'bookmark') {
         const titleEl = el('span', { className: 'omnibar__result-title' });
         titleEl.appendChild(highlightMatch(action.bookmark.title, this.input.value));
-        item.appendChild(titleEl);
-        item.appendChild(
+        children.push(
+          titleEl,
           el('span', { className: 'omnibar__result-url', text: hostnameOf(action.bookmark.url) }),
+          ...(action.bookmark.hotkey
+            ? [
+                el('kbd', {
+                  className: 'omnibar__result-hotkey',
+                  text: t('omnibar.hotkey', { key: action.bookmark.hotkey }),
+                }),
+              ]
+            : []),
         );
-        if (action.bookmark.hotkey) {
-          item.appendChild(
-            el('kbd', {
-              className: 'omnibar__result-hotkey',
-              text: t('omnibar.hotkey', { key: action.bookmark.hotkey }),
-            }),
-          );
-        }
       } else if (action.kind === 'add') {
-        item.appendChild(svg(ICON_PLUS, { className: 'omnibar__result-icon' }));
-        item.appendChild(
+        children.push(
+          svg(ICON_PLUS, { className: 'omnibar__result-icon' }),
           el('span', { className: 'omnibar__result-title', text: t('omnibar.addToBookmarks') }),
-        );
-        item.appendChild(
           el('span', { className: 'omnibar__result-url', text: hostnameOf(action.url) }),
         );
       } else if (action.kind === 'navigate') {
-        item.appendChild(svg(ICON_ARROW, { className: 'omnibar__result-icon' }));
-        item.appendChild(
+        children.push(
+          svg(ICON_ARROW, { className: 'omnibar__result-icon' }),
           el('span', { className: 'omnibar__result-title', text: t('omnibar.goTo') }),
+          el('span', { className: 'omnibar__result-url', text: action.url }),
         );
-        item.appendChild(el('span', { className: 'omnibar__result-url', text: action.url }));
       } else {
-        item.appendChild(svg(ICON_SEARCH, { className: 'omnibar__result-icon' }));
-        item.appendChild(
+        children.push(
+          svg(ICON_SEARCH, { className: 'omnibar__result-icon' }),
           el('span', { className: 'omnibar__result-title', text: t('omnibar.search') }),
-        );
-        item.appendChild(
           el('span', { className: 'omnibar__result-url', text: this.input.value.trim() }),
         );
       }
+
+      const item = el('li', {
+        className: `omnibar__result omnibar__result--${action.kind}`,
+        attrs: { id: `omnibar-option-${index}`, role: 'option', 'aria-selected': 'false' },
+        children,
+      });
 
       item.addEventListener('mouseenter', () => this.setActive(index));
       item.addEventListener('click', () => {
