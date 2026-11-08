@@ -175,6 +175,12 @@ export interface CategoryItem extends SyncableEntity {
 
   /** Visual rendering sequence index (ascending: 0, 1, 2...) */
   order: number;
+
+  /**
+   * Whether the category section is collapsed in the launchpad view.
+   * If omitted or false, the category is expanded.
+   */
+  collapsed?: boolean;
 }
 ```
 

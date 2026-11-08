@@ -197,6 +197,70 @@
   gap: var(--space-md);
 }
 
+.section--collapsed {
+  gap: 0;
+}
+
+.section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section__header-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-2xs) var(--space-xs);
+  margin-inline-start: calc(-1 * var(--space-xs));
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: start;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color var(--dur-fast),
+    border-color var(--dur-fast);
+}
+
+.section__header-toggle:hover {
+  background-color: var(--bg-hover);
+}
+
+.section__header-toggle:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.section__chevron {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-faint);
+  transition: transform var(--dur-fast);
+}
+
+.section__header-toggle[aria-expanded='false'] .section__chevron {
+  transform: rotate(-90deg);
+}
+
+.section__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--space-xs);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-faint);
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-pill);
+  line-height: 1.2;
+}
+
 .section__title {
   margin: 0;
   font-size: var(--font-size-sm);
@@ -2086,7 +2150,7 @@
   object-fit: contain;
 }
 
-/* ---- Coarse pointers: 16px inputs to prevent iOS focus zoom (DESIGN.md §4.3) ---- */
+/* ---- Coarse pointers: 16px inputs & 44px hit areas (DESIGN.md §4.3, G-21) ---- */
 @media (pointer: coarse) {
   input,
   textarea,
@@ -2106,6 +2170,35 @@
   .note-editor__content,
   .field input {
     font-size: var(--font-size-md);
+  }
+
+  .task__check,
+  .task__drag,
+  .task__menu-button,
+  .note__action,
+  .note-swatch,
+  .tile__more,
+  .tile__cycle-size,
+  .note-capture__pin {
+    width: 44px;
+    height: 44px;
+  }
+
+  .task-chip,
+  .status-chip,
+  .onboarding__link,
+  .settings-advanced__toggle,
+  .section__header-toggle,
+  .omnibar__engine-trigger,
+  .omnibar__engine-menu-item,
+  .search-engine-row__default-btn {
+    min-height: 44px;
+    padding-block: var(--space-xs);
+  }
+
+  .icon-button {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
@@ -2218,37 +2311,6 @@
 .mobile-tabs__button[aria-current='page'] .mobile-tabs__icon,
 .mobile-tabs__button[aria-current='page'] .mobile-tabs__label {
   color: var(--accent-terracotta-text);
-}
-
-/* ---- Coarse pointers: 44 px hit areas (G-21) ---- */
-@media (pointer: coarse) {
-  .task__check,
-  .task__drag,
-  .task__menu-button,
-  .note__action,
-  .note-swatch,
-  .tile__more,
-  .tile__cycle-size,
-  .note-capture__pin {
-    width: 44px;
-    height: 44px;
-  }
-
-  .task-chip,
-  .status-chip,
-  .onboarding__link,
-  .settings-advanced__toggle,
-  .omnibar__engine-trigger,
-  .omnibar__engine-menu-item,
-  .search-engine-row__default-btn {
-    min-height: 44px;
-    padding-block: var(--space-xs);
-  }
-
-  .icon-button {
-    min-width: 44px;
-    min-height: 44px;
-  }
 }
 
 /* ---- No fine pointer: reveal hover-only controls, hide hotkey hints ---- */
@@ -2412,6 +2474,13 @@
     border-start-start-radius: var(--radius-lg);
     border-start-end-radius: var(--radius-lg);
   }
+
+  /* Phones use the tab bar, not overlay drawers, so the scrim never shows —
+     the `.is-open` variant is listed to out-specify the base rule. */
+  .drawer-scrim,
+  .drawer-scrim.is-open {
+    display: none;
+  }
 }
 
 /* ---- Drawer scrim (tablet+ overlay drawers, DESIGN.md §5.2, G-09) ----
@@ -2427,15 +2496,6 @@
 
 .drawer-scrim.is-open {
   display: block;
-}
-
-@media (max-width: 767.98px), (orientation: landscape) and (max-height: 500px) {
-  /* Phones use the tab bar, not overlay drawers, so the scrim never shows —
-     the `.is-open` variant is listed to out-specify the base rule. */
-  .drawer-scrim,
-  .drawer-scrim.is-open {
-    display: none;
-  }
 }
 
 /* Pinning is disabled below the expanded tier (DESIGN.md §3, tier C). */

@@ -239,6 +239,10 @@ export const MESSAGES: Record<string, string> = {
   'bookmarks.sizeLarge': 'Large (2×2)',
   'bookmarks.cycleSize': 'Change card size (currently {size})',
   'bookmarks.mirrorCount': '+{count} mirrors',
+  'bookmarks.collapseCategory': 'Collapse {name}',
+  'bookmarks.expandCategory': 'Expand {name}',
+  'bookmarks.itemCount.one': '{count} link',
+  'bookmarks.itemCount.other': '{count} links',
 
   /* ---- Notes ---- */
   'notes.title': 'Scratchpad',

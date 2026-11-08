@@ -610,6 +610,13 @@ async function bootstrap(): Promise<void> {
       }
       await store.upsertBookmark(updated);
     },
+    onToggleCategory: async (category) => {
+      await store.upsertCategory({
+        ...category,
+        collapsed: !category.collapsed,
+        updated_at: Date.now(),
+      });
+    },
   });
   bookmarksHost.appendChild(bookmarksView.element);
 

@@ -310,4 +310,74 @@ describe('BookmarksView context menu', () => {
     cycleBtn.click();
     expect(onResize).toHaveBeenCalledWith(wideBookmark, 'large');
   });
+
+  it('renders collapsible category headers with link count and toggle persistence', () => {
+    const b1 = makeBookmark({ id: 'b1', title: 'App 1', url: 'https://app1.test' });
+    const b2 = makeBookmark({ id: 'b2', title: 'App 2', url: 'https://app2.test' });
+
+    const onToggleCategory = vi.fn();
+    const view = new BookmarksView(
+      {
+        activeBookmarks: [b1, b2],
+        sortedCategories: [CATEGORY],
+        getRecentBookmarks: () => [],
+        getBookmarksByCategory: () => [b1, b2],
+      },
+      {
+        onActivate: vi.fn(),
+        onOpenAlternate: vi.fn(),
+        onEdit: vi.fn(),
+        onDelete: vi.fn(),
+        onAddBookmark: vi.fn(),
+        onImport: vi.fn(),
+        onManageCategories: vi.fn(),
+        onToggleCategory,
+      },
+    );
+    document.body.appendChild(view.element);
+    view.render();
+
+    const toggleBtn = q<HTMLButtonElement>(view.element, '.section__header-toggle');
+    expect(toggleBtn).toBeDefined();
+    expect(toggleBtn.getAttribute('aria-expanded')).toBe('true');
+    expect(toggleBtn.getAttribute('aria-controls')).toBe('category-grid-c1');
+    expect(toggleBtn.textContent).toContain('Shared');
+    expect(toggleBtn.textContent).toContain('2 links');
+
+    const grid = q<HTMLUListElement>(view.element, '#category-grid-c1');
+    expect(grid.hidden).toBe(false);
+
+    toggleBtn.click();
+    expect(onToggleCategory).toHaveBeenCalledWith(CATEGORY);
+
+    // Test with collapsed category
+    const collapsedCategory: CategoryItem = { ...CATEGORY, id: 'c_col', collapsed: true };
+    const collapsedView = new BookmarksView(
+      {
+        activeBookmarks: [b1],
+        sortedCategories: [collapsedCategory],
+        getRecentBookmarks: () => [],
+        getBookmarksByCategory: () => [b1],
+      },
+      {
+        onActivate: vi.fn(),
+        onOpenAlternate: vi.fn(),
+        onEdit: vi.fn(),
+        onDelete: vi.fn(),
+        onAddBookmark: vi.fn(),
+        onImport: vi.fn(),
+        onManageCategories: vi.fn(),
+        onToggleCategory,
+      },
+    );
+    document.body.appendChild(collapsedView.element);
+    collapsedView.render();
+
+    const colToggleBtn = q<HTMLButtonElement>(collapsedView.element, '.section__header-toggle');
+    expect(colToggleBtn.getAttribute('aria-expanded')).toBe('false');
+    expect(colToggleBtn.textContent).toContain('1 link');
+
+    const colGrid = q<HTMLUListElement>(collapsedView.element, '#category-grid-c_col');
+    expect(colGrid.hidden).toBe(true);
+  });
 });

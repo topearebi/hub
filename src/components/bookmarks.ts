@@ -7,7 +7,7 @@
  */
 
 import { clearChildren, el, svg } from '../utils/dom';
-import { t } from '../utils/i18n';
+import { t, tp } from '../utils/i18n';
 import { Menu } from '../utils/menu';
 import type { MenuItemSpec } from '../utils/menu';
 import { canShare, share } from '../utils/share';
@@ -18,6 +18,7 @@ import type { BookmarkCardSize, BookmarkItem, CategoryItem } from '../types/sche
 
 const ICON_MORE = 'M12 6h.01M12 12h.01M12 18h.01';
 const ICON_RESIZE = 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7';
+const ICON_CHEVRON = 'M6 9l6 6 6-6';
 /** Long-press duration (ms) that opens the tile menu on touch (G-23). */
 const LONG_PRESS_MS = 500;
 
@@ -49,6 +50,8 @@ export interface BookmarksCallbacks {
   onManageCategories: () => void;
   /** Resize a bookmark tile card footprint. */
   onResize?: (bookmark: BookmarkItem, size: BookmarkCardSize) => void;
+  /** Toggle category collapsed state. */
+  onToggleCategory?: (category: CategoryItem) => void;
 }
 
 export class BookmarksView {
@@ -89,7 +92,7 @@ export class BookmarksView {
       if (items.length === 0) {
         continue;
       }
-      this.element.appendChild(this.renderSection(category.name, items, false));
+      this.element.appendChild(this.renderSection(category.name, items, false, category));
     }
 
     const uncategorized = bookmarks.filter((b) => !knownCategoryIds.has(b.category_id));
@@ -157,13 +160,55 @@ export class BookmarksView {
     title: string,
     items: readonly BookmarkItem[],
     isRecents: boolean,
+    category?: CategoryItem,
   ): HTMLElement {
-    const heading = el('h2', { className: 'section__title', text: title });
-    const grid = el('ul', { className: 'tile-grid' });
-    for (const bookmark of items) {
-      grid.appendChild(this.renderTile(bookmark, isRecents));
+    const isCollapsed = Boolean(category?.collapsed);
+    const gridId = category ? `category-grid-${category.id}` : undefined;
+    const grid = el('ul', {
+      className: `tile-grid${isCollapsed ? ' is-collapsed' : ''}`,
+      attrs: gridId ? { id: gridId } : {},
+    });
+
+    let heading: HTMLElement;
+    if (category) {
+      const chevron = svg(ICON_CHEVRON, { className: 'section__chevron' });
+      const titleEl = el('span', { className: 'section__title', text: title });
+      const countBadge = el('span', {
+        className: 'section__badge',
+        text: tp('bookmarks.itemCount', items.length),
+      });
+      const toggleBtn = el('button', {
+        className: 'section__header-toggle',
+        attrs: {
+          type: 'button',
+          'aria-expanded': isCollapsed ? 'false' : 'true',
+          'aria-controls': gridId!,
+          'aria-label': isCollapsed
+            ? t('bookmarks.expandCategory', { name: title })
+            : t('bookmarks.collapseCategory', { name: title }),
+        },
+        children: [chevron, titleEl, countBadge],
+      });
+      toggleBtn.addEventListener('click', () => {
+        this.callbacks.onToggleCategory?.(category);
+      });
+      heading = el('div', { className: 'section__header', children: [toggleBtn] });
+    } else {
+      heading = el('h2', { className: 'section__title', text: title });
     }
-    return el('section', { className: 'section', children: [heading, grid] });
+
+    if (isCollapsed) {
+      grid.hidden = true;
+    } else {
+      for (const bookmark of items) {
+        grid.appendChild(this.renderTile(bookmark, isRecents));
+      }
+    }
+
+    return el('section', {
+      className: `section${isCollapsed ? ' section--collapsed' : ''}`,
+      children: [heading, grid],
+    });
   }
 
   private renderTile(bookmark: BookmarkItem, isRecents: boolean): HTMLElement {
