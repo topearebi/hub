@@ -72,6 +72,24 @@ export function clearChildren(node: Node): void {
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+/* ---- Common SVG icon paths shared across components ---- */
+export const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
+export const ICON_PLUS = 'M12 5v14M5 12h14';
+export const ICON_CHEVRON = 'M6 9l6 6 6-6';
+export const ICON_TRASH =
+  'M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6';
+export const ICON_UP = 'M12 19V5M5 12l7-7 7 7';
+export const ICON_DOWN = 'M12 5v14M19 12l-7 7-7-7';
+export const ICON_CHECK = 'M20 6 9 17l-5-5';
+export const ICON_MORE = 'M12 6h.01M12 12h.01M12 18h.01';
+export const ICON_SYNC =
+  'M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8M3 16v-4h4M21 8V4h-4';
+export const ICON_GRIP = 'M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01';
+export const ICON_PIN =
+  'M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z';
+export const ICON_TASKS = 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11';
+export const ICON_NOTES = 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6';
+
 export interface SvgOptions {
   /** Optional class applied to the root `<svg>`. */
   className?: string;
@@ -118,21 +136,21 @@ export function hubLogoSvg(options: HubLogoOptions = {}): SVGSVGElement {
   g.setAttribute('class', 'hub-logo__mark');
 
   const squares = [
-    { x: 132, y: 132, size: 104, radius: 26, opacity: 1 },
-    { x: 276, y: 132, size: 104, radius: 26, opacity: 0.55 },
-    { x: 132, y: 276, size: 104, radius: 26, opacity: 0.55 },
-    { x: 276, y: 276, size: 104, radius: 26, opacity: 0.3 },
-  ];
+    [132, 132, 1],
+    [276, 132, 0.55],
+    [132, 276, 0.55],
+    [276, 276, 0.3],
+  ] as const;
 
-  for (const sq of squares) {
+  for (const [x, y, op] of squares) {
     const rect = document.createElementNS(SVG_NS, 'rect');
-    rect.setAttribute('x', String(sq.x));
-    rect.setAttribute('y', String(sq.y));
-    rect.setAttribute('width', String(sq.size));
-    rect.setAttribute('height', String(sq.size));
-    rect.setAttribute('rx', String(sq.radius));
-    if (sq.opacity < 1) {
-      rect.setAttribute('opacity', String(sq.opacity));
+    rect.setAttribute('x', String(x));
+    rect.setAttribute('y', String(y));
+    rect.setAttribute('width', '104');
+    rect.setAttribute('height', '104');
+    rect.setAttribute('rx', '26');
+    if (op < 1) {
+      rect.setAttribute('opacity', String(op));
     }
     g.appendChild(rect);
   }

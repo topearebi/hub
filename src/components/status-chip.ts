@@ -13,11 +13,9 @@
  * repeats unchanged state, and a button that opens sync details / retries.
  */
 
-import { el, svg } from '../utils/dom';
+import { el, svg, ICON_CHECK as ICON_LOCAL, ICON_SYNC } from '../utils/dom';
 import { formatRelativeTime, t } from '../utils/i18n';
 
-const ICON_LOCAL = 'M20 6 9 17l-5-5';
-const ICON_SYNC = 'M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8M3 16v-4h4M21 8V4h-4';
 const ICON_OFFLINE = 'M1 1l22 22M16.7 11.7A11 11 0 0 0 5 5M8.5 8.5A6 6 0 0 0 5 12M12 20h.01';
 const ICON_ERROR =
   'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z';

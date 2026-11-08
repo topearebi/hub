@@ -12,7 +12,7 @@
  * without a DOM. The class only wires DOM events to that logic.
  */
 
-import { clearChildren, el, on, svg } from '../utils/dom';
+import { clearChildren, el, on, svg, ICON_CHECK, ICON_CHEVRON, ICON_PLUS } from '../utils/dom';
 import { t, tp } from '../utils/i18n';
 import { hostnameOf } from '../core/fallback';
 import { MenuKeyboard } from '../utils/menu';
@@ -21,11 +21,8 @@ import type { BookmarkItem, SearchProvider } from '../types/schemas';
 import type { LaunchpadStore } from '../core/store';
 
 /* Inline icon paths (AGENTS.md: no external icon CDNs). */
-const ICON_PLUS = 'M12 5v14M5 12h14';
 const ICON_ARROW = 'M7 17 17 7M17 7H8M17 7v9';
 const ICON_SEARCH = 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35';
-const ICON_CHEVRON = 'M6 9l6 6 6-6';
-const ICON_CHECK = 'M20 6 9 17l-5-5';
 const ICON_SETTINGS =
   'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7.4-2a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3 1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8 1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z';
 

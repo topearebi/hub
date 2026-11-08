@@ -297,7 +297,9 @@ class HubStore implements LaunchpadStore {
   }
 
   getBookmarksByCategory(categoryId: string): BookmarkItem[] {
-    return this.activeBookmarks.filter((b) => b.category_id === categoryId);
+    return this.activeBookmarks
+      .filter((b) => b.category_id === categoryId)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.created_at - b.created_at);
   }
 
   /**
@@ -376,6 +378,18 @@ class HubStore implements LaunchpadStore {
   async upsertBookmark(item: BookmarkItem): Promise<void> {
     replaceIn(this.bookmarks, item);
     await put(STORE.bookmarks, item);
+    this.emit('bookmarks');
+  }
+
+  /** Insert or update many bookmarks in a single transaction (drag reordering). */
+  async upsertBookmarks(items: readonly BookmarkItem[]): Promise<void> {
+    if (items.length === 0) {
+      return;
+    }
+    for (const item of items) {
+      replaceIn(this.bookmarks, item);
+    }
+    await bulkPut(STORE.bookmarks, items);
     this.emit('bookmarks');
   }
 

@@ -243,6 +243,10 @@ export const MESSAGES: Record<string, string> = {
   'bookmarks.expandCategory': 'Expand {name}',
   'bookmarks.itemCount.one': '{count} link',
   'bookmarks.itemCount.other': '{count} links',
+  'bookmarks.dragAria': 'Drag to reorder {title}',
+  'bookmarks.moveUp': 'Move up',
+  'bookmarks.moveDown': 'Move down',
+  'bookmarks.moveToCategory': 'Move to category…',
 
   /* ---- Notes ---- */
   'notes.title': 'Scratchpad',

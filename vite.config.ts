@@ -15,6 +15,7 @@ export default defineConfig({
     target: 'es2022',
     outDir: 'dist',
     sourcemap: true,
+    modulePreload: { polyfill: false },
     // Performance budget guard (PRD §3.1): warn if the entry chunk grows large.
     chunkSizeWarningLimit: 60,
   },

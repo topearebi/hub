@@ -164,6 +164,9 @@ export interface BookmarkItem extends SyncableEntity {
 
   /** Optional secondary details, notes, or context for the bookmark. */
   description?: string;
+
+  /** Manual sort index within its category (ascending; defaults to 0). */
+  order?: number;
 }
 
 export interface CategoryItem extends SyncableEntity {

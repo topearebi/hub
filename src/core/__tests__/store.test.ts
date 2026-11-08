@@ -238,4 +238,41 @@ describe('profile cascade delete & restore (SCHEMAS.md §5.4)', () => {
     expect(store.getBookmark('b4')).toBeUndefined();
     expect(store.deletedProfiles.some((e) => e.profile.id === 'p3')).toBe(false);
   });
+
+  it('sorts bookmarks by order ascending and batch updates with upsertBookmarks', async () => {
+    await store.init();
+    const now = Date.now();
+    const b1: BookmarkItem = {
+      id: 'b1',
+      created_at: now,
+      updated_at: now,
+      profile_id: DEFAULT_PROFILE_ID,
+      title: 'B1',
+      url: 'https://b1.test',
+      category_id: 'c1',
+      order: 1,
+    };
+    const b2: BookmarkItem = {
+      id: 'b2',
+      created_at: now + 1,
+      updated_at: now + 1,
+      profile_id: DEFAULT_PROFILE_ID,
+      title: 'B2',
+      url: 'https://b2.test',
+      category_id: 'c1',
+      order: 0,
+    };
+    await store.upsertBookmarks([b1, b2]);
+
+    const sorted = store.getBookmarksByCategory('c1');
+    expect(sorted.map((b) => b.id)).toEqual(['b2', 'b1']);
+
+    // Reorder
+    await store.upsertBookmarks([
+      { ...b1, order: 0 },
+      { ...b2, order: 1 },
+    ]);
+    const reordered = store.getBookmarksByCategory('c1');
+    expect(reordered.map((b) => b.id)).toEqual(['b1', 'b2']);
+  });
 });

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BookmarkEditor, NEW_CATEGORY } from '../bookmark-editor';
 import { Omnibar } from '../omnibar';
-import { BookmarksView } from '../bookmarks';
+import { BookmarksView, computeBookmarkMove, computeBookmarkMoveWithin } from '../bookmarks';
 import { DEFAULT_APP_CONFIG } from '../../types/schemas';
 import type { BookmarkItem, CategoryItem } from '../../types/schemas';
 
@@ -379,5 +379,215 @@ describe('BookmarksView context menu', () => {
 
     const colGrid = q<HTMLUListElement>(collapsedView.element, '#category-grid-c_col');
     expect(colGrid.hidden).toBe(true);
+  });
+
+  describe('Bookmark dragging & reordering (Phase 2)', () => {
+    it('computeBookmarkMove reorders siblings within the same category', () => {
+      const b1 = makeBookmark({ id: 'b1', title: 'B1', url: 'https://b1.test', order: 0 });
+      const b2 = makeBookmark({ id: 'b2', title: 'B2', url: 'https://b2.test', order: 1 });
+      const b3 = makeBookmark({ id: 'b3', title: 'B3', url: 'https://b3.test', order: 2 });
+      const list = [b1, b2, b3];
+
+      // Move b3 before b1
+      const resBefore = computeBookmarkMove(list, 'b3', 'b1', 'c1', 'before');
+      expect(resBefore).not.toBeNull();
+      const mapBefore = new Map(resBefore!.map((b) => [b.id, b.order]));
+      expect(mapBefore.get('b3')).toBe(0);
+      expect(mapBefore.get('b1')).toBe(1);
+      expect(mapBefore.get('b2')).toBe(2);
+
+      // Move b1 after b3
+      const resAfter = computeBookmarkMove(list, 'b1', 'b3', 'c1', 'after');
+      expect(resAfter).not.toBeNull();
+      const mapAfter = new Map(resAfter!.map((b) => [b.id, b.order]));
+      expect(mapAfter.get('b2')).toBe(0);
+      expect(mapAfter.get('b3')).toBe(1);
+      expect(mapAfter.get('b1')).toBe(2);
+    });
+
+    it('computeBookmarkMove returns null for unchanged positions and self-drops', () => {
+      const b1 = makeBookmark({ id: 'b1', title: 'B1', url: 'https://b1.test', order: 0 });
+      const b2 = makeBookmark({ id: 'b2', title: 'B2', url: 'https://b2.test', order: 1 });
+      const list = [b1, b2];
+
+      // Drop on self
+      expect(computeBookmarkMove(list, 'b1', 'b1', 'c1', 'before')).toBeNull();
+
+      // Drop b1 before b2 (already before b2)
+      expect(computeBookmarkMove(list, 'b1', 'b2', 'c1', 'before')).toBeNull();
+
+      // Unknown id
+      expect(computeBookmarkMove(list, 'unknown', 'b2', 'c1', 'before')).toBeNull();
+    });
+
+    it('computeBookmarkMove moves bookmark across categories and normalizes orders', () => {
+      const b1 = makeBookmark({
+        id: 'b1',
+        category_id: 'c1',
+        title: 'B1',
+        url: 'https://b1.test',
+        order: 0,
+      });
+      const b2 = makeBookmark({
+        id: 'b2',
+        category_id: 'c1',
+        title: 'B2',
+        url: 'https://b2.test',
+        order: 1,
+      });
+      const b3 = makeBookmark({
+        id: 'b3',
+        category_id: 'c2',
+        title: 'B3',
+        url: 'https://b3.test',
+        order: 0,
+      });
+      const list = [b1, b2, b3];
+
+      // Move b1 from c1 to c2 before b3
+      const moved = computeBookmarkMove(list, 'b1', 'b3', 'c2', 'before');
+      expect(moved).not.toBeNull();
+      const b1Updated = moved!.find((b) => b.id === 'b1');
+      const b2Updated = moved!.find((b) => b.id === 'b2');
+      const b3Updated = moved!.find((b) => b.id === 'b3');
+
+      expect(b1Updated?.category_id).toBe('c2');
+      expect(b1Updated?.order).toBe(0);
+      expect(b3Updated?.order).toBe(1);
+      // Source category c1 is normalized: b2 becomes order 0
+      expect(b2Updated?.order).toBe(0);
+    });
+
+    it('computeBookmarkMove moves bookmark to empty category', () => {
+      const b1 = makeBookmark({
+        id: 'b1',
+        category_id: 'c1',
+        title: 'B1',
+        url: 'https://b1.test',
+        order: 0,
+      });
+      const moved = computeBookmarkMove([b1], 'b1', null, 'c_empty', 'after');
+      expect(moved).not.toBeNull();
+      expect(moved![0]?.category_id).toBe('c_empty');
+      expect(moved![0]?.order).toBe(0);
+    });
+
+    it('computeBookmarkMoveWithin handles up/down reordering and boundaries', () => {
+      const b1 = makeBookmark({ id: 'b1', title: 'B1', url: 'https://b1.test', order: 0 });
+      const b2 = makeBookmark({ id: 'b2', title: 'B2', url: 'https://b2.test', order: 1 });
+      const b3 = makeBookmark({ id: 'b3', title: 'B3', url: 'https://b3.test', order: 2 });
+      const list = [b1, b2, b3];
+
+      // Boundary: cannot move top item up
+      expect(computeBookmarkMoveWithin(list, 'b1', 'up')).toBeNull();
+
+      // Boundary: cannot move bottom item down
+      expect(computeBookmarkMoveWithin(list, 'b3', 'down')).toBeNull();
+
+      // Move b2 up (swaps with b1)
+      const moveUp = computeBookmarkMoveWithin(list, 'b2', 'up');
+      expect(moveUp).not.toBeNull();
+      const mapUp = new Map(moveUp!.map((b) => [b.id, b.order]));
+      expect(mapUp.get('b2')).toBe(0);
+      expect(mapUp.get('b1')).toBe(1);
+
+      // Move b2 down (swaps with b3)
+      const moveDown = computeBookmarkMoveWithin(list, 'b2', 'down');
+      expect(moveDown).not.toBeNull();
+      const mapDown = new Map(moveDown!.map((b) => [b.id, b.order]));
+      expect(mapDown.get('b3')).toBe(1);
+      expect(mapDown.get('b2')).toBe(2);
+    });
+
+    it('renders drag handles and supports menu-based Move Up/Down/Category', async () => {
+      const b1 = makeBookmark({
+        id: 'b1',
+        category_id: 'c1',
+        title: 'Alpha',
+        url: 'https://alpha.test',
+        order: 0,
+      });
+      const b2 = makeBookmark({
+        id: 'b2',
+        category_id: 'c1',
+        title: 'Beta',
+        url: 'https://beta.test',
+        order: 1,
+      });
+      const cat2: CategoryItem = { ...CATEGORY, id: 'c2', name: 'Other Category' };
+
+      const onReorderBookmarks = vi.fn();
+      const view = new BookmarksView(
+        {
+          activeBookmarks: [b1, b2],
+          sortedCategories: [CATEGORY, cat2],
+          getRecentBookmarks: () => [],
+          getBookmarksByCategory: (catId) => (catId === 'c1' ? [b1, b2] : []),
+        },
+        {
+          onActivate: vi.fn(),
+          onOpenAlternate: vi.fn(),
+          onEdit: vi.fn(),
+          onDelete: vi.fn(),
+          onAddBookmark: vi.fn(),
+          onImport: vi.fn(),
+          onManageCategories: vi.fn(),
+          onReorderBookmarks,
+        },
+      );
+      document.body.appendChild(view.element);
+      view.render();
+
+      const section = q<HTMLElement>(view.element, 'section[data-category-id="c1"]');
+      expect(section).toBeDefined();
+
+      const tileB1 = q<HTMLElement>(view.element, '.tile[data-bookmark-id="b1"]');
+      expect(tileB1).toBeDefined();
+      expect(tileB1.getAttribute('data-category-id')).toBe('c1');
+
+      const dragHandle = q<HTMLButtonElement>(tileB1, '.tile__drag');
+      expect(dragHandle).toBeDefined();
+      expect(dragHandle.getAttribute('aria-label')).toContain('Alpha');
+
+      // Test keyboard / more menu Move actions
+      const moreBtn = q<HTMLButtonElement>(tileB1, '.tile__more');
+      moreBtn.click();
+      await flush();
+
+      // Find the menu items
+      const menuItems = Array.from(
+        document.body.querySelectorAll<HTMLElement>('.context-menu__item'),
+      );
+      const moveDownItem = menuItems.find((it) => it.textContent?.includes('Move down'));
+      expect(moveDownItem).toBeDefined();
+
+      moveDownItem!.click();
+      await flush();
+
+      expect(onReorderBookmarks).toHaveBeenCalledTimes(1);
+      const reordered = onReorderBookmarks.mock.calls[0]?.[0] as BookmarkItem[];
+      const b1Reordered = reordered.find((b) => b.id === 'b1');
+      const b2Reordered = reordered.find((b) => b.id === 'b2');
+      expect(b1Reordered?.order).toBe(1);
+      expect(b2Reordered?.order).toBe(0);
+
+      // Open menu again to test Move to category
+      moreBtn.click();
+      await flush();
+
+      const menuItems2 = Array.from(
+        document.body.querySelectorAll<HTMLElement>('.context-menu__item'),
+      );
+      const moveToOtherCat = menuItems2.find((it) => it.textContent?.includes('Other Category'));
+      expect(moveToOtherCat).toBeDefined();
+
+      moveToOtherCat!.click();
+      await flush();
+
+      expect(onReorderBookmarks).toHaveBeenCalledTimes(2);
+      const crossCatReordered = onReorderBookmarks.mock.calls[1]?.[0] as BookmarkItem[];
+      const b1Cross = crossCatReordered.find((b) => b.id === 'b1');
+      expect(b1Cross?.category_id).toBe('c2');
+    });
   });
 });

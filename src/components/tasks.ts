@@ -10,7 +10,18 @@
  */
 
 import { buildDrawerShell } from './drawer';
-import { clearChildren, el, svg } from '../utils/dom';
+import {
+  clearChildren,
+  el,
+  svg,
+  ICON_CHECK,
+  ICON_DOWN,
+  ICON_GRIP,
+  ICON_MORE,
+  ICON_PLUS,
+  ICON_TRASH,
+  ICON_UP,
+} from '../utils/dom';
 import { haptic } from '../utils/haptics';
 import { formatDate, t } from '../utils/i18n';
 import { Menu, MenuKeyboard } from '../utils/menu';
@@ -20,17 +31,9 @@ import { newId } from '../utils/crypto';
 import { renderLinkified } from '../utils/text';
 import type { TaskItem } from '../types/schemas';
 
-const ICON_PLUS = 'M12 5v14M5 12h14';
-const ICON_TRASH =
-  'M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6';
-const ICON_MORE = 'M12 6h.01M12 12h.01M12 18h.01';
-const ICON_CHECK = 'M20 6 9 17l-5-5';
 const ICON_CALENDAR =
   'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z';
 const ICON_SUBTASK = 'M6 3v12a3 3 0 0 0 3 3h9M15 15l3 3-3 3';
-const ICON_GRIP = 'M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01';
-const ICON_UP = 'M12 19V5M5 12l7-7 7 7';
-const ICON_DOWN = 'M12 5v14M19 12l-7 7-7-7';
 const ICON_INDENT = 'M3 8h18M3 12h12M3 16h18M20 12l3 3-3 3';
 const ICON_OUTDENT = 'M3 8h18M9 12h12M3 16h18M4 12l-3 3 3 3';
 

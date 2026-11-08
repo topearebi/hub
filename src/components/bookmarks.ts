@@ -6,7 +6,7 @@
  * context menu listing the primary URL and any mirrors for direct override.
  */
 
-import { clearChildren, el, svg } from '../utils/dom';
+import { clearChildren, el, svg, ICON_CHEVRON, ICON_GRIP, ICON_MORE } from '../utils/dom';
 import { t, tp } from '../utils/i18n';
 import { Menu } from '../utils/menu';
 import type { MenuItemSpec } from '../utils/menu';
@@ -16,9 +16,7 @@ import { initialOf } from '../utils/text';
 import { showToast } from './toast';
 import type { BookmarkCardSize, BookmarkItem, CategoryItem } from '../types/schemas';
 
-const ICON_MORE = 'M12 6h.01M12 12h.01M12 18h.01';
 const ICON_RESIZE = 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7';
-const ICON_CHEVRON = 'M6 9l6 6 6-6';
 /** Long-press duration (ms) that opens the tile menu on touch (G-23). */
 const LONG_PRESS_MS = 500;
 
@@ -27,6 +25,112 @@ export const NEXT_CARD_SIZE: Record<BookmarkCardSize, BookmarkCardSize> = {
   wide: 'large',
   large: 'small',
 };
+
+export type BookmarkDropPosition = 'before' | 'after';
+
+/**
+ * Pure helper to compute updated bookmark items when dragging `draggedId` onto
+ * a target tile `targetId` (or dropping onto `targetCategoryId`).
+ */
+export function computeBookmarkMove(
+  bookmarks: readonly BookmarkItem[],
+  draggedId: string,
+  targetId: string | null,
+  targetCategoryId: string,
+  position: BookmarkDropPosition = 'after',
+  now: number = Date.now(),
+): BookmarkItem[] | null {
+  const dragged = bookmarks.find((b) => b.id === draggedId);
+  if (!dragged || (targetId && draggedId === targetId)) {
+    return null;
+  }
+
+  const isCrossCategory = dragged.category_id !== targetCategoryId;
+  const filterSiblings = (catId: string) =>
+    bookmarks
+      .filter((b) => b.category_id === catId && b.id !== draggedId && !b.is_deleted)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.created_at - b.created_at);
+
+  const targetSiblings = filterSiblings(targetCategoryId);
+  let insertIndex = targetSiblings.length;
+  if (targetId) {
+    const idx = targetSiblings.findIndex((b) => b.id === targetId);
+    if (idx !== -1) insertIndex = position === 'before' ? idx : idx + 1;
+  }
+
+  const newTargetSiblings = [...targetSiblings];
+  newTargetSiblings.splice(insertIndex, 0, {
+    ...dragged,
+    category_id: targetCategoryId,
+    updated_at: now,
+  });
+
+  const orderMap = new Map<string, { order: number; category_id: string }>();
+  newTargetSiblings.forEach((b, i) =>
+    orderMap.set(b.id, { order: i, category_id: targetCategoryId }),
+  );
+
+  if (isCrossCategory) {
+    filterSiblings(dragged.category_id).forEach((b, i) =>
+      orderMap.set(b.id, { order: i, category_id: dragged.category_id }),
+    );
+  }
+
+  let hasChange = false;
+  const result = bookmarks.map((b) => {
+    const update = orderMap.get(b.id);
+    if (!update || (b.order === update.order && b.category_id === update.category_id)) {
+      return b;
+    }
+    hasChange = true;
+    return { ...b, order: update.order, category_id: update.category_id, updated_at: now };
+  });
+
+  return hasChange ? result : null;
+}
+
+/**
+ * Pure helper to compute move up / move down within the current category.
+ */
+export function computeBookmarkMoveWithin(
+  bookmarks: readonly BookmarkItem[],
+  bookmarkId: string,
+  direction: 'up' | 'down',
+  now: number = Date.now(),
+): BookmarkItem[] | null {
+  const bookmark = bookmarks.find((b) => b.id === bookmarkId);
+  if (!bookmark) {
+    return null;
+  }
+
+  const siblings = bookmarks
+    .filter((b) => b.category_id === bookmark.category_id && b.is_deleted !== true)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.created_at - b.created_at);
+
+  const idx = siblings.findIndex((b) => b.id === bookmarkId);
+  if (idx === -1) {
+    return null;
+  }
+
+  const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (targetIdx < 0 || targetIdx >= siblings.length) {
+    return null;
+  }
+
+  const target = siblings[targetIdx];
+  if (!target) {
+    return null;
+  }
+
+  return computeBookmarkMove(
+    bookmarks,
+    bookmarkId,
+    target.id,
+    bookmark.category_id,
+    direction === 'up' ? 'before' : 'after',
+    now,
+  );
+}
 
 export interface BookmarksStore {
   readonly activeBookmarks: BookmarkItem[];
@@ -52,6 +156,8 @@ export interface BookmarksCallbacks {
   onResize?: (bookmark: BookmarkItem, size: BookmarkCardSize) => void;
   /** Toggle category collapsed state. */
   onToggleCategory?: (category: CategoryItem) => void;
+  /** Reorder bookmarks in batch (drag-and-drop or move menu). */
+  onReorderBookmarks?: (bookmarks: readonly BookmarkItem[]) => Promise<void> | void;
 }
 
 export class BookmarksView {
@@ -60,6 +166,15 @@ export class BookmarksView {
   private readonly disposers: Array<() => void> = [];
   private readonly tileNodes: HTMLElement[] = [];
   private contextMenu: Menu | null = null;
+  private dragState: {
+    id: string;
+    tile: HTMLElement;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    isDragging: boolean;
+  } | null = null;
+  private autoExpandTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly store: BookmarksStore,
@@ -107,6 +222,8 @@ export class BookmarksView {
   }
 
   destroy(): void {
+    this.clearAutoExpandTimer();
+    this.clearDropIndicators();
     this.closeContextMenu();
     for (const dispose of this.disposers) {
       dispose();
@@ -207,6 +324,7 @@ export class BookmarksView {
 
     return el('section', {
       className: `section${isCollapsed ? ' section--collapsed' : ''}`,
+      attrs: category ? { 'data-category-id': category.id } : {},
       children: [heading, grid],
     });
   }
@@ -216,6 +334,8 @@ export class BookmarksView {
     const tile = el('li', {
       className: `tile tile--size-${size}${isRecents ? ' tile--recent' : ''}`,
     });
+    tile.dataset.bookmarkId = bookmark.id;
+    tile.dataset.categoryId = bookmark.category_id;
 
     const open = el('button', {
       className: 'tile__open',
@@ -353,18 +473,34 @@ export class BookmarksView {
 
     const actionsWrapper = el('div', { className: 'tile__actions' });
 
-    // Cycle size button (only on non-recents)
+    // Actions on non-recents: drag handle, cycle size
     if (!isRecents) {
-      const sizeLabels: Record<BookmarkCardSize, string> = {
-        small: t('bookmarks.sizeSmall'),
-        wide: t('bookmarks.sizeWide'),
-        large: t('bookmarks.sizeLarge'),
-      };
+      const dragLabel = t('bookmarks.dragAria', { title: bookmark.title });
+      const dragHandle = el('button', {
+        className: 'icon-button tile__drag',
+        attrs: {
+          type: 'button',
+          'aria-label': dragLabel,
+          title: dragLabel,
+        },
+      });
+      dragHandle.appendChild(svg(ICON_GRIP, { size: 14 }));
+      this.bindDragHandle(dragHandle, bookmark, tile);
+      actionsWrapper.appendChild(dragHandle);
+
+      const sizeKey =
+        size === 'small'
+          ? 'bookmarks.sizeSmall'
+          : size === 'wide'
+            ? 'bookmarks.sizeWide'
+            : 'bookmarks.sizeLarge';
+      const cycleLabel = t('bookmarks.cycleSize', { size: t(sizeKey) });
       const cycleButton = el('button', {
         className: 'icon-button tile__cycle-size',
         attrs: {
           type: 'button',
-          'aria-label': t('bookmarks.cycleSize', { size: sizeLabels[size] }),
+          'aria-label': cycleLabel,
+          title: cycleLabel,
         },
       });
       cycleButton.appendChild(svg(ICON_RESIZE, { size: 14 }));
@@ -517,6 +653,34 @@ export class BookmarksView {
       });
     }
 
+    if (this.callbacks.onReorderBookmarks) {
+      const reorder = (dir: 'up' | 'down') => {
+        const u = computeBookmarkMoveWithin(this.store.activeBookmarks, bookmark.id, dir);
+        if (u) void this.callbacks.onReorderBookmarks?.(u);
+      };
+      items.push(
+        { label: t('bookmarks.moveUp'), separatorBefore: true, onSelect: () => reorder('up') },
+        { label: t('bookmarks.moveDown'), onSelect: () => reorder('down') },
+      );
+      for (const cat of this.store.sortedCategories) {
+        if (cat.id !== bookmark.category_id) {
+          items.push({
+            label: `${t('bookmarks.moveToCategory')} ${cat.name}`,
+            onSelect: () => {
+              const u = computeBookmarkMove(
+                this.store.activeBookmarks,
+                bookmark.id,
+                null,
+                cat.id,
+                'after',
+              );
+              if (u) void this.callbacks.onReorderBookmarks?.(u);
+            },
+          });
+        }
+      }
+    }
+
     items.push({
       label: t('bookmarks.edit'),
       separatorBefore: true,
@@ -550,6 +714,129 @@ export class BookmarksView {
   private closeContextMenu(): void {
     this.contextMenu?.destroy();
     this.contextMenu = null;
+  }
+
+  private bindDragHandle(handle: HTMLElement, bookmark: BookmarkItem, tile: HTMLElement): void {
+    handle.addEventListener('pointerdown', (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      handle.setPointerCapture?.(e.pointerId);
+      this.dragState = {
+        id: bookmark.id,
+        tile,
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        isDragging: false,
+      };
+    });
+
+    handle.addEventListener('pointermove', (e: PointerEvent) => {
+      if (!this.dragState || e.pointerId !== this.dragState.pointerId) {
+        return;
+      }
+      if (!this.dragState.isDragging) {
+        if (Math.hypot(e.clientX - this.dragState.startX, e.clientY - this.dragState.startY) > 5) {
+          this.dragState.isDragging = true;
+          this.dragState.tile.classList.add('is-dragging');
+        } else {
+          return;
+        }
+      }
+
+      this.clearDropIndicators();
+      const elUnder = document.elementFromPoint(e.clientX, e.clientY);
+      const targetTile = elUnder?.closest<HTMLElement>('.tile:not(.tile--recent)');
+      if (targetTile && targetTile !== this.dragState.tile) {
+        const rect = targetTile.getBoundingClientRect();
+        const isAfter = e.clientX - rect.left > rect.width / 2;
+        targetTile.classList.add(isAfter ? 'is-drop-after' : 'is-drop-before');
+        return;
+      }
+
+      const targetSection = elUnder?.closest<HTMLElement>('.section');
+      if (targetSection) {
+        targetSection.classList.add('is-drop-target');
+        if (targetSection.classList.contains('section--collapsed')) {
+          const catId = targetSection.dataset.categoryId;
+          if (catId && !this.autoExpandTimer) {
+            this.autoExpandTimer = setTimeout(() => {
+              const cat = this.store.sortedCategories.find((c) => c.id === catId);
+              if (cat && cat.collapsed) {
+                this.callbacks.onToggleCategory?.(cat);
+              }
+              this.autoExpandTimer = null;
+            }, 600);
+          }
+        }
+      }
+    });
+
+    handle.addEventListener('pointerup', (e: PointerEvent) => {
+      const state = this.dragState;
+      if (!state || e.pointerId !== state.pointerId) return;
+      this.clearAutoExpandTimer();
+      this.dragState = null;
+      state.tile.classList.remove('is-dragging');
+      if (!state.isDragging) return;
+
+      const elUnder = document.elementFromPoint(e.clientX, e.clientY);
+      this.clearDropIndicators();
+      const targetTile = elUnder?.closest<HTMLElement>('.tile:not(.tile--recent)');
+      const targetSection = elUnder?.closest<HTMLElement>('.section');
+
+      let updated: BookmarkItem[] | null = null;
+      if (targetTile && targetTile !== state.tile) {
+        const { bookmarkId, categoryId } = targetTile.dataset;
+        if (bookmarkId && categoryId) {
+          const rect = targetTile.getBoundingClientRect();
+          const position: BookmarkDropPosition =
+            e.clientX - rect.left > rect.width / 2 ? 'after' : 'before';
+          updated = computeBookmarkMove(
+            this.store.activeBookmarks,
+            state.id,
+            bookmarkId,
+            categoryId,
+            position,
+          );
+        }
+      } else if (targetSection?.dataset.categoryId) {
+        updated = computeBookmarkMove(
+          this.store.activeBookmarks,
+          state.id,
+          null,
+          targetSection.dataset.categoryId,
+          'after',
+        );
+      }
+
+      if (updated) void this.callbacks.onReorderBookmarks?.(updated);
+    });
+
+    handle.addEventListener('pointercancel', () => {
+      this.clearAutoExpandTimer();
+      if (this.dragState) {
+        this.dragState.tile.classList.remove('is-dragging');
+        this.dragState = null;
+      }
+      this.clearDropIndicators();
+    });
+  }
+
+  private clearDropIndicators(): void {
+    this.element
+      .querySelectorAll('.is-drop-before, .is-drop-after, .is-drop-target')
+      .forEach((el) => el.classList.remove('is-drop-before', 'is-drop-after', 'is-drop-target'));
+  }
+
+  private clearAutoExpandTimer(): void {
+    if (this.autoExpandTimer !== null) {
+      clearTimeout(this.autoExpandTimer);
+      this.autoExpandTimer = null;
+    }
   }
 
   /** Share a bookmark via the native share sheet, when available (G-53). */

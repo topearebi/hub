@@ -11,15 +11,13 @@
  * exported pure functions so it can be unit-tested without a DOM.
  */
 
-import { el, svg } from '../utils/dom';
+import { el, svg, ICON_CLOSE } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
 import { t } from '../utils/i18n';
 import { hostnameOf } from '../core/fallback';
 import { newId } from '../utils/crypto';
 import { isUrlLike, normalizeUrl } from './omnibar';
 import type { BookmarkCardSize, BookmarkItem, CategoryItem } from '../types/schemas';
-
-const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
 
 let bookmarkDialogSeq = 0;
 /** Sentinel select value that reveals the inline new-category input. */

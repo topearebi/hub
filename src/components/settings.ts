@@ -11,15 +11,12 @@
  * sync layer stays testable and decoupled.
  */
 
-import { el, svg } from '../utils/dom';
+import { el, svg, ICON_CHEVRON, ICON_CLOSE } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
 import { t } from '../utils/i18n';
 import { formatBytes } from '../core/pwa';
 import type { AppConfig } from '../types/schemas';
 import type { ConnectionResult, GitHubConfig } from '../core/sync';
-
-const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
-const ICON_CHEVRON = 'M6 9l6 6 6-6';
 
 let settingsDialogSeq = 0;
 

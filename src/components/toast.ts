@@ -13,7 +13,7 @@
  * A single container is lazily created and reused.
  */
 
-import { el, svg } from '../utils/dom';
+import { el, svg, ICON_CLOSE } from '../utils/dom';
 import { t } from '../utils/i18n';
 
 export type ToastVariant = 'info' | 'success' | 'warning' | 'error';
@@ -39,7 +39,6 @@ export interface ToastOptions {
   onDismiss?: () => void;
 }
 
-const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
 const DEFAULT_DURATION = 4000;
 
 let container: HTMLElement | null = null;

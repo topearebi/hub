@@ -43,7 +43,7 @@ import { Brand } from './components/brand';
 import { ProfilePopover } from './components/profile-popover';
 import { ProfileEditor } from './components/profile-editor';
 import { showToast } from './components/toast';
-import { el, svg } from './utils/dom';
+import { el, svg, ICON_NOTES, ICON_PLUS, ICON_TASKS } from './utils/dom';
 import { confirmDialog, Dialog } from './utils/dialog';
 import { applyDocumentLocale, t } from './utils/i18n';
 import { bindVisualViewport } from './utils/viewport';
@@ -101,10 +101,9 @@ function isStandaloneDisplay(): boolean {
 }
 
 /** Inline 'plus' icon for the add-bookmark control (no external icons). */
-const ICON_PLUS = 'M12 5v14M5 12h14';
 const ICON_TAB_BOOKMARKS = 'M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z';
-const ICON_TAB_TASKS = 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11';
-const ICON_TAB_NOTES = 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6';
+const ICON_TAB_TASKS = ICON_TASKS;
+const ICON_TAB_NOTES = ICON_NOTES;
 
 /**
  * Activate a bookmark: record the local visit, resolve the best reachable URL
@@ -616,6 +615,9 @@ async function bootstrap(): Promise<void> {
         collapsed: !category.collapsed,
         updated_at: Date.now(),
       });
+    },
+    onReorderBookmarks: async (bookmarks) => {
+      await store.upsertBookmarks(bookmarks);
     },
   });
   bookmarksHost.appendChild(bookmarksView.element);

@@ -6,13 +6,11 @@
  * and compressed client-side (see `core/image.ts`) before being stored.
  */
 
-import { el, svg } from '../utils/dom';
+import { el, svg, ICON_CLOSE } from '../utils/dom';
 import { Dialog } from '../utils/dialog';
 import { t } from '../utils/i18n';
 import { compressImageFile } from '../core/image';
 import type { AppConfig, ProfileItem } from '../types/schemas';
-
-const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
 
 let profileDialogSeq = 0;
 

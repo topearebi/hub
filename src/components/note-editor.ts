@@ -5,12 +5,10 @@
  * pastel color. Keeps the drawer uncluttered and avoids layout jumps.
  */
 
-import { el, svg } from '../utils/dom';
+import { el, svg, ICON_CLOSE } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
 import { t } from '../utils/i18n';
 import type { NoteItem } from '../types/schemas';
-
-const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
 
 let noteDialogSeq = 0;
 

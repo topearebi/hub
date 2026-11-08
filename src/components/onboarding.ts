@@ -10,12 +10,10 @@
  * Built only with the XSS-safe `el()` helper; no `innerHTML`.
  */
 
-import { el, svg } from '../utils/dom';
+import { el, svg, ICON_PLUS, ICON_SYNC } from '../utils/dom';
 import { t } from '../utils/i18n';
 
-const ICON_PLUS = 'M12 5v14M5 12h14';
 const ICON_IMPORT = 'M12 3v12M7 10l5 5 5-5M5 21h14';
-const ICON_SYNC = 'M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8M3 16v-4h4M21 8V4h-4';
 const ICON_SPARKLE = 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z';
 
 export interface OnboardingCallbacks {

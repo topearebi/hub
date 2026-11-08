@@ -8,13 +8,8 @@
  * (off-canvas slide, grid placement) lives in the stylesheet.
  */
 
-import { el, svg } from '../utils/dom';
+import { el, svg, ICON_CLOSE, ICON_PIN } from '../utils/dom';
 import { t } from '../utils/i18n';
-
-/** Feather-style pin icon (local inline SVG, no CDN). */
-const ICON_PIN =
-  'M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z';
-const ICON_CLOSE = 'M18 6 6 18M6 6l12 12';
 
 export interface DrawerShellOptions {
   /** Drawer identity, used for the `drawer--{variant}` class. */

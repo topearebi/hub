@@ -10,18 +10,12 @@
  * and the XSS-safe `el()` helper.
  */
 
-import { clearChildren, el, svg } from '../utils/dom';
+import { clearChildren, el, svg, ICON_DOWN, ICON_PLUS, ICON_TRASH, ICON_UP } from '../utils/dom';
 import { confirmDialog, Dialog } from '../utils/dialog';
 import { t } from '../utils/i18n';
 import { showToast } from './toast';
 import { newId } from '../utils/crypto';
 import type { BookmarkItem, CategoryItem } from '../types/schemas';
-
-const ICON_UP = 'M12 19V5M5 12l7-7 7 7';
-const ICON_DOWN = 'M12 5v14M19 12l-7 7-7-7';
-const ICON_TRASH =
-  'M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6';
-const ICON_PLUS = 'M12 5v14M5 12h14';
 
 export interface CategoryManagerStore {
   readonly sortedCategories: CategoryItem[];
