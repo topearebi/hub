@@ -15,6 +15,8 @@
 import { clearChildren, el, on, svg } from '../utils/dom';
 import { t, tp } from '../utils/i18n';
 import { hostnameOf } from '../core/fallback';
+import { MenuKeyboard } from '../utils/menu';
+import { renderSearchEngineIcon } from '../utils/search-icons';
 import type { BookmarkItem, SearchProvider } from '../types/schemas';
 import type { LaunchpadStore } from '../core/store';
 
@@ -22,6 +24,10 @@ import type { LaunchpadStore } from '../core/store';
 const ICON_PLUS = 'M12 5v14M5 12h14';
 const ICON_ARROW = 'M7 17 17 7M17 7H8M17 7v9';
 const ICON_SEARCH = 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35';
+const ICON_CHEVRON = 'M6 9l6 6 6-6';
+const ICON_CHECK = 'M20 6 9 17l-5-5';
+const ICON_SETTINGS =
+  'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7.4-2a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3 1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8 1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z';
 
 /** Maximum number of result rows rendered at once. */
 const OMNIBAR_MAX_RESULTS = 8;
@@ -268,20 +274,26 @@ export interface OmnibarCallbacks {
   onAddBookmark: (url: string) => void;
   /** Persist a newly selected search engine for the active profile. */
   onSelectEngine?: (providerId: string) => void;
+  /** Open the search engine manager dialog. */
+  onManageEngines?: () => void;
 }
 
 export class Omnibar {
   readonly element: HTMLElement;
 
   private readonly input: HTMLInputElement;
-  private readonly engineSelect: HTMLSelectElement;
+  private readonly engineWrap: HTMLElement;
+  private readonly engineTrigger: HTMLButtonElement;
+  private readonly engineMenu: HTMLElement;
   private readonly resultsEl: HTMLElement;
   private readonly liveRegion: HTMLElement;
   private readonly disposers: Array<() => void> = [];
+  private readonly menuKeyboard: MenuKeyboard;
   private resultNodes: HTMLElement[] = [];
   private actions: OmnibarAction[] = [];
   private activeIndex = -1;
   private selectedProviderId = '';
+  private isMenuOpen = false;
 
   constructor(
     private readonly store: LaunchpadStore,
@@ -303,20 +315,48 @@ export class Omnibar {
       },
     });
 
-    // Inline search-engine selector on the left of the pill.
-    this.engineSelect = el('select', {
-      className: 'omnibar__engine',
-      attrs: { 'aria-label': t('omnibar.engineAria') },
+    // Custom search engine trigger button showing icon, name, and chevron
+    this.engineTrigger = el('button', {
+      className: 'omnibar__engine-trigger',
+      attrs: {
+        type: 'button',
+        'aria-haspopup': 'menu',
+        'aria-expanded': 'false',
+        'aria-label': t('omnibar.engineAria'),
+      },
     });
-    this.engineSelect.addEventListener('change', () => {
-      this.selectedProviderId = this.engineSelect.value;
-      this.callbacks.onSelectEngine?.(this.selectedProviderId);
+
+    this.engineMenu = el('div', {
+      className: 'omnibar__engine-menu',
+      attrs: {
+        role: 'menu',
+        'aria-label': t('omnibar.engineAria'),
+      },
+    });
+    this.engineMenu.hidden = true;
+
+    this.menuKeyboard = new MenuKeyboard(this.engineMenu, {
+      getItems: () =>
+        Array.from(
+          this.engineMenu.querySelectorAll<HTMLElement>(
+            '.omnibar__engine-menu-item:not([disabled])',
+          ),
+        ),
+      onClose: () => {
+        this.closeEngineMenu();
+        this.engineTrigger.focus();
+      },
+    });
+
+    this.engineWrap = el('div', {
+      className: 'omnibar__engine-wrap',
+      children: [this.engineTrigger, this.engineMenu],
     });
 
     const hint = el('kbd', { className: 'omnibar__hint', text: t('omnibar.enterHint') });
     const bar = el('div', {
       className: 'omnibar',
-      children: [this.engineSelect, this.input, hint],
+      children: [this.engineWrap, this.input, hint],
     });
 
     this.resultsEl = el('ul', {
@@ -350,21 +390,138 @@ export class Omnibar {
     this.input.select();
   }
 
-  /** Rebuild the engine selector (call after a profile switch). */
+  /** Rebuild the engine selector (call after a profile switch or engine update). */
   renderEngine(): void {
     const providers = this.store.appConfig.search_providers;
-    this.engineSelect.replaceChildren();
-    for (const provider of providers) {
-      this.engineSelect.appendChild(
-        el('option', { text: provider.name, attrs: { value: provider.id } }),
-      );
-    }
-
     const preferred = this.store.activeProfile?.default_search_provider_id;
     const fallback = providers.find((p) => p.is_default)?.id ?? providers[0]?.id ?? '';
     this.selectedProviderId =
-      preferred && providers.some((p) => p.id === preferred) ? preferred : fallback;
-    this.engineSelect.value = this.selectedProviderId;
+      preferred && providers.some((p) => p.id === preferred)
+        ? preferred
+        : providers.some((p) => p.id === this.selectedProviderId)
+          ? this.selectedProviderId
+          : fallback;
+
+    const active = providers.find((p) => p.id === this.selectedProviderId) ?? providers[0];
+
+    clearChildren(this.engineTrigger);
+    if (active) {
+      this.engineTrigger.setAttribute('aria-label', `${t('omnibar.engineAria')}: ${active.name}`);
+      this.engineTrigger.appendChild(
+        el('span', {
+          className: 'omnibar__engine-icon',
+          children: [renderSearchEngineIcon(active, 18)],
+        }),
+      );
+      this.engineTrigger.appendChild(
+        el('span', { className: 'omnibar__engine-name', text: active.name }),
+      );
+    }
+    this.engineTrigger.appendChild(svg(ICON_CHEVRON, { className: 'omnibar__engine-chevron' }));
+
+    if (this.isMenuOpen) {
+      this.renderEngineMenu();
+    }
+  }
+
+  toggleEngineMenu(): void {
+    if (this.isMenuOpen) {
+      this.closeEngineMenu();
+    } else {
+      this.openEngineMenu();
+    }
+  }
+
+  openEngineMenu(): void {
+    if (this.isMenuOpen) {
+      return;
+    }
+    this.closeResults();
+    this.isMenuOpen = true;
+    this.engineMenu.hidden = false;
+    this.engineMenu.classList.add('is-open');
+    this.engineTrigger.setAttribute('aria-expanded', 'true');
+    this.renderEngineMenu();
+    this.menuKeyboard.activate('first');
+  }
+
+  closeEngineMenu(): void {
+    if (!this.isMenuOpen) {
+      return;
+    }
+    this.isMenuOpen = false;
+    this.engineMenu.hidden = true;
+    this.engineMenu.classList.remove('is-open');
+    this.engineTrigger.setAttribute('aria-expanded', 'false');
+    this.menuKeyboard.deactivate();
+  }
+
+  private renderEngineMenu(): void {
+    clearChildren(this.engineMenu);
+    const providers = this.store.appConfig.search_providers;
+
+    for (const provider of providers) {
+      const isSelected = provider.id === this.selectedProviderId;
+      const item = el('button', {
+        className: `omnibar__engine-menu-item${isSelected ? ' is-selected' : ''}`,
+        attrs: {
+          type: 'button',
+          role: 'menuitemradio',
+          'aria-checked': isSelected ? 'true' : 'false',
+        },
+        children: [
+          el('span', {
+            className: 'omnibar__engine-menu-icon',
+            children: [renderSearchEngineIcon(provider, 18)],
+          }),
+          el('span', { className: 'omnibar__engine-menu-name', text: provider.name }),
+          isSelected
+            ? svg(ICON_CHECK, { className: 'omnibar__engine-menu-check' })
+            : el('span', { className: 'omnibar__engine-menu-check-placeholder' }),
+        ],
+      });
+
+      item.addEventListener('click', () => {
+        this.selectedProviderId = provider.id;
+        this.callbacks.onSelectEngine?.(provider.id);
+        this.renderEngine();
+        this.closeEngineMenu();
+        this.input.focus();
+      });
+
+      this.engineMenu.appendChild(item);
+    }
+
+    // Divider
+    this.engineMenu.appendChild(
+      el('div', { className: 'omnibar__engine-menu-divider', attrs: { role: 'separator' } }),
+    );
+
+    // Manage search engines...
+    const manageBtn = el('button', {
+      className: 'omnibar__engine-menu-item omnibar__engine-menu-manage',
+      attrs: {
+        type: 'button',
+        role: 'menuitem',
+      },
+      children: [
+        el('span', {
+          className: 'omnibar__engine-menu-icon',
+          children: [svg(ICON_SETTINGS, { className: 'engine-icon' })],
+        }),
+        el('span', {
+          className: 'omnibar__engine-menu-name',
+          text: t('omnibar.manageEngines'),
+        }),
+      ],
+    });
+
+    manageBtn.addEventListener('click', () => {
+      this.closeEngineMenu();
+      this.callbacks.onManageEngines?.();
+    });
+
+    this.engineMenu.appendChild(manageBtn);
   }
 
   /** Bind document-level `Alt + [1-9]` and `/` hotkeys. */
@@ -435,6 +592,7 @@ export class Omnibar {
   }
 
   destroy(): void {
+    this.closeEngineMenu();
     for (const dispose of this.disposers) {
       dispose();
     }
@@ -447,6 +605,28 @@ export class Omnibar {
   /* ---------------------------------------------------------------- */
 
   private bind(): void {
+    this.disposers.push(
+      on(this.engineTrigger, 'click', (event: MouseEvent) => {
+        event.stopPropagation();
+        this.toggleEngineMenu();
+      }),
+    );
+    this.disposers.push(
+      on(this.engineTrigger, 'keydown', (event: KeyboardEvent) => {
+        if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          this.openEngineMenu();
+        }
+      }),
+    );
+    this.disposers.push(
+      on(document, 'click', (event: MouseEvent) => {
+        if (this.isMenuOpen && !this.engineWrap.contains(event.target as Node)) {
+          this.closeEngineMenu();
+        }
+      }),
+    );
+
     this.disposers.push(on(this.input, 'input', () => this.handleInput()));
     this.disposers.push(
       on(this.input, 'keydown', (event: KeyboardEvent) => this.handleKeydown(event)),
@@ -461,6 +641,9 @@ export class Omnibar {
   }
 
   private handleInput(): void {
+    if (this.isMenuOpen) {
+      this.closeEngineMenu();
+    }
     this.actions = buildOmnibarActions(
       this.input.value,
       this.store.activeBookmarks,

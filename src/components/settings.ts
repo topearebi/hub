@@ -55,6 +55,8 @@ export interface SettingsCallbacks {
   onRequestPersist?: () => Promise<void>;
   /** Read the current persistence state and storage quota estimate (Data section). */
   onRefreshStorage?: () => Promise<{ usage: number; quota: number } | null>;
+  /** Invoked by the "Manage search engines" control in settings. */
+  onManageSearchEngines?: () => void;
 }
 
 /** Wrap an input in a labelled field. */
@@ -90,6 +92,7 @@ export class SettingsModal {
   private readonly tokenStatus: HTMLElement;
   private readonly storageStatus: HTMLElement;
   private readonly quotaStatus: HTMLElement;
+  private readonly searchEnginesHelp: HTMLElement;
   private readonly advancedRegion: HTMLElement;
   private readonly advancedToggle: HTMLButtonElement;
 
@@ -187,6 +190,7 @@ export class SettingsModal {
     this.tokenStatus = el('div', { className: 'settings-token-status' });
     this.storageStatus = el('p', { className: 'settings-status' });
     this.quotaStatus = el('p', { className: 'settings-status' });
+    this.searchEnginesHelp = el('p', { className: 'field__hint' });
 
     this.advancedRegion = el('div', { className: 'settings-advanced__region' });
     this.advancedRegion.hidden = true;
@@ -242,6 +246,7 @@ export class SettingsModal {
       className: 'modal__body',
       children: [
         this.buildGeneral(),
+        this.buildSearchEngines(),
         this.buildSync(),
         this.buildNotifications(),
         this.buildSecurity(),
@@ -263,6 +268,23 @@ export class SettingsModal {
     return this.section(t('settings.general'), [
       field(t('settings.theme'), this.themeSelect),
       el('div', { className: 'settings-actions', children: [save] }),
+    ]);
+  }
+
+  private buildSearchEngines(): HTMLElement {
+    const manageBtn = el('button', {
+      className: 'button button--subtle',
+      attrs: { type: 'button' },
+      text: t('settings.manageEngines'),
+    });
+    manageBtn.addEventListener('click', () => {
+      this.close();
+      this.callbacks.onManageSearchEngines?.();
+    });
+
+    return this.section(t('settings.searchEngines'), [
+      this.searchEnginesHelp,
+      el('div', { className: 'settings-actions', children: [manageBtn] }),
     ]);
   }
 
@@ -455,6 +477,14 @@ export class SettingsModal {
     this.themeSelect.value = config.theme;
     this.statusEl.textContent = '';
     this.statusEl.removeAttribute('data-tone');
+
+    const defaultEngine =
+      config.search_providers.find((p) => p.is_default)?.name ??
+      config.search_providers[0]?.name ??
+      '';
+    this.searchEnginesHelp.textContent = t('settings.searchEnginesHelp', {
+      default: defaultEngine,
+    });
 
     // The token field never re-displays a saved value (DESIGN.md §6.12).
     this.hasSavedToken = Boolean(config.github_pat);

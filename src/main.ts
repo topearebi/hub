@@ -34,6 +34,7 @@ import { maxPinnedDrawers, resolveDrawerOpen } from './components/drawer';
 import { SettingsModal } from './components/settings';
 import { OnboardingCard } from './components/onboarding';
 import { CategoryManager } from './components/category-manager';
+import { SearchEngineManager } from './components/search-engine-manager';
 import { RecentlyDeleted } from './components/recently-deleted';
 import { ShareTargetPrompt } from './components/share-target';
 import { isLockScreenOpen, LockScreen } from './components/lock-screen';
@@ -574,6 +575,7 @@ async function bootstrap(): Promise<void> {
         });
       }
     },
+    onManageEngines: () => searchEngineManager.open(),
   });
   omnibarHost.appendChild(omnibar.element);
   omnibar.attachGlobalHotkeys();
@@ -839,6 +841,7 @@ async function bootstrap(): Promise<void> {
     },
     onOpenRecentlyDeleted: () => recentlyDeleted.open(),
     onOpenCategories: () => categoryManager.open(),
+    onManageSearchEngines: () => searchEngineManager.open(),
     onInstall: () => {
       void showInstallGuidance();
     },
@@ -862,6 +865,15 @@ async function bootstrap(): Promise<void> {
     onChanged: () => bookmarksView.render(),
   });
   document.body.appendChild(categoryManager.element);
+
+  /* ---- Search engine manager ---- */
+  const searchEngineManager = new SearchEngineManager(store, {
+    onClose: () => undefined,
+    onChanged: () => {
+      omnibar.renderEngine();
+    },
+  });
+  document.body.appendChild(searchEngineManager.element);
 
   /* ---- Recently deleted (G-40, DESIGN.md §9.1) ---- */
   const recentlyDeleted = new RecentlyDeleted(store, {
@@ -1137,7 +1149,10 @@ async function bootstrap(): Promise<void> {
   });
   store.subscribe('notes', () => notesDrawer.render());
   store.subscribe('profiles', () => applyProfile());
-  store.subscribe('config', () => updateOnboarding());
+  store.subscribe('config', () => {
+    updateOnboarding();
+    omnibar.renderEngine();
+  });
 
   // Debounced sync on any syncable mutation (event-driven, never polled).
   // `profiles` is included because profile branding/preferences are part of the
@@ -1199,6 +1214,10 @@ async function bootstrap(): Promise<void> {
     }
     if (sharePrompt.element.classList.contains('is-open')) {
       sharePrompt.close();
+      return;
+    }
+    if (searchEngineManager.isOpen()) {
+      searchEngineManager.close();
       return;
     }
     if (settings.element.classList.contains('is-open')) {

@@ -12,6 +12,7 @@ import {
 } from '../omnibar';
 import { DEFAULT_APP_CONFIG } from '../../types/schemas';
 import type { BookmarkItem, SearchProvider } from '../../types/schemas';
+import type { LaunchpadStore } from '../../core/store';
 
 /** Build a fully-formed bookmark from minimal overrides. */
 function makeBookmark(
@@ -263,6 +264,126 @@ describe('Alt+[1-9] hotkey', () => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: '1', altKey: true, bubbles: true }));
 
     expect(activated).toBe(0);
+    omnibar.destroy();
+  });
+});
+
+describe('Search Engine Dropdown Menu', () => {
+  it('renders trigger with active search engine logo and name', () => {
+    const fakeStore: LaunchpadStore = {
+      activeBookmarks: [],
+      sortedCategories: [],
+      appConfig: {
+        ...DEFAULT_APP_CONFIG,
+        search_providers: PROVIDERS,
+      },
+      activeProfile: null,
+      profiles: [],
+      getRecentBookmarks: () => [],
+      getBookmarksByCategory: () => [],
+    };
+    const omnibar = new Omnibar(fakeStore, {
+      onActivateBookmark: () => undefined,
+      onNavigate: () => undefined,
+      onAddBookmark: () => undefined,
+    });
+    document.body.appendChild(omnibar.element);
+
+    const trigger = omnibar.element.querySelector<HTMLButtonElement>('.omnibar__engine-trigger');
+    expect(trigger).not.toBeNull();
+    expect(trigger?.textContent).toContain('DuckDuckGo');
+    expect(trigger?.getAttribute('aria-haspopup')).toBe('menu');
+    expect(trigger?.getAttribute('aria-expanded')).toBe('false');
+
+    const icon = trigger?.querySelector('.engine-icon');
+    expect(icon).not.toBeNull();
+
+    omnibar.destroy();
+  });
+
+  it('opens engine menu, displays engines with logos, and switches engine on select', () => {
+    let selectedEngine = '';
+    const fakeStore: LaunchpadStore = {
+      activeBookmarks: [],
+      sortedCategories: [],
+      appConfig: {
+        ...DEFAULT_APP_CONFIG,
+        search_providers: PROVIDERS,
+      },
+      activeProfile: null,
+      profiles: [],
+      getRecentBookmarks: () => [],
+      getBookmarksByCategory: () => [],
+    };
+    const omnibar = new Omnibar(fakeStore, {
+      onActivateBookmark: () => undefined,
+      onNavigate: () => undefined,
+      onAddBookmark: () => undefined,
+      onSelectEngine: (id) => {
+        selectedEngine = id;
+      },
+    });
+    document.body.appendChild(omnibar.element);
+
+    const trigger = omnibar.element.querySelector<HTMLButtonElement>('.omnibar__engine-trigger')!;
+    trigger.click();
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    const menu = omnibar.element.querySelector<HTMLElement>('.omnibar__engine-menu')!;
+    expect(menu.hidden).toBe(false);
+
+    const items = menu.querySelectorAll<HTMLButtonElement>('.omnibar__engine-menu-item');
+    // 2 providers + 1 manage button = 3 items
+    expect(items.length).toBe(3);
+
+    const googleItem = Array.from(items).find((item) => item.textContent?.includes('Google'));
+    expect(googleItem).not.toBeUndefined();
+    googleItem?.click();
+
+    expect(selectedEngine).toBe('sp_google');
+    expect(trigger.textContent).toContain('Google');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(menu.hidden).toBe(true);
+
+    omnibar.destroy();
+  });
+
+  it('invokes onManageEngines when clicking manage action in menu', () => {
+    let manageCalled = false;
+    const fakeStore: LaunchpadStore = {
+      activeBookmarks: [],
+      sortedCategories: [],
+      appConfig: {
+        ...DEFAULT_APP_CONFIG,
+        search_providers: PROVIDERS,
+      },
+      activeProfile: null,
+      profiles: [],
+      getRecentBookmarks: () => [],
+      getBookmarksByCategory: () => [],
+    };
+    const omnibar = new Omnibar(fakeStore, {
+      onActivateBookmark: () => undefined,
+      onNavigate: () => undefined,
+      onAddBookmark: () => undefined,
+      onManageEngines: () => {
+        manageCalled = true;
+      },
+    });
+    document.body.appendChild(omnibar.element);
+
+    const trigger = omnibar.element.querySelector<HTMLButtonElement>('.omnibar__engine-trigger')!;
+    trigger.click();
+
+    const manageBtn = omnibar.element.querySelector<HTMLButtonElement>(
+      '.omnibar__engine-menu-manage',
+    )!;
+    expect(manageBtn).not.toBeNull();
+    manageBtn.click();
+
+    expect(manageCalled).toBe(true);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
     omnibar.destroy();
   });
 });

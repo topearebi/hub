@@ -313,6 +313,8 @@ export interface SearchProvider {
   /** Query template requiring '%s' parameter */
   query_url: string;
   is_default: boolean;
+  /** Optional icon identifier (preset key, SVG data URL, or image data URL) */
+  icon?: string;
 }
 
 export interface AppConfig {
