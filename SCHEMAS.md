@@ -674,3 +674,10 @@ legacy timestamp merger helpers remain only for compatible import/maintenance.
 No baseline, conflicts, credentials or metrics may enter HubStoragePayload or
 normal data exports. Conflict exports contain only the chosen conflict records.
 No database store/version or entity/AppConfig field is added.
+
+### Owner-approved bookmark image restoration — 2026-11-09
+
+The preceding local-only icon clarification is superseded by the owner's request:
+`BookmarkItem.icon` renders its image URL when set; otherwise the card tries the
+bookmark origin's `/favicon.ico`. Failed images fall back locally. No schema
+change and no external favicon service. See `plans/bookmark-icon-repair.md`.

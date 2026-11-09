@@ -1,0 +1,98 @@
+{
+  "requests": [
+    {
+      "url": "https://icons.fixture.test/custom.svg",
+      "referrer": null
+    },
+    {
+      "url": "https://auto.fixture.test/favicon.ico",
+      "referrer": null
+    },
+    {
+      "url": "https://icons.fixture.test/broken.svg",
+      "referrer": null
+    },
+    {
+      "url": "https://missing.fixture.test/favicon.ico",
+      "referrer": null
+    },
+    {
+      "url": "https://recovery.fixture.test/favicon.ico",
+      "referrer": null
+    },
+    {
+      "url": "https://icons.fixture.test/custom.svg",
+      "referrer": null
+    },
+    {
+      "url": "https://site.fixture.test/favicon.ico",
+      "referrer": null
+    },
+    {
+      "url": "https://icons.fixture.test/",
+      "referrer": null
+    },
+    {
+      "url": "https://icons.fixture.test/cu",
+      "referrer": null
+    },
+    {
+      "url": "https://icons.fixture.test/custo",
+      "referrer": null
+    },
+    {
+      "url": "https://icons.fixture.test/custom",
+      "referrer": null
+    },
+    {
+      "url": "https://icons.fixture.test/custom.",
+      "referrer": null
+    },
+    {
+      "url": "https://icons.fixture.test/custom.s",
+      "referrer": null
+    }
+  ],
+  "cards": [
+    {
+      "id": "small",
+      "src": "https://icons.fixture.test/custom.svg",
+      "loaded": true,
+      "avatar": false
+    },
+    {
+      "id": "wide",
+      "src": "https://icons.fixture.test/custom.svg",
+      "loaded": true,
+      "avatar": false
+    },
+    {
+      "id": "large",
+      "src": "https://icons.fixture.test/custom.svg",
+      "loaded": true,
+      "avatar": false
+    },
+    {
+      "id": "auto",
+      "src": "https://auto.fixture.test/favicon.ico",
+      "loaded": true,
+      "avatar": false
+    },
+    {
+      "id": "recovery",
+      "src": "https://recovery.fixture.test/favicon.ico",
+      "loaded": true,
+      "avatar": false
+    },
+    {
+      "id": "missing",
+      "src": null,
+      "loaded": false,
+      "avatar": true
+    }
+  ],
+  "previewCustom": true,
+  "previewAuto": true,
+  "noReferrers": true,
+  "noPrivateBookmarkPaths": true
+}

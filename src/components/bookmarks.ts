@@ -206,44 +206,45 @@ export function populateBookmarkContent(
     open.appendChild(el('kbd', { className: 'tile__hotkey', text: bookmark.hotkey }));
 }
 
-/**
- * Render local/same-origin icons only; missing or remote icons use a local
- * avatar so browsing cards never triggers third-party network requests.
- */
+/** Custom image → site's favicon → local avatar, shared with the editor preview. */
 function renderBookmarkIcon(bookmark: BookmarkContent): HTMLElement {
   const fallback = (): HTMLElement =>
     el('span', {
       className: 'tile__icon tile__icon--fallback',
       text: initialOf(bookmark.title, '?'),
     });
-  const src = bookmark.icon;
-  if (!src || !/^(data:image\/|blob:)/i.test(src)) {
-    if (!src) return fallback();
+  const sources: string[] = [];
+  const custom = bookmark.icon?.trim();
+  if (custom) {
     try {
-      if (new URL(src, window.location.href).origin !== window.location.origin) {
-        return fallback();
-      }
+      const parsed = new URL(custom, window.location.href);
+      if (['http:', 'https:', 'blob:'].includes(parsed.protocol) || /^data:image\//i.test(custom))
+        sources.push(parsed.href);
     } catch {
-      return fallback();
+      /* Invalid optional images must never prevent card rendering. */
     }
   }
-
+  try {
+    const address = bookmark.url.trim();
+    const site = new URL(/^[a-z][a-z\d+.-]*:/i.test(address) ? address : `https://${address}`);
+    if (['http:', 'https:'].includes(site.protocol))
+      sources.push(new URL('/favicon.ico', site.origin).href);
+  } catch {
+    /* Imported invalid addresses still get a local avatar. */
+  }
+  const candidates = [...new Set(sources)];
+  if (!candidates.length) return fallback();
   const img = el('img', {
     className: 'tile__icon',
-    attrs: {
-      src,
-      alt: '',
-      loading: 'lazy',
-      referrerpolicy: 'no-referrer',
-    },
+    attrs: { alt: '', loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' },
   });
-  img.addEventListener(
-    'error',
-    () => {
-      img.replaceWith(fallback());
-    },
-    { once: true },
-  );
+  let index = 0;
+  img.addEventListener('error', () => {
+    const next = candidates[++index];
+    if (next) img.src = next;
+    else img.replaceWith(fallback());
+  });
+  img.src = candidates[0]!;
   return img;
 }
 

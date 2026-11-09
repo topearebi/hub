@@ -466,3 +466,13 @@ checks recorded in [evidence](../docs/evidence/sync-hardening/README.md).
 Physical device/assistive-technology checks remain owner-run; no live PAT or
 user sync repository was changed during tests. GitHub controls external PAT
 expiry/revocation; Hub provides encrypted persistence and clear re-entry recovery.
+
+**Bookmark image regression repair (2026-11-09; G-22/G-55):** the owner requested
+restoration of the Icon URL field and automatic origin favicons, superseding the
+refresh's local-only image policy. Shared card/preview rendering now tries a valid
+custom image, the bookmark origin's `/favicon.ico`, then a local avatar. No favicon
+service or new stored fields. No-referrer requests never include the bookmark's
+path/query in automatic favicon URLs. **428 tests / 45 files** pass; typecheck,
+lint, build, contrast and bundle gate pass (**59.80 KiB initial**, **68.54 KiB all
+JS+CSS**). Actual Chromium image loading, failure-chain and editor-preview checks
+recorded in [evidence](../docs/evidence/bookmark-icons/README.md).

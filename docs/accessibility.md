@@ -204,3 +204,11 @@ body; the empty state and persistent sync status explain when upload resumes.
 Escape/Close never discards unresolved versions. Automated axe, focus and
 coarse-pointer target evidence is in [sync-hardening](evidence/sync-hardening/).
 Physical screen readers and on-screen keyboards remain owner-run release checks.
+
+### Bookmark icon restoration — 2026-11-09
+
+Custom and automatic bookmark images remain decorative (`alt=""`); titles name
+the card action. Image failure preserves the local initial and readable title.
+The same renderer serves small/wide/large cards and the live editor preview;
+controls, focus handling and touch hit areas are unchanged. Image loading never
+blocks navigation or arranging. See [icon repair evidence](evidence/bookmark-icons/README.md).

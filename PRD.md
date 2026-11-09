@@ -529,3 +529,11 @@ trigger performs reconciliation, including upload of unsent persisted edits.
 Deletion markers remain indefinitely; recovery lasts 30 days. “End recovery”
 removes an entry from recovery without claiming erasure from GitHub history.
 No new remote fields, metrics or secrets are transmitted.
+
+### Bookmark image correction — owner request 2026-11-09
+
+The local-only bookmark-image restriction is superseded for the existing Icon URL
+field and automatic origin favicons. See [bookmark icon repair](plans/bookmark-icon-repair.md).
+Explicit HTTP(S)/relative/image-data/blob images render first, with an origin
+`/favicon.ico` and local avatar fallback. Requests use no-referrer; no favicon
+service, telemetry, new stored field or remote API connection is introduced.

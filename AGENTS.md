@@ -172,3 +172,13 @@ Before declaring any ticket or stage complete, the agent must verify:
 - [ ] **Network:** the change adds no request to any host other than same-origin or `api.github.com`.
 - [ ] The pull request template (`.github/pull_request_template.md`) is completed, including evidence (screenshots at phone and desktop sizes, devices and assistive technology tested); for UI changes "tests pass" alone is not sufficient.
 - [ ] Specs updated in the same change if behaviour or tokens changed (`PRD.md`, `DESIGN.md`, `docs/accessibility.md`, `SCHEMAS.md`), and the gap ID (`G-xx`) referenced.
+
+## Owner-approved bookmark image exception — 2026-11-09
+
+The owner's explicit request to restore Icon URL images and automatic site icons
+supersedes the local-only bookmark image rule above. Decorative bookmark images
+may load from their configured HTTP(S) URL, image data/blob/relative source, or
+the bookmarked origin's `/favicon.ico`, with no-referrer and local error fallback.
+No favicon proxy/service is used. Other runtime connections remain restricted to
+same-origin and enabled GitHub sync; no schema fields or dependencies are added.
+See `plans/bookmark-icon-repair.md`.

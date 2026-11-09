@@ -527,3 +527,11 @@ keyboard-scrollable. Empty, pending, conflict and specific error states have
 catalogue text. Recently deleted retains a 30-day recovery window; End recovery
 requires confirmation and retains sync markers. Settings and sync logic load on
 demand and remain precached offline. See [the approved specification](plans/sync-hardening.md).
+
+### Bookmark image rendering correction — 2026-11-09
+
+The owner restored custom Icon URL images and automatic origin favicons. This
+supersedes the refresh's rule to replace remote icons with initials. All three
+sizes and the live editor preview share custom-image → origin-favicon → local
+initial rendering. Existing circular framing, tokens, controls and accessible
+card names remain. Alternate-link buttons retain local hostname initials.

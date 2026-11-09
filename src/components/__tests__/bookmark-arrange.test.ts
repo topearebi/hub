@@ -70,12 +70,14 @@ afterEach(() => {
 
 describe('Bookmark card touch parity (G-22, G-23, G-33)', () => {
   it.each(['small', 'wide', 'large'] as const)(
-    'exposes local alternate icons on %s cards without network icons',
+    'preserves local alternate icons on %s cards alongside custom card images',
     (size) => {
       const callbacks = setup([
         { ...first, card_size: size, icon: 'https://external.test/icon.png' },
       ]);
-      expect(view.element.querySelector('img')).toBeNull();
+      expect(view.element.querySelector('img')?.getAttribute('src')).toBe(
+        'https://external.test/icon.png',
+      );
       const mirror = view.element.querySelector<HTMLButtonElement>('.tile__mirror-icon')!;
       expect(mirror.getAttribute('aria-label')).toContain('mirror.test');
       mirror.click();
