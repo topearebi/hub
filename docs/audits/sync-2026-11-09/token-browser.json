@@ -1,0 +1,9 @@
+{
+  "tokenAfterBrowserRestart": "ready",
+  "tokenRoundTripMatches": true,
+  "keyNonExtractable": true,
+  "connectionTestsInvokedWithSavedToken": 0,
+  "storedTokenCleared": true,
+  "inMemoryTokenStillPresentAfterRemove": true,
+  "validationText": true
+}

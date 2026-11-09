@@ -253,7 +253,7 @@ export interface AppConfig {
   sync_enabled: boolean;
 
   /** BYOS GitHub REST configuration. */
-  github_pat?: string; // Token stored in cleartext inside IndexedDB only.
+  github_pat?: string; // AES-GCM enc1 envelope; plaintext is held in memory only.
   github_owner?: string;
   github_repo?: string;
   github_branch: string; // defaults to "main"

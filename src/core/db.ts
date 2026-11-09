@@ -14,6 +14,10 @@
 import { DEFAULT_APP_CONFIG } from '../types/schemas';
 import type { AppConfig, DeviceMetrics } from '../types/schemas';
 import type { TokenKeyStore } from './token';
+import { rebasePayload } from './sync-merge';
+import type { SyncTargetState } from './sync-merge';
+import { SYNCABLE_COLLECTIONS } from '../types/schemas';
+import type { HubStoragePayload } from '../types/schemas';
 
 export const DB_NAME = 'hub_local_db';
 export const DB_VERSION = 2;
@@ -275,6 +279,7 @@ const TOKEN_KEY_KEY = 'token_key';
 export interface SyncMetadata {
   last_synced_at: number;
   github_last_sha?: string;
+  targets?: Record<string, SyncTargetState>;
 }
 
 /** Read the app config, falling back to a deep clone of the defaults. */
@@ -329,6 +334,7 @@ export async function deleteTokenKey(): Promise<void> {
 
 /** `TokenKeyStore` implementation backed by the `config` object store. */
 export const tokenKeyStore: TokenKeyStore = {
+  getOrCreate: getOrCreateTokenKey,
   get: getTokenKey,
   set: setTokenKey,
   delete: deleteTokenKey,
@@ -359,4 +365,79 @@ export async function recordVisit(
 /** Read all device metrics. */
 export function getMetrics(): Promise<DeviceMetrics[]> {
   return getAll<DeviceMetrics>(STORE.metrics);
+}
+
+/** Atomically replace all sync collections after rebasing concurrent local edits. */
+export async function persistSyncPayload(
+  incoming: HubStoragePayload,
+  before: HubStoragePayload,
+  latest: () => HubStoragePayload,
+): Promise<HubStoragePayload> {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([...SYNCABLE_COLLECTIONS], 'readwrite');
+    const disk: HubStoragePayload = { ...incoming };
+    let remaining = SYNCABLE_COLLECTIONS.length;
+    let result = incoming;
+    for (const key of SYNCABLE_COLLECTIONS) {
+      const request = tx.objectStore(key).getAll();
+      request.onsuccess = () => {
+        Object.assign(disk, { [key]: request.result });
+        if (--remaining !== 0) return;
+        try {
+          result = rebasePayload(before, latest(), rebasePayload(before, disk, incoming));
+          for (const collection of SYNCABLE_COLLECTIONS) {
+            const store = tx.objectStore(collection);
+            store.clear();
+            for (const item of result[collection]) store.put(item);
+          }
+        } catch {
+          tx.abort();
+        }
+      };
+    }
+    tx.oncomplete = () => resolve(result);
+    tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Atomic sync write failed'));
+  });
+}
+
+/** A single transaction chooses the winning key when two tabs initialize together. */
+export async function getOrCreateTokenKey(candidate: CryptoKey): Promise<CryptoKey> {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE.config, 'readwrite');
+    const store = tx.objectStore(STORE.config);
+    const request = store.get(TOKEN_KEY_KEY);
+    let key = candidate;
+    request.onsuccess = () => {
+      const record = request.result as ConfigRecord<CryptoKey> | undefined;
+      if (record) key = record.value;
+      else store.put({ key: TOKEN_KEY_KEY, value: candidate });
+    };
+    tx.oncomplete = () => resolve(key);
+    tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Token key write failed'));
+  });
+}
+
+/** One consistent read snapshot across all syncable collections. */
+export async function readSyncPayload(): Promise<HubStoragePayload> {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([...SYNCABLE_COLLECTIONS], 'readonly');
+    const result: HubStoragePayload = {
+      version: 2,
+      last_synced_at: 0,
+      profiles: [],
+      bookmarks: [],
+      categories: [],
+      tasks: [],
+      notes: [],
+    };
+    for (const key of SYNCABLE_COLLECTIONS) {
+      const request = tx.objectStore(key).getAll();
+      request.onsuccess = () => Object.assign(result, { [key]: request.result });
+    }
+    tx.oncomplete = () => resolve(result);
+    tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Snapshot read failed'));
+  });
 }

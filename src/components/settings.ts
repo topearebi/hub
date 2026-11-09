@@ -33,7 +33,10 @@ export interface SettingsCallbacks {
   onCheckFile: (config: GitHubConfig) => Promise<boolean>;
   onInitialize: (config: GitHubConfig) => Promise<void>;
   /** Invoked after settings are persisted (used to trigger a sync pull). */
-  onSaved: () => void;
+  onSaved: () => Promise<void> | void;
+  getSavedToken?: () => string;
+  onRemoveToken?: () => Promise<void>;
+  onOpenSyncConflicts?: () => void;
   /** Invoked by the "Sync now" control to pull remote changes on demand. */
   onSyncNow: () => void;
   /** Register a WebAuthn platform credential to enable the app lock. */
@@ -263,6 +266,7 @@ export class SettingsModal {
         btn(t('settings.testConnection'), { onClick: () => void this.handleTest() }),
         this.saveButton(t('settings.saveSync'), () => void this.handleSaveSync()),
         btn(t('settings.syncNow'), { onClick: () => this.callbacks.onSyncNow() }),
+        btn(t('sync.review'), { onClick: () => this.callbacks.onOpenSyncConflicts?.() }),
       ),
       this.statusEl,
     ]);
@@ -437,7 +441,9 @@ export class SettingsModal {
 
   private readConfig(): GitHubConfig {
     return {
-      token: this.patInput.value.trim(),
+      token:
+        this.patInput.value.trim() ||
+        (!this.replacingToken ? (this.callbacks.getSavedToken?.() ?? '') : ''),
       owner: this.ownerInput.value.trim(),
       repo: this.repoInput.value.trim(),
       branch: this.branchInput.value.trim() || 'main',
@@ -448,7 +454,7 @@ export class SettingsModal {
   private async savePatch(patch: Partial<AppConfig>, okMsg: string): Promise<void> {
     try {
       await this.store.updateConfig(patch);
-      this.callbacks.onSaved();
+      await this.callbacks.onSaved();
       this.setStatus(okMsg, 'ok');
     } catch {
       this.setStatus(t('settings.saveFailed'), 'error');
@@ -472,7 +478,7 @@ export class SettingsModal {
         github_branch: gh.branch,
         github_file_path: gh.filePath,
       };
-      if (gh.token.length > 0) {
+      if (this.patInput.value.trim().length > 0) {
         patch.github_pat = await this.callbacks.encryptToken(gh.token);
       }
       await this.savePatch(patch, t('settings.syncSaved'));
@@ -501,7 +507,8 @@ export class SettingsModal {
 
   private async handleRemoveToken(): Promise<void> {
     try {
-      await this.store.updateConfig({ github_pat: '' });
+      if (this.callbacks.onRemoveToken) await this.callbacks.onRemoveToken();
+      else await this.store.updateConfig({ github_pat: '' });
       this.render();
       this.setStatus(t('settings.tokenRemoved'), 'ok');
     } catch {
@@ -556,7 +563,7 @@ export class SettingsModal {
     this.setStatus(t('settings.testing'), 'pending');
     try {
       const result = await this.callbacks.onTestConnection(gh);
-      this.setStatus(result.message, result.ok && result.canWrite ? 'ok' : 'error');
+      this.setStatus(t(result.message), result.ok && result.canWrite ? 'ok' : 'error');
       if (!result.ok || !result.canWrite) {
         return;
       }

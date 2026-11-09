@@ -1,0 +1,64 @@
+
+> hub@0.1.0 test
+> vitest run
+
+
+ RUN  v2.1.9 /home/ta/topegithub/hub
+
+ ✓ src/core/__tests__/sync.test.ts (24 tests) 72ms
+ ✓ src/core/__tests__/sync-hardening.test.ts (24 tests) 118ms
+ ✓ src/core/__tests__/store.test.ts (8 tests) 102ms
+ ✓ src/components/__tests__/tasks.test.ts (28 tests) 170ms
+ ✓ src/components/__tests__/omnibar.test.ts (31 tests) 161ms
+ ✓ src/components/__tests__/bookmark-flow.integration.test.ts (19 tests) 746ms
+ ✓ src/components/__tests__/bookmark-arrange.test.ts (12 tests) 1828ms
+   ✓ Bookmark card touch parity (G-22, G-23, G-33) > keeps Arrange and alternate-link controls accessible 718ms
+ ✓ src/core/__tests__/pwa.test.ts (26 tests) 76ms
+ ✓ src/core/__tests__/db.test.ts (12 tests) 216ms
+ ✓ src/components/__tests__/bookmark-editor.test.ts (22 tests) 36ms
+ ✓ src/utils/__tests__/menu.test.ts (9 tests) 213ms
+ ✓ src/utils/__tests__/dialog.test.ts (8 tests) 96ms
+ ✓ src/components/__tests__/search-engine-manager.test.ts (8 tests) 390ms
+ ✓ src/core/__tests__/sync-storage.test.ts (6 tests) 100ms
+ ✓ src/components/__tests__/category-manager.test.ts (4 tests) 268ms
+ ✓ src/styles/__tests__/tokens.test.ts (5 tests) 71ms
+ ✓ src/styles/__tests__/layout.test.ts (12 tests) 80ms
+ ✓ src/components/__tests__/a11y.test.ts (11 tests) 3975ms
+   ✓ axe-core: no serious/critical violations > StatusChip 328ms
+   ✓ axe-core: no serious/critical violations > TasksDrawer 590ms
+   ✓ axe-core: no serious/critical violations > NotesDrawer 1206ms
+   ✓ axe-core: no serious/critical violations > SettingsModal 925ms
+ ✓ src/components/__tests__/notes.test.ts (8 tests) 106ms
+ ✓ src/core/__tests__/fallback.test.ts (8 tests) 22ms
+ ✓ src/components/__tests__/recently-deleted.test.ts (5 tests) 75ms
+ ✓ src/utils/__tests__/swipe.test.ts (6 tests) 67ms
+ ✓ src/components/__tests__/settings.test.ts (2 tests) 270ms
+ ✓ src/components/__tests__/header.test.ts (5 tests) 150ms
+ ✓ src/utils/__tests__/i18n.test.ts (16 tests) 1417ms
+   ✓ date/time > formats a date with the active locale 1364ms
+ ✓ src/utils/__tests__/text.test.ts (13 tests) 15ms
+ ✓ src/utils/__tests__/viewport.test.ts (6 tests) 20ms
+ ✓ src/components/__tests__/toast.test.ts (7 tests) 124ms
+ ✓ src/types/__tests__/schemas.test.ts (3 tests) 30ms
+ ✓ src/components/__tests__/i18n-coverage.test.ts (1 test) 59ms
+ ✓ src/core/__tests__/gamepad.test.ts (6 tests) 72ms
+ ✓ src/components/__tests__/status-chip.test.ts (6 tests) 106ms
+ ✓ src/core/__tests__/notifications.test.ts (5 tests) 67ms
+ ✓ src/components/__tests__/onboarding.test.ts (3 tests) 152ms
+ ✓ src/components/__tests__/sync-conflicts.test.ts (1 test) 493ms
+   ✓ keeps both versions on close, restores focus, and exposes an accessible inbox 483ms
+ ✓ src/core/__tests__/legacy.test.ts (3 tests) 12ms
+ ✓ src/components/__tests__/i18n-smoke.test.ts (3 tests) 53ms
+ ✓ src/components/__tests__/profile-editor.test.ts (1 test) 100ms
+ ✓ src/core/__tests__/image.test.ts (4 tests) 8ms
+ ✓ src/core/__tests__/lock.test.ts (6 tests) 9ms
+ ✓ src/utils/__tests__/share.test.ts (4 tests) 16ms
+ ✓ src/components/__tests__/drawer.test.ts (6 tests) 39ms
+ ✓ src/core/__tests__/token.test.ts (14 tests) 57ms
+ ✓ src/utils/__tests__/haptics.test.ts (3 tests) 24ms
+
+ Test Files  44 passed (44)
+      Tests  414 passed (414)
+   Start at  02:18:01
+   Duration  26.69s (transform 10.24s, setup 4.27s, collect 16.11s, tests 12.28s, environment 94.68s, prepare 15.58s)
+

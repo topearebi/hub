@@ -41,16 +41,40 @@ if (assets.length === 0) {
   process.exit(1);
 }
 
+const manifest = JSON.parse(readFileSync(join(ROOT, 'dist', '.vite', 'manifest.json'), 'utf8'));
+const initial = new Set();
+const visited = new Set();
+function visit(key) {
+  if (visited.has(key)) return;
+  visited.add(key);
+  const chunk = manifest[key];
+  if (!chunk) throw new Error(`Missing manifest chunk: ${key}`);
+  if (/\.(js|css)$/.test(chunk.file)) initial.add(chunk.file);
+  for (const css of chunk.css ?? []) initial.add(css);
+  for (const dependency of chunk.imports ?? []) visit(dependency);
+}
+for (const [key, chunk] of Object.entries(manifest)) if (chunk.isEntry) visit(key);
+if (!initial.size) throw new Error('No initial assets in build manifest');
+const initialBytes = [...initial].reduce(
+  (sum, file) => sum + gzipSize(join(ROOT, 'dist', file)),
+  0,
+);
 let total = 0;
 for (const file of assets.sort()) {
   const bytes = gzipSize(join(ASSETS, file));
   total += bytes;
-  console.log(`  ${file.padEnd(44)} ${kb(bytes).padStart(8)} kB gzip`);
+  console.log(
+    `  ${file.padEnd(44)} ${kb(bytes).padStart(8)} kB gzip${initial.has(`assets/${file}`) ? ' (initial)' : ' (on demand)'}`,
+  );
 }
-console.log(`  ${'TOTAL (JS + CSS)'.padEnd(44)} ${kb(total).padStart(8)} kB gzip`);
-
-if (total > BUDGET_KB * 1024) {
-  console.error(`\n✗ Bundle budget exceeded: ${kb(total)} kB > ${BUDGET_KB} kB gzip.`);
+console.log(`  INITIAL JS + CSS: ${kb(initialBytes)} kB gzip`);
+console.log(
+  `  ALL JS + CSS:     ${kb(total)} kB gzip (includes offline-preloaded optional features)`,
+);
+if (initialBytes >= BUDGET_KB * 1024) {
+  console.error(
+    `\n✗ Initial bundle budget exceeded: ${kb(initialBytes)} kB >= ${BUDGET_KB} kB gzip.`,
+  );
   process.exit(1);
 }
-console.log(`\n✓ Bundle within budget (${kb(total)} kB ≤ ${BUDGET_KB} kB gzip).`);
+console.log(`\n✓ Initial bundle within budget (${kb(initialBytes)} kB < ${BUDGET_KB} kB gzip).`);

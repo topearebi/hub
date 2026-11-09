@@ -517,3 +517,15 @@ The v1.0 release may ship only when **all** are true:
 3. The real-device matrix (`plans/production-readiness.md` §5.3) has been executed on at least one iPhone, one Android phone, one tablet and desktop Chromium, including an assistive-technology pass.
 4. Docs match the shipped code: `PRD.md`, `DESIGN.md`, `SCHEMAS.md`, `AGENTS.md`, `README.md` and `docs/*` contain no stale version, status, telemetry or token claims.
 5. CI is green on `main`, the Pages deployment is verified in a fresh browser profile, and a rollback procedure (redeploy of the previous tag) is documented.
+
+### Sync durability amendment — 2026-11-09 (G-40/G-41/G-49/G-55/G-56)
+
+The approved behaviour and acceptance cases are in [plans/sync-hardening.md](plans/sync-hardening.md).
+Live sync uses target-specific three-way ancestry and pauses on divergent edits;
+timestamp-only resolution remains a legacy helper, not the live conflict policy.
+Both versions remain in a local inbox until explicit resolution. Every sync
+trigger performs reconciliation, including upload of unsent persisted edits.
+“Synced” requires the current local content to match the confirmed remote snapshot.
+Deletion markers remain indefinitely; recovery lasts 30 days. “End recovery”
+removes an entry from recovery without claiming erasure from GitHub history.
+No new remote fields, metrics or secrets are transmitted.

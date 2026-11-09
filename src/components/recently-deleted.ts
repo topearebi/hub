@@ -250,9 +250,9 @@ export class RecentlyDeleted {
 
   private async confirmPermanent(message: string, action: () => Promise<void>): Promise<void> {
     const confirmed = await confirmDialog({
-      title: t('common.deletePermanentlyTitle'),
+      title: t('recentlyDeleted.confirmEnd'),
       message,
-      confirmLabel: t('common.deletePermanently'),
+      confirmLabel: t('recentlyDeleted.deleteNow'),
       danger: true,
       nested: true,
     });
@@ -260,7 +260,7 @@ export class RecentlyDeleted {
       return;
     }
     await action();
-    showToast(t('common.permanentlyDeleted'), { variant: 'info' });
+    showToast(t('recentlyDeleted.ended'), { variant: 'info' });
     this.afterChange();
   }
 

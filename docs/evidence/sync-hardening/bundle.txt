@@ -1,0 +1,13 @@
+
+> hub@0.1.0 check:bundle
+> node scripts/check-bundle-size.mjs
+
+  index-BieT23IL.js                               50.32 kB gzip (initial)
+  index-CaKr9tg9.css                               9.34 kB gzip (initial)
+  settings-BtSRA4Vp.js                             2.97 kB gzip (on demand)
+  sync-CDFIW9tr.js                                 4.19 kB gzip (on demand)
+  sync-conflicts-J5EVQXUC.js                       1.58 kB gzip (on demand)
+  INITIAL JS + CSS: 59.66 kB gzip
+  ALL JS + CSS:     68.40 kB gzip (includes offline-preloaded optional features)
+
+✓ Initial bundle within budget (59.66 kB < 60 kB gzip).

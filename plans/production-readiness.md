@@ -448,3 +448,21 @@ are retained in [the evidence](../docs/evidence/lighthouse-first-install/REVIEW.
 CI now measures the median of three performance runs against the same **90**
 threshold and detects server readiness from the URL instead of an ANSI-coloured
 label. See [the fix specification](lighthouse-first-install.md).
+
+**Sync hardening verification (2026-11-09; G-40/G-41/G-49/G-55/G-56):**
+Owner-approved [sync hardening](sync-hardening.md) replaces live timestamp-only
+merging with target-specific three-way ancestry and a persistent local conflict
+inbox. Upload races preserve edits; all triggers reconcile/upload persisted work;
+409 retries, cooldowns, deadlines, cancellation and atomic collection commits are
+covered. Token removal clears the live vault and coordinates tabs; concurrent
+key creation is atomic. Deleted records remain sync markers indefinitely, with
+30-day recovery and confirmed End recovery controls. **414 tests / 44 files**,
+typecheck, lint, build, **104/104** contrast pairs and axe pass. Before: **59.95 KiB**
+gzip initial JS+CSS; after: **59.66 KiB initial**, **68.40 KiB all JS+CSS** including
+precached deferred Settings/sync/inbox modules. Lighthouse performance
+**99/100/99**, accessibility **97**, PWA **100**. Real Chromium storage restart,
+old-build→new-build update, offline deferred modules and emulated touch/visual
+checks recorded in [evidence](../docs/evidence/sync-hardening/README.md).
+Physical device/assistive-technology checks remain owner-run; no live PAT or
+user sync repository was changed during tests. GitHub controls external PAT
+expiry/revocation; Hub provides encrypted persistence and clear re-entry recovery.

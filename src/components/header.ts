@@ -96,6 +96,8 @@ export class Header {
   setSyncStatus(status: SyncStatus): void {
     const map: Record<SyncStatus, StatusChipState> = {
       idle: 'local',
+      pending: 'pending',
+      conflict: 'conflict',
       syncing: 'syncing',
       synced: 'synced',
       error: 'error',

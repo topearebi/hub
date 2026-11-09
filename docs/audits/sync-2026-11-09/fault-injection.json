@@ -1,0 +1,36 @@
+{
+  "editDuringUpload": {
+    "persistedTitle": "Before request",
+    "editLost": true,
+    "puts": 1
+  },
+  "manualSyncPath": {
+    "status": "synced",
+    "uploads": 0,
+    "remoteStillOld": true
+  },
+  "shaConflict": {
+    "reads": 1,
+    "writes": 1,
+    "status": "error",
+    "retried": false
+  },
+  "longOfflineDevice": {
+    "remoteTombstones": 0,
+    "resurrected": true
+  },
+  "invalidRecords": {
+    "malformedEntityAccepted": true
+  },
+  "removedSavedToken": {
+    "authenticatedRequestsAfterStoredTokenCleared": 1
+  },
+  "largeFileResponse": {
+    "emptyContent": true,
+    "parseFailed": true
+  },
+  "equalTimestampConflict": {
+    "aPullsB": "Device A",
+    "bPullsA": "Device B"
+  }
+}

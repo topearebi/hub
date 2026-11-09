@@ -25,6 +25,7 @@ export const ENVELOPE_PREFIX = 'enc1:';
 /** Persistence abstraction for the non-extractable AES-GCM key. */
 export interface TokenKeyStore {
   get(): Promise<CryptoKey | undefined>;
+  getOrCreate?: (candidate: CryptoKey) => Promise<CryptoKey>;
   set(key: CryptoKey): Promise<void>;
   delete(): Promise<void>;
 }
@@ -150,6 +151,7 @@ export interface TokenVaultOptions {
  */
 export class TokenVault {
   private plaintext = '';
+  private generation = 0;
   private readonly keyStore: TokenKeyStore;
   private readonly subtle: SubtleCrypto | undefined;
 
@@ -179,6 +181,7 @@ export class TokenVault {
    * Never exposes ciphertext: an undecryptable envelope yields `needs-reentry`.
    */
   async init(stored: string | undefined): Promise<TokenInitResult> {
+    const generation = ++this.generation;
     this.plaintext = '';
     if (!stored) {
       return { status: 'none' };
@@ -192,6 +195,7 @@ export class TokenVault {
       // Legacy plaintext: encrypt in place and hand the envelope back to persist.
       const key = await this.ensureKey();
       const envelope = await encryptToken(stored, key, this.subtle);
+      if (generation !== this.generation) return { status: 'none' };
       this.plaintext = stored;
       return { status: 'ready', migratedEnvelope: envelope };
     }
@@ -204,30 +208,40 @@ export class TokenVault {
     if (plain === null) {
       return { status: 'needs-reentry' };
     }
+    if (generation !== this.generation) return { status: 'none' };
     this.plaintext = plain;
     return { status: 'ready' };
   }
 
+  /** Prepare a replacement without activating a credential before persistence. */
+  async prepareToken(plaintext: string): Promise<string> {
+    if (!this.subtle) throw new Error('WebCrypto unavailable');
+    return encryptToken(plaintext, await this.ensureKey(), this.subtle);
+  }
+
   /** Encrypt a new token and return the envelope to persist. */
   async setToken(plaintext: string): Promise<string> {
+    const generation = ++this.generation;
     if (!this.subtle) {
       throw new Error('WebCrypto is unavailable; cannot encrypt the token.');
     }
     const key = await this.ensureKey();
     const envelope = await encryptToken(plaintext, key, this.subtle);
+    if (generation !== this.generation) throw new Error('Token operation cancelled');
     this.plaintext = plaintext;
     return envelope;
   }
 
   /** Forget the in-memory token (the caller clears the stored envelope). */
   clear(): void {
+    ++this.generation;
     this.plaintext = '';
   }
 
   /** Delete the key record (used by "Reset app data"). */
   async destroyKey(): Promise<void> {
+    this.clear();
     await this.keyStore.delete();
-    this.plaintext = '';
   }
 
   private async ensureKey(): Promise<CryptoKey> {
@@ -236,6 +250,7 @@ export class TokenVault {
       return existing;
     }
     const key = await generateTokenKey(this.subtle as SubtleCrypto);
+    if (this.keyStore.getOrCreate) return this.keyStore.getOrCreate(key);
     await this.keyStore.set(key);
     return key;
   }

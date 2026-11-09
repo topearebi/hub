@@ -24,9 +24,11 @@ import {
   getMetrics,
   put,
   recordVisit as persistVisit,
-  remove,
   setAppConfig,
+  persistSyncPayload,
+  readSyncPayload,
 } from './db';
+import { rebasePayload } from './sync-merge';
 import { newId } from '../utils/crypto';
 import { DEFAULT_APP_CONFIG, DEFAULT_PROFILE_ID } from '../types/schemas';
 import type {
@@ -138,6 +140,24 @@ class HubStore implements LaunchpadStore {
     for (const event of ALL_EVENTS) {
       this.emit(event);
     }
+  }
+
+  async refreshFromDisk(): Promise<void> {
+    const before = this.getPayload();
+    const disk = await readSyncPayload();
+    const current = rebasePayload(before, this.getPayload(), disk);
+    this.profileList = current.profiles;
+    this.bookmarks = current.bookmarks;
+    this.categories = current.categories;
+    this.tasks = current.tasks;
+    this.notes = current.notes;
+    for (const event of ['profiles', 'bookmarks', 'categories', 'tasks', 'notes'] as const)
+      this.emit(event);
+  }
+
+  async reloadConfig(): Promise<void> {
+    this.config = await getAppConfig();
+    this.emit('config');
   }
 
   isInitialized(): boolean {
@@ -324,7 +344,7 @@ class HubStore implements LaunchpadStore {
    */
   get deletedProfiles(): DeletedProfileEntry[] {
     return this.profileList
-      .filter((p) => p.is_deleted === true)
+      .filter((p) => p.is_deleted === true && Date.now() - p.updated_at <= TOMBSTONE_GRACE_MS)
       .map((profile) => {
         const at = profile.updated_at;
         const count = <T extends { profile_id: string; is_deleted?: boolean; updated_at: number }>(
@@ -641,52 +661,40 @@ class HubStore implements LaunchpadStore {
     await this.reviveProfileChildren(id, tombstoneAt, now);
   }
 
-  /** Permanently remove a deleted profile and all of its records (Delete now). */
+  /** End recovery early while retaining sync deletion markers for old devices. */
   async permanentlyDeleteProfile(id: string): Promise<void> {
-    const profile = this.profileList.find((p) => p.id === id);
-    if (!profile) {
-      return;
+    const profile = this.profileList.find((p) => p.id === id && p.is_deleted === true);
+    if (!profile) return;
+    const updated_at = Date.now() - TOMBSTONE_GRACE_MS - 1;
+    const before = this.getPayload();
+    const incoming = { ...before };
+    for (const key of ['profiles', 'bookmarks', 'categories', 'tasks', 'notes'] as const) {
+      Object.assign(incoming, {
+        [key]: before[key].map((item) =>
+          (key === 'profiles' ? item.id === id : 'profile_id' in item && item.profile_id === id)
+            ? { ...item, is_deleted: true, updated_at }
+            : item,
+        ),
+      });
     }
-    const bookmarks = this.bookmarks.filter((b) => b.profile_id === id);
-    const categories = this.categories.filter((c) => c.profile_id === id);
-    const tasks = this.tasks.filter((t) => t.profile_id === id);
-    const notes = this.notes.filter((n) => n.profile_id === id);
-
-    this.profileList = this.profileList.filter((p) => p.id !== id);
-    this.bookmarks = this.bookmarks.filter((b) => b.profile_id !== id);
-    this.categories = this.categories.filter((c) => c.profile_id !== id);
-    this.tasks = this.tasks.filter((t) => t.profile_id !== id);
-    this.notes = this.notes.filter((n) => n.profile_id !== id);
-
-    await Promise.all([
-      remove(STORE.profiles, id),
-      ...bookmarks.map((b) => remove(STORE.bookmarks, b.id)),
-      ...categories.map((c) => remove(STORE.categories, c.id)),
-      ...tasks.map((t) => remove(STORE.tasks, t.id)),
-      ...notes.map((n) => remove(STORE.notes, n.id)),
-    ]);
-
-    this.emit('profiles');
-    this.emit('bookmarks');
-    this.emit('categories');
-    this.emit('tasks');
-    this.emit('notes');
+    await this.applyPayload(incoming, before);
   }
 
-  /** Permanently remove a single soft-deleted item (Delete now). */
+  /** Remove from recovery; never erase the marker needed to prevent resurrection. */
   async permanentlyDeleteItem(
     storeName: 'bookmarks' | 'tasks' | 'notes',
     id: string,
   ): Promise<void> {
-    if (storeName === 'bookmarks') {
-      this.bookmarks = this.bookmarks.filter((b) => b.id !== id);
-    } else if (storeName === 'tasks') {
-      this.tasks = this.tasks.filter((t) => t.id !== id);
-    } else {
-      this.notes = this.notes.filter((n) => n.id !== id);
-    }
-    await remove(STORE[storeName], id);
-    this.emit(storeName);
+    const before = this.getPayload();
+    const incoming = {
+      ...before,
+      [storeName]: before[storeName].map((item) =>
+        item.id === id && item.is_deleted === true
+          ? { ...item, updated_at: Date.now() - TOMBSTONE_GRACE_MS - 1 }
+          : item,
+      ),
+    };
+    await this.applyPayload(incoming, before);
   }
 
   /** Tombstone every not-already-deleted child of a profile at `now`. */
@@ -817,22 +825,16 @@ class HubStore implements LaunchpadStore {
 
   /**
    * Replace all syncable collections from a payload, persist them in a single
-   * transaction per store, and notify subscribers.
+   * transaction across all stores, and notify subscribers.
    */
-  async applyPayload(payload: HubStoragePayload): Promise<void> {
-    this.profileList = [...payload.profiles];
-    this.bookmarks = [...payload.bookmarks];
-    this.categories = [...payload.categories];
-    this.tasks = [...payload.tasks];
-    this.notes = [...payload.notes];
-
-    await Promise.all([
-      bulkPut(STORE.profiles, this.profileList),
-      bulkPut(STORE.bookmarks, this.bookmarks),
-      bulkPut(STORE.categories, this.categories),
-      bulkPut(STORE.tasks, this.tasks),
-      bulkPut(STORE.notes, this.notes),
-    ]);
+  async applyPayload(payload: HubStoragePayload, before = this.getPayload()): Promise<void> {
+    const committed = await persistSyncPayload(payload, before, () => this.getPayload());
+    const current = rebasePayload(before, this.getPayload(), committed);
+    this.profileList = current.profiles;
+    this.bookmarks = current.bookmarks;
+    this.categories = current.categories;
+    this.tasks = current.tasks;
+    this.notes = current.notes;
 
     // Keep the active profile valid after a remote merge.
     const live = this.profileList.filter((p) => p.is_deleted !== true);

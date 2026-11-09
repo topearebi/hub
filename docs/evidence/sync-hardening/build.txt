@@ -1,0 +1,24 @@
+
+> hub@0.1.0 build
+> tsc --noEmit -p tsconfig.json && vite build
+
+vite v5.4.21 building for production...
+
+./critical.css doesn't exist at build time, it will remain unchanged to be resolved at runtime
+transforming...
+✓ 54 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/.vite/manifest.json                  1.10 kB │ gzip:  0.30 kB
+dist/index.html                           3.36 kB │ gzip:  1.31 kB
+dist/assets/index-CaKr9tg9.css           50.57 kB │ gzip:  9.64 kB
+dist/assets/sync-conflicts-J5EVQXUC.js    3.68 kB │ gzip:  1.62 kB │ map:  14.36 kB
+dist/assets/settings-BtSRA4Vp.js         11.08 kB │ gzip:  3.05 kB │ map:  33.11 kB
+dist/assets/sync-CDFIW9tr.js             11.74 kB │ gzip:  4.29 kB │ map:  44.64 kB
+dist/assets/index-BieT23IL.js           190.66 kB │ gzip: 51.68 kB │ map: 666.19 kB
+
+(!) Some chunks are larger than 60 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 3.86s

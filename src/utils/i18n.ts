@@ -40,6 +40,43 @@ export const MESSAGES: Record<string, string> = {
   'bookmarks.arrangeDone': 'Done',
   'bookmarks.moved': 'Bookmark moved',
   'bookmarks.moveFailed': 'Could not move bookmark.',
+  'sync.pending': 'Changes saved locally — upload pending',
+  'sync.conflicts': 'Sync paused — resolve conflicting edits',
+  'sync.review': 'Resolve sync conflicts',
+  'sync.conflictHelp':
+    'Both versions are saved on this device. Compare them and choose one. Uploads stay paused until all conflicts are resolved.',
+  'sync.noConflicts': 'No unresolved conflicts for this sync target.',
+  'sync.local': 'This device',
+  'sync.remote': 'GitHub',
+  'sync.choose.local': 'Use this device’s version',
+  'sync.choose.remote': 'Use GitHub’s version',
+  'sync.exportConflict': 'Export both versions',
+  'sync.changedConflict':
+    'The record changed or could not be saved. Close and reopen the conflict inbox before choosing again.',
+  'sync.collection.profiles': 'Profile',
+  'sync.collection.bookmarks': 'Bookmark',
+  'sync.collection.categories': 'Category',
+  'sync.collection.tasks': 'Task',
+  'sync.collection.notes': 'Note',
+  'sync.auth':
+    'GitHub token expired or was revoked. Replace the saved token in Settings. Changes remain on this device.',
+  'sync.permission':
+    'GitHub access denied. Check the repository, branch, path, token permissions and organization approval.',
+  'sync.rate':
+    'GitHub rate limit reached. Changes are saved locally; sync will retry after the waiting period.',
+  'sync.conflict':
+    'GitHub changed during upload. Automatic retries stopped; retry when the other device finishes.',
+  'sync.server':
+    'GitHub is temporarily unavailable. Changes are saved locally and will be retried.',
+  'sync.network': 'Cannot reach GitHub. Changes are saved locally and will be retried.',
+  'sync.timeout': 'GitHub took too long to respond. Changes are saved locally and will be retried.',
+  'sync.invalid':
+    'The sync file or response is invalid. Nothing was applied. Check the file or restore a valid backup.',
+  'sync.storage':
+    'Sync could not save local state. Free device storage and retry. Do not clear site data.',
+  'sync.readable':
+    'Repository and file access checked. Write access is confirmed only by a successful sync.',
+  'sync.noWrite': 'Repository readable, but the account does not have write access.',
   /* ---- Common ---- */
   'common.save': 'Save',
   'common.cancel': 'Cancel',
@@ -155,9 +192,11 @@ export const MESSAGES: Record<string, string> = {
   'noteColor.slate': 'Slate',
 
   /* ---- Recently deleted ---- */
+  'recentlyDeleted.ended': 'Recovery ended. Sync deletion markers retained.',
+  'recentlyDeleted.confirmEnd': 'End recovery?',
   'recentlyDeleted.heading': 'Recently deleted',
   'recentlyDeleted.empty':
-    'Nothing here. Deleted items are kept for 30 days before they are removed.',
+    'Nothing here. Deleted items can be recovered for 30 days. Sync deletion markers are retained to protect older devices.',
   'recentlyDeleted.profiles': 'Profiles',
   'recentlyDeleted.items': 'Items',
   'recentlyDeleted.kind.link': 'Link',
@@ -170,13 +209,13 @@ export const MESSAGES: Record<string, string> = {
   'recentlyDeleted.noteCount.one': '{count} note',
   'recentlyDeleted.noteCount.other': '{count} notes',
   'recentlyDeleted.summary': '{links}, {tasks}, {notes}',
-  'recentlyDeleted.deletedAgo': 'Deleted {days} days ago · permanently removed in {remaining} days',
+  'recentlyDeleted.deletedAgo': 'Deleted {days} days ago · recovery ends in {remaining} days',
   'recentlyDeleted.itemMeta':
-    '{kind} · deleted {days} days ago · permanently removed in {remaining} days',
-  'recentlyDeleted.deleteNow': 'Delete now',
+    '{kind} · deleted {days} days ago · recovery ends in {remaining} days',
+  'recentlyDeleted.deleteNow': 'End recovery',
   'recentlyDeleted.confirmProfile':
-    'Permanently delete “{name}” and its {summary}? This cannot be undone.',
-  'recentlyDeleted.confirmItem': 'Permanently delete “{name}”?',
+    'End recovery for “{name}” and its {summary}? Deletion markers remain for sync.',
+  'recentlyDeleted.confirmItem': 'End recovery for “{name}”? Deletion markers remain for sync.',
 
   /* ---- Profile editor ---- */
   'profileEditor.namePlaceholder': 'Profile name',

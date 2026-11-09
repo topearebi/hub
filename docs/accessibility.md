@@ -193,3 +193,14 @@ Alternate icons have hostname-based accessible names and visible focus labels.
 Keyboard focus returns to the menu trigger; move outcomes use accessible toasts.
 Dialogs and menus reflow within the visual viewport, including keyboard-induced
 resize/offset changes, with scrollable content and focus visibility.
+
+### Sync conflict inbox (G-41/G-55, 2026-11-09)
+
+The inbox uses the shared Dialog focus trap, inert background, viewport/safe-area
+handling and focus restoration. Touch, mouse and keyboard users use the same
+version-choice, export and Close buttons. Both version regions have accessible
+names and tabindex for keyboard scrolling. Resolution moves focus to the updated
+body; the empty state and persistent sync status explain when upload resumes.
+Escape/Close never discards unresolved versions. Automated axe, focus and
+coarse-pointer target evidence is in [sync-hardening](evidence/sync-hardening/).
+Physical screen readers and on-screen keyboards remain owner-run release checks.

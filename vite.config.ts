@@ -13,6 +13,7 @@ export default defineConfig({
   plugins: [precachePlugin()],
   build: {
     target: 'es2022',
+    manifest: true,
     // Build-only minification keeps the full touch UI inside the gzip budget.
     minify: 'terser',
     terserOptions: {

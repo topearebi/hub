@@ -219,7 +219,7 @@ describe('profile cascade delete & restore (SCHEMAS.md §5.4)', () => {
     expect(store.activeBookmarks.map((b) => b.id)).not.toContain('b3');
   });
 
-  it('permanently removes a deleted profile and all of its records', async () => {
+  it('ends recovery while retaining profile and child deletion markers', async () => {
     await store.init();
     const now = Date.now();
     await store.upsertProfile({ id: 'p3', created_at: now, updated_at: now, name: 'Temp' });
@@ -235,7 +235,7 @@ describe('profile cascade delete & restore (SCHEMAS.md §5.4)', () => {
     await store.softDeleteProfile('p3', now + 1);
     await store.permanentlyDeleteProfile('p3');
 
-    expect(store.getBookmark('b4')).toBeUndefined();
+    expect(store.getBookmark('b4')?.is_deleted).toBe(true);
     expect(store.deletedProfiles.some((e) => e.profile.id === 'p3')).toBe(false);
   });
 

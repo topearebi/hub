@@ -1,0 +1,8 @@
+{
+  "offlineReload": true,
+  "deferredModulesImportedOffline": [
+    "assets/settings-BtSRA4Vp.js",
+    "assets/sync-conflicts-J5EVQXUC.js",
+    "assets/sync-CDFIW9tr.js"
+  ]
+}

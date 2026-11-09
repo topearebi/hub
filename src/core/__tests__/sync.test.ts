@@ -36,7 +36,7 @@ function payload(overrides: Partial<HubStoragePayload> = {}): HubStoragePayload 
   return {
     version: 2,
     last_synced_at: 0,
-    profiles: [],
+    profiles: [{ id: 'p1', name: 'Default', created_at: 0, updated_at: 0 }],
     bookmarks: [],
     categories: [],
     tasks: [],
@@ -161,7 +161,7 @@ describe('cullTombstones', () => {
     expect(cullTombstones(entities, now)).toHaveLength(1);
   });
 
-  it('drops tombstones older than the grace period', () => {
+  it('retains tombstones beyond the recovery window', () => {
     const now = 1_000_000_000;
     const entities = [
       bookmark({
@@ -172,7 +172,7 @@ describe('cullTombstones', () => {
         is_deleted: true,
       }),
     ];
-    expect(cullTombstones(entities, now)).toHaveLength(0);
+    expect(cullTombstones(entities, now)).toHaveLength(1);
   });
 
   it('never culls live entities', () => {
@@ -190,7 +190,7 @@ describe('cullTombstones', () => {
 });
 
 describe('cullPayloadTombstones', () => {
-  it('culls expired tombstones across all collections', () => {
+  it('retains expired tombstones across all collections', () => {
     const now = 1_000_000_000;
     const old = now - TOMBSTONE_GRACE_MS - 1;
     const input = payload({
@@ -200,7 +200,7 @@ describe('cullPayloadTombstones', () => {
     });
 
     const result = cullPayloadTombstones(input, now);
-    expect(result.bookmarks).toHaveLength(0);
+    expect(result.bookmarks).toHaveLength(1);
   });
 });
 
@@ -316,17 +316,25 @@ describe('GitHub client', () => {
   });
 
   it('reports write access from repo permissions', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ permissions: { push: true } }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ permissions: { push: true } }))
+      .mockResolvedValueOnce(jsonResponse({}, 404))
+      .mockResolvedValue(jsonResponse({ name: 'main' }));
     const result = await testConnection(CONFIG, fetchMock as unknown as typeof fetch);
     expect(result).toEqual({
       ok: true,
       canWrite: true,
-      message: 'Connection verified with write access.',
+      message: 'sync.readable',
     });
   });
 
   it('reports missing write access', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ permissions: { push: false } }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ permissions: { push: false } }))
+      .mockResolvedValueOnce(jsonResponse({}, 404))
+      .mockResolvedValue(jsonResponse({ name: 'main' }));
     const result = await testConnection(CONFIG, fetchMock as unknown as typeof fetch);
     expect(result.ok).toBe(true);
     expect(result.canWrite).toBe(false);
@@ -335,7 +343,7 @@ describe('GitHub client', () => {
   it('reports an invalid token (401)', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({}, 401));
     const result = await testConnection(CONFIG, fetchMock as unknown as typeof fetch);
-    expect(result).toEqual({ ok: false, canWrite: false, message: 'Invalid or expired token.' });
+    expect(result).toEqual({ ok: false, canWrite: false, message: 'sync.auth' });
   });
 });
 
@@ -361,11 +369,14 @@ describe('SyncEngine.pushNow', () => {
       .mockResolvedValueOnce(jsonResponse({ content: encoded, sha: 'abc', encoding: 'base64' }))
       .mockResolvedValueOnce(jsonResponse({ content: { sha: 'def' } }));
 
-    const applyRemote = vi.fn<(p: HubStoragePayload) => Promise<void>>(async () => undefined);
+    let current = payload();
+    const applyRemote = vi.fn<(p: HubStoragePayload) => Promise<void>>(async (next) => {
+      current = next;
+    });
 
     const engine = new SyncEngine({
       getConfig: enabledConfig,
-      getPayload: () => payload(),
+      getPayload: () => current,
       applyRemote,
       fetchImpl: fetchMock,
     });
@@ -377,23 +388,26 @@ describe('SyncEngine.pushNow', () => {
     expect(applied?.bookmarks.map((b) => b.id)).toContain('remote');
   });
 
-  it('does not reconcile when the remote file does not exist yet', async () => {
+  it('commits the uploaded baseline when creating the remote file', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({}, 404))
       .mockResolvedValueOnce(jsonResponse({ content: { sha: 'def' } }));
 
-    const applyRemote = vi.fn<(p: HubStoragePayload) => Promise<void>>(async () => undefined);
+    let current = payload();
+    const applyRemote = vi.fn<(p: HubStoragePayload) => Promise<void>>(async (next) => {
+      current = next;
+    });
 
     const engine = new SyncEngine({
       getConfig: enabledConfig,
-      getPayload: () => payload(),
+      getPayload: () => current,
       applyRemote,
       fetchImpl: fetchMock,
     });
 
     await engine.pushNow();
 
-    expect(applyRemote).not.toHaveBeenCalled();
+    expect(applyRemote).toHaveBeenCalledTimes(1);
   });
 });

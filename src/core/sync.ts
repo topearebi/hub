@@ -9,6 +9,10 @@
  * the core reusable and unit-testable.
  */
 
+import { validatePayload } from './sync-validation';
+import { canonical, payloadFingerprint, reconcilePayloads } from './sync-merge';
+import type { SyncConflict, SyncTargetState } from './sync-merge';
+import type { SyncMetadata } from './db';
 import { DEFAULT_PROFILE_ID } from '../types/schemas';
 import type {
   AppConfig,
@@ -60,7 +64,7 @@ export interface ConnectionResult {
   message: string;
 }
 
-export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
+export type SyncStatus = 'idle' | 'pending' | 'syncing' | 'synced' | 'conflict' | 'error';
 
 /* ------------------------------------------------------------------ */
 /* Pure merge logic (unit-tested)                                      */
@@ -114,9 +118,8 @@ export function cullTombstones<T extends SyncableEntity>(
   entities: readonly T[],
   now: number = Date.now(),
 ): T[] {
-  return entities.filter(
-    (entity) => entity.is_deleted !== true || now - entity.updated_at <= TOMBSTONE_GRACE_MS,
-  );
+  void now;
+  return [...entities];
 }
 
 /** Apply tombstone culling across every collection of a payload. */
@@ -148,10 +151,13 @@ export function serializePayload(payload: HubStoragePayload): string {
 export function parsePayload(json: string): HubStoragePayload {
   const data: unknown = JSON.parse(json);
   if (isHubStoragePayloadV2(data)) {
+    validatePayload(data);
     return data;
   }
   if (isHubStoragePayloadV1(data)) {
-    return migrateV1ToV2(data);
+    const migrated = migrateV1ToV2(data);
+    validatePayload(migrated);
+    return migrated;
   }
   throw new Error('Invalid Hub payload.');
 }
@@ -253,6 +259,25 @@ function encodeBase64(input: string): string {
   return btoa(binary);
 }
 
+export type SyncErrorKind =
+  | 'auth'
+  | 'permission'
+  | 'rate'
+  | 'conflict'
+  | 'server'
+  | 'network'
+  | 'timeout'
+  | 'invalid'
+  | 'storage'
+  | 'cancelled';
+export class SyncError extends Error {
+  constructor(
+    readonly kind: SyncErrorKind,
+    readonly retryAt = 0,
+  ) {
+    super(kind);
+  }
+}
 function authHeaders(token: string): Record<string, string> {
   return {
     Authorization: `Bearer ${token}`,
@@ -260,102 +285,209 @@ function authHeaders(token: string): Record<string, string> {
     'X-GitHub-Api-Version': '2022-11-28',
   };
 }
-
-/* ------------------------------------------------------------------ */
-/* GitHub REST client                                                  */
-/* ------------------------------------------------------------------ */
-
-/** Read the remote file, returning `null` when it does not exist (404). */
+export function targetKey(config: GitHubConfig): string {
+  return JSON.stringify([
+    config.owner.toLowerCase(),
+    config.repo.toLowerCase(),
+    config.branch,
+    config.filePath,
+  ]);
+}
+function fileUrl(config: GitHubConfig): string {
+  const path = config.filePath.split('/').map(encodeURIComponent).join('/');
+  return `${API_BASE}/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/contents/${path}`;
+}
+function responseError(response: Response): SyncError {
+  const retry = response.headers?.get('retry-after');
+  const reset = response.headers?.get('x-ratelimit-reset');
+  const rate =
+    response.status === 429 ||
+    (response.status === 403 && (retry || response.headers?.get('x-ratelimit-remaining') === '0'));
+  if (rate) {
+    const deadline = retry
+      ? Number.isFinite(Number(retry))
+        ? Date.now() + Number(retry) * 1000
+        : Date.parse(retry)
+      : reset
+        ? Number(reset) * 1000
+        : Date.now() + 60000;
+    return new SyncError(
+      'rate',
+      Math.max(Date.now() + 1000, Number.isFinite(deadline) ? deadline : Date.now() + 60000),
+    );
+  }
+  return new SyncError(
+    response.status === 401
+      ? 'auth'
+      : [403, 404].includes(response.status)
+        ? 'permission'
+        : response.status === 409
+          ? 'conflict'
+          : response.status >= 500
+            ? 'server'
+            : 'invalid',
+  );
+}
+/** Deadline covers body decoding too, and never forwards credentials on redirects. */
+async function request<T>(
+  url: string,
+  config: GitHubConfig,
+  init: RequestInit,
+  fetchImpl: FetchLike,
+  signal: AbortSignal | undefined,
+  decode: (response: Response) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abort = (): void => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) controller.abort();
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 20000);
+  let rejectAbort: (() => void) | undefined;
+  try {
+    const cancelled = new Promise<never>((_resolve, reject) => {
+      rejectAbort = () => reject(new SyncError(timedOut ? 'timeout' : 'cancelled'));
+      controller.signal.addEventListener('abort', rejectAbort, { once: true });
+      if (controller.signal.aborted) rejectAbort();
+    });
+    return await Promise.race([
+      cancelled,
+      (async () => {
+        const response = await fetchImpl(url, {
+          ...init,
+          redirect: 'error',
+          cache: 'no-store',
+          signal: controller.signal,
+          headers: { ...authHeaders(config.token), ...init.headers },
+        });
+        return decode(response);
+      })(),
+    ]);
+  } catch (error) {
+    if (controller.signal.aborted) throw new SyncError(timedOut ? 'timeout' : 'cancelled');
+    throw error instanceof SyncError
+      ? error
+      : new SyncError(error instanceof SyntaxError ? 'invalid' : 'network');
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+    if (rejectAbort) controller.signal.removeEventListener('abort', rejectAbort);
+  }
+}
+/** Read content + SHA, with a same-api-origin raw fallback above 1 MB. */
 export async function fetchRemoteFile(
   config: GitHubConfig,
   fetchImpl: FetchLike = fetch,
+  signal?: AbortSignal,
 ): Promise<RemoteFile | null> {
-  const url = `${API_BASE}/repos/${config.owner}/${config.repo}/contents/${config.filePath}?ref=${encodeURIComponent(config.branch)}`;
-  const response = await fetchImpl(url, { headers: authHeaders(config.token) });
-
-  if (response.status === 404) {
-    return null;
+  const url = `${fileUrl(config)}?ref=${encodeURIComponent(config.branch)}`;
+  const data = await request(url, config, {}, fetchImpl, signal, async (response) => {
+    if (response.status === 404) return null;
+    if (!response.ok) throw responseError(response);
+    return response.json() as Promise<{
+      content?: string;
+      sha?: string;
+      encoding?: string;
+      size?: number;
+    }>;
+  });
+  if (!data) return null;
+  if (typeof data.sha !== 'string' || !data.sha) throw new SyncError('invalid');
+  let content: string;
+  try {
+    if (data.encoding === 'base64' && typeof data.content === 'string')
+      content = decodeBase64(data.content);
+    else if (data.encoding === 'none') {
+      content = await request(
+        url,
+        config,
+        { headers: { Accept: 'application/vnd.github.raw+json' } },
+        fetchImpl,
+        signal,
+        async (response) => {
+          if (!response.ok) throw responseError(response);
+          return response.text();
+        },
+      );
+    } else throw new SyncError('invalid');
+  } catch (error) {
+    throw error instanceof SyncError ? error : new SyncError('invalid');
   }
-  if (!response.ok) {
-    throw new Error(`GitHub read failed (${response.status}).`);
-  }
-
-  const data = (await response.json()) as { content?: string; sha?: string; encoding?: string };
-  if (typeof data.sha !== 'string') {
-    throw new Error('Malformed GitHub response.');
-  }
-
-  const content =
-    data.encoding === 'base64' && typeof data.content === 'string'
-      ? decodeBase64(data.content)
-      : (data.content ?? '');
-
   return { content, sha: data.sha };
 }
-
-/** Create or update the remote file, returning the new blob SHA. */
 export async function putRemoteFile(
   config: GitHubConfig,
   content: string,
   sha: string | undefined,
   message: string,
   fetchImpl: FetchLike = fetch,
+  signal?: AbortSignal,
 ): Promise<string> {
-  const url = `${API_BASE}/repos/${config.owner}/${config.repo}/contents/${config.filePath}`;
-  const body: Record<string, unknown> = {
+  const body = {
     message,
     content: encodeBase64(content),
     branch: config.branch,
+    ...(sha ? { sha } : {}),
   };
-  if (sha) {
-    body.sha = sha;
-  }
-
-  const response = await fetchImpl(url, {
-    method: 'PUT',
-    headers: { ...authHeaders(config.token), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(`GitHub write failed (${response.status}).`);
-  }
-
-  const data = (await response.json()) as { content?: { sha?: string } };
-  return data.content?.sha ?? '';
+  return request(
+    fileUrl(config),
+    config,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    fetchImpl,
+    signal,
+    async (response) => {
+      if (!response.ok) throw responseError(response);
+      const data = (await response.json()) as { content?: { sha?: string } };
+      if (!data.content?.sha) throw new SyncError('invalid');
+      return data.content.sha;
+    },
+  );
 }
-
-/**
- * Verify the token can read the repository and has push permission. Uses the
- * repo `permissions.push` flag so no commit is created during the test.
- */
+/** Read-only access test. Only a real subsequent sync can confirm write access. */
 export async function testConnection(
   config: GitHubConfig,
   fetchImpl: FetchLike = fetch,
 ): Promise<ConnectionResult> {
-  const url = `${API_BASE}/repos/${config.owner}/${config.repo}`;
-  const response = await fetchImpl(url, { headers: authHeaders(config.token) });
-
-  if (response.status === 401) {
-    return { ok: false, canWrite: false, message: 'Invalid or expired token.' };
+  try {
+    const data = await request(
+      `${API_BASE}/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}`,
+      config,
+      {},
+      fetchImpl,
+      undefined,
+      async (response) => {
+        if (!response.ok) throw responseError(response);
+        return response.json() as Promise<{ permissions?: { push?: boolean } }>;
+      },
+    );
+    if (!(await fetchRemoteFile(config, fetchImpl))) {
+      await request(
+        `${API_BASE}/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/branches/${encodeURIComponent(config.branch)}`,
+        config,
+        {},
+        fetchImpl,
+        undefined,
+        async (response) => {
+          if (!response.ok) throw responseError(response);
+        },
+      );
+    }
+    return {
+      ok: true,
+      canWrite: data.permissions?.push === true,
+      message: data.permissions?.push ? 'sync.readable' : 'sync.noWrite',
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      canWrite: false,
+      message:
+        error instanceof SyncError && error.kind === 'auth' ? 'sync.auth' : 'sync.permission',
+    };
   }
-  if (response.status === 404) {
-    return { ok: false, canWrite: false, message: 'Repository not found or token lacks access.' };
-  }
-  if (!response.ok) {
-    return { ok: false, canWrite: false, message: `GitHub error (${response.status}).` };
-  }
-
-  const data = (await response.json()) as { permissions?: { push?: boolean } };
-  const canWrite = data.permissions?.push === true;
-
-  return {
-    ok: true,
-    canWrite,
-    message: canWrite
-      ? 'Connection verified with write access.'
-      : 'Connected, but the token lacks write access.',
-  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -365,108 +497,206 @@ export async function testConnection(
 export interface SyncEngineOptions {
   getConfig: () => AppConfig;
   getPayload: () => HubStoragePayload;
-  applyRemote: (payload: HubStoragePayload) => Promise<void>;
+  applyRemote: (payload: HubStoragePayload, before: HubStoragePayload) => Promise<void>;
+  refresh?: () => Promise<void>;
+  withLock?: (task: () => Promise<void>) => Promise<void>;
+  getMetadata?: () => Promise<SyncMetadata | undefined>;
+  setMetadata?: (metadata: SyncMetadata) => Promise<void>;
   onStatus?: (status: SyncStatus) => void;
+  onError?: (error: SyncError) => void;
+  onConflicts?: (conflicts: SyncConflict[]) => void;
   onSha?: (sha: string) => void;
-  /**
-   * Supplies the decrypted GitHub token (from the token vault). When omitted,
-   * the stored `github_pat` is used directly (legacy/plaintext callers).
-   */
   getToken?: () => string;
   fetchImpl?: FetchLike;
   debounceMs?: number;
 }
-
-/**
- * Batches local mutations into a single debounced commit and reconciles remote
- * changes on demand. Network calls are strictly event-driven (no polling).
- */
+/** Event-driven full reconciliation. Persisted entities are the durable queue. */
 export class SyncEngine {
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private busy = false;
-
+  private running: Promise<void> | null = null;
+  private requested = false;
+  private generation = 0;
+  private controller: AbortController | null = null;
+  private retries = 0;
+  private retryAt = 0;
+  private metadata: SyncMetadata = { last_synced_at: 0 };
   constructor(private readonly options: SyncEngineOptions) {}
-
-  /** Queue a debounced push after a local mutation. */
   schedule(): void {
-    if (this.timer !== null) {
-      clearTimeout(this.timer);
-    }
+    this.requested = true;
+    this.options.onStatus?.('pending');
+    if (this.running) return;
+    this.clearTimer();
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.pushNow();
+      void this.syncNow();
     }, this.options.debounceMs ?? DEFAULT_DEBOUNCE_MS);
   }
-
-  /** Merge local + remote, cull tombstones, and commit the result. */
-  async pushNow(): Promise<void> {
-    if (this.busy) {
-      return;
-    }
-    const config = this.options.getConfig();
-    const token = this.options.getToken?.() ?? config.github_pat ?? '';
-    if (!config.sync_enabled || !hasGitHubConfig(config, token)) {
-      return;
-    }
-
-    this.busy = true;
-    this.options.onStatus?.('syncing');
-    try {
-      const gh = toGitHubConfig(config, token);
-      const remote = await fetchRemoteFile(gh, this.options.fetchImpl);
-      const local = this.options.getPayload();
-      const merged = remote ? mergePayloads(local, parsePayload(remote.content)) : local;
-      const content = serializePayload(cullPayloadTombstones(merged));
-      const sha = await putRemoteFile(
-        gh,
-        content,
-        remote?.sha,
-        'chore(hub): sync data',
-        this.options.fetchImpl,
-      );
-      if (sha) {
-        this.options.onSha?.(sha);
-      }
-      // A push merges remote into `merged` before writing, but the local store
-      // still holds the pre-merge snapshot. Reconcile remote-only changes back
-      // into local state so the UI reflects what was actually committed.
-      if (remote) {
-        await this.options.applyRemote(merged);
-      }
-      this.options.onStatus?.('synced');
-    } catch {
-      this.options.onStatus?.('error');
-    } finally {
-      this.busy = false;
-    }
+  pushNow(): Promise<void> {
+    return this.syncNow();
   }
-
-  /** Fetch remote changes and merge them into local state. */
-  async pullNow(): Promise<void> {
+  pullNow(): Promise<void> {
+    return this.syncNow();
+  }
+  syncNow(): Promise<void> {
+    this.clearTimer();
+    this.requested = true;
+    if (this.running) return this.running;
+    if (Date.now() < this.retryAt) {
+      this.timer = setTimeout(() => {
+        this.timer = null;
+        void this.syncNow();
+      }, this.retryAt - Date.now());
+      return Promise.resolve();
+    }
+    const generation = this.generation;
+    const run = () => this.drain(generation);
+    this.running = (this.options.withLock ? this.options.withLock(run) : run()).finally(() => {
+      this.running = null;
+      if (this.requested && generation !== this.generation) void this.syncNow();
+    });
+    return this.running;
+  }
+  private config(): GitHubConfig | null {
     const config = this.options.getConfig();
     const token = this.options.getToken?.() ?? config.github_pat ?? '';
-    if (!config.sync_enabled || !hasGitHubConfig(config, token)) {
-      return;
-    }
-
-    try {
-      const remote = await fetchRemoteFile(toGitHubConfig(config, token), this.options.fetchImpl);
-      if (!remote) {
+    return config.sync_enabled && hasGitHubConfig(config, token)
+      ? toGitHubConfig(config, token)
+      : null;
+  }
+  private async drain(generation: number): Promise<void> {
+    let passes = 0;
+    while (this.requested && generation === this.generation) {
+      this.requested = false;
+      const config = this.config();
+      if (!config) {
+        this.options.onStatus?.('idle');
         return;
       }
-      const merged = mergePayloads(this.options.getPayload(), parsePayload(remote.content));
-      await this.options.applyRemote(merged);
-      this.options.onStatus?.('synced');
-    } catch {
-      this.options.onStatus?.('error');
+      const current = (): boolean =>
+        generation === this.generation && canonical(config) === canonical(this.config());
+      this.controller = new AbortController();
+      this.options.onStatus?.('syncing');
+      try {
+        await this.options.refresh?.();
+        if (!current()) return;
+        this.metadata = (await this.options.getMetadata?.()) ?? this.metadata;
+        const target = targetKey(config);
+        const state = this.metadata.targets?.[target] ?? {};
+        if (state.conflicts?.length) {
+          this.options.onConflicts?.(state.conflicts);
+          this.options.onStatus?.('conflict');
+          return;
+        }
+        let success = false;
+        for (let attempt = 0; attempt < 3 && !success; attempt++) {
+          const remote = await fetchRemoteFile(
+            config,
+            this.options.fetchImpl,
+            this.controller.signal,
+          );
+          if (!current()) return;
+          let remotePayload: HubStoragePayload | undefined;
+          try {
+            remotePayload = remote ? parsePayload(remote.content) : undefined;
+          } catch {
+            throw new SyncError('invalid');
+          }
+          const before = this.options.getPayload();
+          const merged = remotePayload
+            ? reconcilePayloads(before, remotePayload, state.baseline)
+            : { payload: before, conflicts: [] };
+          validatePayload(merged.payload);
+          if (merged.conflicts.length) {
+            await this.saveState(target, { ...state, conflicts: merged.conflicts });
+            if (!current()) return;
+            this.options.onConflicts?.(merged.conflicts);
+            this.options.onStatus?.('conflict');
+            return;
+          }
+          let sha = remote?.sha ?? '';
+          if (
+            !remotePayload ||
+            payloadFingerprint(merged.payload) !== payloadFingerprint(remotePayload)
+          ) {
+            try {
+              sha = await putRemoteFile(
+                config,
+                serializePayload(merged.payload),
+                remote?.sha,
+                'chore(hub): sync data',
+                this.options.fetchImpl,
+                this.controller.signal,
+              );
+            } catch (error) {
+              if (error instanceof SyncError && error.kind === 'conflict' && attempt < 2) continue;
+              throw error;
+            }
+          }
+          if (!current()) return;
+          await this.options.applyRemote(merged.payload, before);
+          if (!current()) return;
+          await this.saveState(target, { baseline: merged.payload, conflicts: [] }, sha);
+          if (!current()) return;
+          this.options.onSha?.(sha);
+          this.retries = 0;
+          this.retryAt = 0;
+          const changed =
+            payloadFingerprint(this.options.getPayload()) !== payloadFingerprint(merged.payload);
+          this.requested ||= changed;
+          success = true;
+        }
+        if (this.requested) {
+          this.options.onStatus?.('pending');
+          if (++passes >= 5) {
+            this.timer = setTimeout(() => {
+              this.timer = null;
+              void this.syncNow();
+            }, this.options.debounceMs ?? DEFAULT_DEBOUNCE_MS);
+            return;
+          }
+        } else this.options.onStatus?.('synced');
+      } catch (error) {
+        if (!current()) return;
+        const failure = error instanceof SyncError ? error : new SyncError('storage');
+        if (failure.kind === 'cancelled') return;
+        this.options.onError?.(failure);
+        this.options.onStatus?.('error');
+        if (['network', 'server', 'timeout', 'rate'].includes(failure.kind) && this.retries++ < 3) {
+          this.retryAt = Math.max(failure.retryAt, Date.now() + 1000 * 2 ** this.retries);
+          this.timer = setTimeout(() => {
+            this.timer = null;
+            void this.syncNow();
+          }, this.retryAt - Date.now());
+        }
+        return;
+      } finally {
+        this.controller = null;
+      }
     }
   }
-
-  /** Cancel any pending debounced push. */
+  private async saveState(target: string, state: SyncTargetState, sha?: string): Promise<void> {
+    this.metadata = {
+      ...this.metadata,
+      last_synced_at: Date.now(),
+      ...(sha ? { github_last_sha: sha } : {}),
+      targets: { ...this.metadata.targets, [target]: state },
+    };
+    await this.options.setMetadata?.(this.metadata);
+  }
+  /** Cancel old credentials/target work before it can change local state or status. */
+  cancel(): void {
+    this.generation++;
+    this.requested = false;
+    this.controller?.abort();
+    this.clearTimer();
+    this.retryAt = 0;
+    this.retries = 0;
+  }
+  private clearTimer(): void {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+  }
   dispose(): void {
-    if (this.timer !== null) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
+    this.cancel();
   }
 }

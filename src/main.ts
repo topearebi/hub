@@ -14,16 +14,7 @@ import './styles/print.css';
 
 import { store } from './core/store';
 import { resolveBookmarkUrl } from './core/fallback';
-import {
-  SyncEngine,
-  cullPayloadTombstones,
-  fetchRemoteFile,
-  hasGitHubConfig,
-  parsePayload,
-  putRemoteFile,
-  serializePayload,
-  testConnection,
-} from './core/sync';
+import type { SyncEngine, SyncError } from './core/sync';
 import type { SyncStatus } from './core/sync';
 import { Omnibar } from './components/omnibar';
 import { BookmarksView } from './components/bookmarks';
@@ -31,7 +22,7 @@ import { BookmarkEditor } from './components/bookmark-editor';
 import { TasksDrawer } from './components/tasks';
 import { NotesDrawer } from './components/notes';
 import { maxPinnedDrawers, resolveDrawerOpen } from './components/drawer';
-import { SettingsModal } from './components/settings';
+import type { SettingsModal } from './components/settings';
 import { OnboardingCard } from './components/onboarding';
 import { CategoryManager } from './components/category-manager';
 import { SearchEngineManager } from './components/search-engine-manager';
@@ -62,7 +53,7 @@ import {
   wcoNarrowing,
 } from './core/pwa';
 import { TokenVault } from './core/token';
-import { tokenKeyStore } from './core/db';
+import { tokenKeyStore, getSyncMetadata, setSyncMetadata, getAppConfig } from './core/db';
 import { NotificationManager } from './core/notifications';
 import { GamepadNavigator, isGamepadSupported } from './core/gamepad';
 import type { GamepadAction } from './core/gamepad';
@@ -73,7 +64,13 @@ import {
   resolveInitialLock,
   verifyAppLock,
 } from './core/lock';
-import type { BookmarkItem, CategoryItem, NoteItem, ProfileItem } from './types/schemas';
+import type {
+  HubStoragePayload,
+  BookmarkItem,
+  CategoryItem,
+  NoteItem,
+  ProfileItem,
+} from './types/schemas';
 
 type DrawerKey = 'tasks' | 'notes';
 type ViewKey = 'bookmarks' | 'tasks' | 'notes';
@@ -153,7 +150,7 @@ function navigate(url: string): void {
 /** Download the current local data as a JSON file (air-gapped backup). */
 function exportJson(): void {
   const payload = store.getPayload();
-  const blob = new Blob([serializePayload(payload)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
 
   const anchor = el('a', { attrs: { href: url, download: 'hub-data.json' } });
@@ -167,10 +164,10 @@ function exportJson(): void {
 
 /** Import a JSON backup, previewing and confirming before replacing data (G-40). */
 async function importJson(file: File): Promise<void> {
-  let payload: ReturnType<typeof parsePayload>;
+  let payload: HubStoragePayload;
   try {
     const text = await file.text();
-    payload = parsePayload(text);
+    payload = (await import('./core/sync')).parsePayload(text);
   } catch {
     showToast(t('app.importInvalid'), { variant: 'error' });
     return;
@@ -444,7 +441,7 @@ async function bootstrap(): Promise<void> {
     onToggleTasks: () => setOpen('tasks', !openState.tasks),
     onToggleNotes: () => setOpen('notes', !openState.notes),
     onOpenProfile: (anchor) => profilePopover.toggle(anchor),
-    onOpenSync: () => settings.open(),
+    onOpenSync: () => openSettings(),
     onHome: () => {
       setView('bookmarks');
       const isBase =
@@ -563,7 +560,7 @@ async function bootstrap(): Promise<void> {
     onAddBookmark: () => {
       void openBookmarkEditor();
     },
-    onImport: () => settings.triggerImport(),
+    onImport: () => openSettings(true),
     onManageCategories: () => categoryManager.open(),
     onResize: async (bookmark, size) => {
       const updated: BookmarkItem = {
@@ -627,8 +624,8 @@ async function bootstrap(): Promise<void> {
   /* ---- First-run onboarding card (G-39, DESIGN.md §7) ---- */
   const onboarding = new OnboardingCard({
     onAddBookmark: () => void openBookmarkEditor(),
-    onImport: () => settings.triggerImport(),
-    onConnectSync: () => settings.open(),
+    onImport: () => openSettings(true),
+    onConnectSync: () => openSettings(),
     onTrySample: () => void seedSampleSet(),
     onInstall: () => void showInstallGuidance(),
     onComplete: () => void store.updateConfig({ onboarding_completed: true }),
@@ -703,12 +700,6 @@ async function bootstrap(): Promise<void> {
     } else {
       header.setSyncStatus(status);
     }
-    if (status === 'error') {
-      showToast(t('app.syncFailed'), { variant: 'error' });
-      // Ask the browser to retry when connectivity returns (G-53). A no-op
-      // where Background Sync is unsupported (iOS Safari, Firefox).
-      void requestBackgroundSync();
-    }
   }
 
   /** Reflect connectivity in the status chip (G-44). */
@@ -722,93 +713,202 @@ async function bootstrap(): Promise<void> {
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
 
-  const syncEngine = new SyncEngine({
-    getConfig: () => store.appConfig,
-    getPayload: () => store.getPayload(),
-    // The stored `github_pat` is an `enc1:` envelope; the vault holds the
-    // decrypted token in memory only (SCHEMAS.md §3.5).
-    getToken: () => tokenVault.token,
-    applyRemote: async (payload) => {
-      // Applying remote data emits collection events; suppress the resulting
-      // debounced push to avoid a redundant commit loop.
-      suppressSync = true;
-      try {
-        await store.applyPayload(payload);
-      } finally {
-        suppressSync = false;
-      }
-    },
-    onStatus: updateSyncStatus,
-    onSha: (sha) => {
-      void store.updateConfig({ github_last_sha: sha });
-    },
+  let engine: SyncEngine | undefined;
+  let loadingEngine: Promise<SyncEngine> | undefined;
+  let authGeneration = 0;
+  const syncChannel =
+    typeof window.BroadcastChannel === 'function' ? new BroadcastChannel('hub-sync') : null;
+  const getEngine = (): Promise<SyncEngine> =>
+    (loadingEngine ??= import('./core/sync').then(({ SyncEngine }) => {
+      engine = new SyncEngine({
+        getConfig: () => store.appConfig,
+        getPayload: () => store.getPayload(),
+        getToken: () => tokenVault.token,
+        refresh: async () => {
+          suppressSync = true;
+          try {
+            await store.refreshFromDisk();
+          } finally {
+            suppressSync = false;
+          }
+        },
+        withLock: async (task) => {
+          if (navigator.locks) await navigator.locks.request('hub-sync', task);
+          else await task();
+        },
+        getMetadata: getSyncMetadata,
+        setMetadata: setSyncMetadata,
+        applyRemote: async (payload, before) => {
+          suppressSync = true;
+          try {
+            await store.applyPayload(payload, before);
+          } finally {
+            suppressSync = false;
+          }
+        },
+        onStatus: updateSyncStatus,
+        onError: (error: SyncError) => {
+          showToast(t(`sync.${error.kind}`), {
+            variant: 'error',
+            dedupeKey: 'sync-error',
+            action: { label: t('common.retry'), onSelect: () => void runSync() },
+          });
+          if (['network', 'server', 'timeout', 'rate'].includes(error.kind))
+            void requestBackgroundSync();
+        },
+        onConflicts: () =>
+          showToast(t('sync.conflicts'), {
+            variant: 'warning',
+            dedupeKey: 'sync-conflicts',
+            action: { label: t('sync.review'), onSelect: () => void openSyncConflicts() },
+          }),
+      });
+      return engine;
+    }));
+  async function runSync(): Promise<void> {
+    if (!store.appConfig.sync_enabled || !tokenVault.isConfigured) return;
+    try {
+      await (await getEngine()).syncNow();
+    } catch {
+      showToast(t('sync.storage'), { variant: 'error' });
+    }
+  }
+  async function reloadCredentials(broadcast = false): Promise<void> {
+    const generation = ++authGeneration;
+    engine?.cancel();
+    tokenVault.clear();
+    updateSyncStatus('idle');
+    await store.reloadConfig();
+    if (generation !== authGeneration) return;
+    const result = await tokenVault.init(store.appConfig.github_pat);
+    if (generation !== authGeneration) return;
+    if (result.status === 'needs-reentry') showToast(t('app.tokenReentry'), { variant: 'warning' });
+    if (broadcast) syncChannel?.postMessage('credentials');
+    await runSync();
+  }
+  syncChannel?.addEventListener('message', (event: MessageEvent<unknown>) => {
+    if (event.data === 'removing') {
+      ++authGeneration;
+      engine?.cancel();
+      tokenVault.clear();
+      updateSyncStatus('idle');
+    }
+    if (event.data === 'credentials')
+      void reloadCredentials().catch(() => showToast(t('sync.storage'), { variant: 'error' }));
   });
+  async function openSyncConflicts(): Promise<void> {
+    try {
+      const { openConflictInbox } = await import('./components/sync-conflicts');
+      await openConflictInbox(store, () => {
+        engine?.cancel();
+        void runSync();
+      });
+    } catch {
+      showToast(t('sync.storage'), { variant: 'error' });
+    }
+  }
 
   // Background Sync wake-up (G-53): the service worker relays the browser's
   // retry after a failed push while offline, and the page runs the sync.
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (event) => {
       if ((event.data as { type?: string } | null)?.type === 'HUB_BACKGROUND_SYNC') {
-        void syncEngine.pullNow();
+        void runSync();
       }
     });
   }
 
   // Pull remote data on boot when sync is enabled, so a normal load shows the
   // latest data without requiring a manual refresh.
-  if (store.appConfig.sync_enabled && hasGitHubConfig(store.appConfig, tokenVault.token)) {
-    void syncEngine.pullNow();
+  if (store.appConfig.sync_enabled && tokenVault.isConfigured) {
+    void runSync();
   }
 
   /* ---- Settings modal ---- */
-  const settings = new SettingsModal(store, {
-    onClose: () => undefined,
-    onExport: exportJson,
-    onImport: (file) => void importJson(file),
-    onTestConnection: testConnection,
-    onCheckFile: async (config) => (await fetchRemoteFile(config)) !== null,
-    onInitialize: async (config) => {
-      const content = serializePayload(cullPayloadTombstones(store.getPayload()));
-      const sha = await putRemoteFile(config, content, undefined, 'chore(hub): initialize data');
-      await store.updateConfig({ github_last_sha: sha });
-    },
-    onRegisterLock: async () => {
-      const credentialId = await registerAppLock('hub-user');
-      if (!credentialId) {
-        showToast(t('app.lockRegisterFailed'), { variant: 'warning' });
-        return;
-      }
-      await store.updateConfig({ app_lock_enabled: true, app_lock_credential_id: credentialId });
-      showToast(t('app.lockEnabled'), { variant: 'success' });
-    },
-    onDisableLock: async () => {
-      await store.updateConfig({ app_lock_enabled: false, app_lock_credential_id: '' });
-      showToast(t('app.lockDisabled'), { variant: 'info' });
-    },
-    /** Encrypt a newly entered token before it is persisted (SCHEMAS.md §3.5). */
-    encryptToken: (plaintext) => tokenVault.setToken(plaintext),
-    onSaved: () => {
-      void syncEngine.pullNow();
-      applyFeatureToggles();
-    },
-    onSyncNow: () => void syncEngine.pullNow(),
-    onOpenRecentlyDeleted: () => recentlyDeleted.open(),
-    onOpenCategories: () => categoryManager.open(),
-    onManageSearchEngines: () => searchEngineManager.open(),
-    onInstall: () => void showInstallGuidance(),
-    onRequestPersist: async () => {
-      const granted = await requestPersistentStorage();
-      await store.updateConfig({ storage_persisted: granted });
-    },
-    onRefreshStorage: async () => {
-      const persisted = await isStoragePersisted();
-      if (persisted !== Boolean(store.appConfig.storage_persisted)) {
-        await store.updateConfig({ storage_persisted: persisted });
-      }
-      return estimateStorage();
-    },
-  });
-  document.body.appendChild(settings.element);
+  let settings: SettingsModal | undefined;
+  let loadingSettings: Promise<SettingsModal> | undefined;
+  const getSettings = (): Promise<SettingsModal> =>
+    (loadingSettings ??= import('./components/settings').then(({ SettingsModal }) => {
+      settings = new SettingsModal(store, {
+        onClose: () => undefined,
+        onExport: exportJson,
+        onImport: (file) => void importJson(file),
+        onTestConnection: async (config) => (await import('./core/sync')).testConnection(config),
+        onCheckFile: async (config) =>
+          (await (await import('./core/sync')).fetchRemoteFile(config)) !== null,
+        onInitialize: async (config) => {
+          const { putRemoteFile } = await import('./core/sync');
+          const content = JSON.stringify(store.getPayload(), null, 2);
+          const sha = await putRemoteFile(
+            config,
+            content,
+            undefined,
+            'chore(hub): initialize data',
+          );
+          await store.updateConfig({ github_last_sha: sha });
+        },
+        onRegisterLock: async () => {
+          const credentialId = await registerAppLock('hub-user');
+          if (!credentialId) {
+            showToast(t('app.lockRegisterFailed'), { variant: 'warning' });
+            return;
+          }
+          await store.updateConfig({
+            app_lock_enabled: true,
+            app_lock_credential_id: credentialId,
+          });
+          showToast(t('app.lockEnabled'), { variant: 'success' });
+        },
+        onDisableLock: async () => {
+          await store.updateConfig({ app_lock_enabled: false, app_lock_credential_id: '' });
+          showToast(t('app.lockDisabled'), { variant: 'info' });
+        },
+        /** Encrypt a newly entered token before it is persisted (SCHEMAS.md §3.5). */
+        encryptToken: (plaintext) => tokenVault.prepareToken(plaintext),
+        getSavedToken: () => tokenVault.token,
+        onRemoveToken: async () => {
+          ++authGeneration;
+          engine?.cancel();
+          tokenVault.clear();
+          updateSyncStatus('idle');
+          // Notify other tabs immediately, before awaiting persistence.
+          syncChannel?.postMessage('removing');
+          await store.updateConfig({ github_pat: '' });
+          syncChannel?.postMessage('credentials');
+        },
+        onOpenSyncConflicts: () => void openSyncConflicts(),
+        onSaved: async () => {
+          await reloadCredentials(true);
+          applyFeatureToggles();
+        },
+        onSyncNow: () => void runSync(),
+        onOpenRecentlyDeleted: () => recentlyDeleted.open(),
+        onOpenCategories: () => categoryManager.open(),
+        onManageSearchEngines: () => searchEngineManager.open(),
+        onInstall: () => void showInstallGuidance(),
+        onRequestPersist: async () => {
+          const granted = await requestPersistentStorage();
+          await store.updateConfig({ storage_persisted: granted });
+        },
+        onRefreshStorage: async () => {
+          const persisted = await isStoragePersisted();
+          if (persisted !== Boolean(store.appConfig.storage_persisted)) {
+            await store.updateConfig({ storage_persisted: persisted });
+          }
+          return estimateStorage();
+        },
+      });
+      document.body.appendChild(settings.element);
+      return settings;
+    }));
+  function openSettings(importFile = false): void {
+    void getSettings()
+      .then((modal) => (importFile ? modal.triggerImport() : modal.open()))
+      .catch(() => {
+        loadingSettings = undefined;
+        showToast(t('sync.storage'), { variant: 'error' });
+      });
+  }
 
   /* ---- Category manager (G-39) ---- */
   const categoryManager = new CategoryManager(store, {
@@ -847,7 +947,7 @@ async function bootstrap(): Promise<void> {
       void addProfile();
     },
     onEditProfile: () => profileEditor.open(),
-    onOpenSettings: () => settings.open(),
+    onOpenSettings: () => openSettings(),
   });
   document.body.appendChild(profilePopover.element);
 
@@ -1102,13 +1202,34 @@ async function bootstrap(): Promise<void> {
   for (const event of ['profiles', 'bookmarks', 'categories', 'tasks', 'notes'] as const) {
     store.subscribe(event, () => {
       if (!suppressSync) {
-        syncEngine.schedule();
+        if (store.appConfig.sync_enabled && tokenVault.isConfigured) {
+          void getEngine()
+            .then((sync) => sync.schedule())
+            .catch(() => showToast(t('sync.storage'), { variant: 'error' }));
+        }
       }
     });
   }
 
-  const pullRemote = () => void syncEngine.pullNow();
+  // Re-read credentials on lifecycle wake-ups even if a tab missed a broadcast.
+  const pullRemote = (): void => {
+    void (async () => {
+      const persisted = await getAppConfig();
+      const keys = [
+        'github_pat',
+        'github_owner',
+        'github_repo',
+        'github_branch',
+        'github_file_path',
+        'sync_enabled',
+      ] as const;
+      if (persisted && keys.some((key) => persisted[key] !== store.appConfig[key]))
+        await reloadCredentials();
+      else await runSync();
+    })().catch(() => showToast(t('sync.storage'), { variant: 'error' }));
+  };
   window.addEventListener('focus', pullRemote);
+  window.addEventListener('online', pullRemote);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') pullRemote();
   });
@@ -1150,7 +1271,7 @@ async function bootstrap(): Promise<void> {
     const layers: Array<[boolean, () => void]> = [
       [sharePrompt.element.classList.contains('is-open'), () => sharePrompt.close()],
       [searchEngineManager.isOpen(), () => searchEngineManager.close()],
-      [settings.element.classList.contains('is-open'), () => settings.close()],
+      [settings?.element.classList.contains('is-open') ?? false, () => settings?.close()],
       [profileEditor.element.classList.contains('is-open'), () => profileEditor.close()],
       [bookmarkEditor.isOpen(), () => bookmarkEditor.close()],
       [notesDrawer.isEditorOpen(), () => notesDrawer.closeEditor()],

@@ -1,0 +1,143 @@
+{
+  "simultaneousKeyInitialization": true,
+  "tokenReadyAfterBrowserRestart": true,
+  "keyNonExtractable": true,
+  "secretAbsentFromInputs": true,
+  "savedTokenTestInvoked": true,
+  "tokenRemovalClearsMemoryAndDisk": true,
+  "viewports": [
+    {
+      "width": 320,
+      "contained": true,
+      "controls": [
+        {
+          "label": "Close",
+          "width": 76.53125,
+          "height": 44
+        },
+        {
+          "label": "Use this device’s version",
+          "width": 252,
+          "height": 44
+        },
+        {
+          "label": "Use GitHub’s version",
+          "width": 252,
+          "height": 44
+        },
+        {
+          "label": "Export both versions",
+          "width": 252,
+          "height": 44
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "contained": true,
+      "controls": [
+        {
+          "label": "Close",
+          "width": 76.53125,
+          "height": 44
+        },
+        {
+          "label": "Use this device’s version",
+          "width": 322,
+          "height": 44
+        },
+        {
+          "label": "Use GitHub’s version",
+          "width": 322,
+          "height": 44
+        },
+        {
+          "label": "Export both versions",
+          "width": 322,
+          "height": 44
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "contained": true,
+      "controls": [
+        {
+          "label": "Close",
+          "width": 76.53125,
+          "height": 44
+        },
+        {
+          "label": "Use this device’s version",
+          "width": 700,
+          "height": 44
+        },
+        {
+          "label": "Use GitHub’s version",
+          "width": 700,
+          "height": 44
+        },
+        {
+          "label": "Export both versions",
+          "width": 700,
+          "height": 44
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "contained": true,
+      "controls": [
+        {
+          "label": "Close",
+          "width": 76.53125,
+          "height": 44
+        },
+        {
+          "label": "Use this device’s version",
+          "width": 452,
+          "height": 44
+        },
+        {
+          "label": "Use GitHub’s version",
+          "width": 452,
+          "height": 44
+        },
+        {
+          "label": "Export both versions",
+          "width": 452,
+          "height": 44
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "contained": true,
+      "controls": [
+        {
+          "label": "Close",
+          "width": 76.53125,
+          "height": 44
+        },
+        {
+          "label": "Use this device’s version",
+          "width": 452,
+          "height": 44
+        },
+        {
+          "label": "Use GitHub’s version",
+          "width": 452,
+          "height": 44
+        },
+        {
+          "label": "Export both versions",
+          "width": 452,
+          "height": 44
+        }
+      ]
+    }
+  ],
+  "seriousOrCriticalAxe": [],
+  "escapeRestoresFocus": true,
+  "conflictSurvivesClose": true
+}

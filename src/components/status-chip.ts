@@ -20,7 +20,8 @@ const ICON_OFFLINE = 'M1 1l22 22M16.7 11.7A11 11 0 0 0 5 5M8.5 8.5A6 6 0 0 0 5 1
 const ICON_ERROR =
   'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z';
 
-export type StatusChipState = 'local' | 'syncing' | 'synced' | 'offline' | 'error';
+export type StatusChipState =
+  'local' | 'pending' | 'conflict' | 'syncing' | 'synced' | 'offline' | 'error';
 
 export interface StatusChipOptions {
   /** Epoch ms of the last successful sync (for the "Synced N ago" label). */
@@ -39,6 +40,10 @@ export function relativeTime(from: number, now: number = Date.now()): string {
 /** Compute the chip's visible label for a state. Pure and unit-tested. */
 export function statusChipLabel(state: StatusChipState, options: StatusChipOptions = {}): string {
   switch (state) {
+    case 'pending':
+      return t('sync.pending');
+    case 'conflict':
+      return t('sync.conflicts');
     case 'syncing':
       return t('status.syncing');
     case 'synced': {
@@ -122,7 +127,10 @@ export class StatusChip {
       case 'offline':
         return ICON_OFFLINE;
       case 'error':
+      case 'conflict':
         return ICON_ERROR;
+      case 'pending':
+        return ICON_SYNC;
       case 'local':
       default:
         return ICON_LOCAL;

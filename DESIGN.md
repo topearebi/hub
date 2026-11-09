@@ -514,3 +514,16 @@ Panels use the visual viewport height and offsets when available. Bookmark
 menus become scrollable sheets on compact phones; dialogs keep focused fields
 and actions reachable above the on-screen keyboard. See
 [the feature checklist](plans/bookmark-card-refresh.md) for verification scope.
+
+### Sync conflicts and credential recovery — 2026-11-09
+
+Settings → Sync → Resolve sync conflicts opens the shared responsive Dialog sheet.
+Each conflict shows this device's and GitHub's complete record, explicit version
+choices and Export both versions. Closing preserves the inbox; resolving the last
+conflict resumes reconciliation. Concurrent changes invalidate stale choices.
+The background stays inert and Escape/Close restores focus. All controls use
+existing button tokens and 44 px coarse-pointer targets; version regions are
+keyboard-scrollable. Empty, pending, conflict and specific error states have
+catalogue text. Recently deleted retains a 30-day recovery window; End recovery
+requires confirmation and retains sync markers. Settings and sync logic load on
+demand and remain precached offline. See [the approved specification](plans/sync-hardening.md).

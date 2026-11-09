@@ -138,3 +138,31 @@ describe('TokenVault', () => {
     await expect(keyStore.get()).resolves.toBeUndefined();
   });
 });
+
+describe('credential lifecycle races', () => {
+  it('prepares a replacement without activating it', async () => {
+    const vault = new TokenVault({ keyStore: memoryKeyStore(), subtle });
+    await vault.setToken('old');
+    expect(await vault.prepareToken('new')).toMatch(/^enc1:/);
+    expect(vault.token).toBe('old');
+  });
+  it('does not revive a removed token after awaited decryption', async () => {
+    const key = await generateTokenKey(subtle);
+    const envelope = await encryptToken('secret', key, subtle);
+    let release!: (value: CryptoKey) => void;
+    const pending = new Promise<CryptoKey>((resolve) => {
+      release = resolve;
+    });
+    const keyStore: TokenKeyStore = {
+      get: () => pending,
+      set: async () => undefined,
+      delete: async () => undefined,
+    };
+    const vault = new TokenVault({ keyStore, subtle });
+    const loading = vault.init(envelope);
+    vault.clear();
+    release(key);
+    await loading;
+    expect(vault.token).toBe('');
+  });
+});

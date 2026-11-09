@@ -633,3 +633,44 @@ The historical Google favicon fallback described in §2.3 is superseded by the
 runtime network restriction: absent or third-party icon URLs render a local
 initial avatar. Same-origin, image data and blob icons remain supported. No
 stored field or sync payload changes are introduced by the card refresh.
+
+## Sync hardening amendments (owner approved 2026-11-09)
+
+Remote entities and the v2 envelope are unchanged. Deletion markers are now
+retained indefinitely in sync; §5.3's 30-day rule applies only to the restore UI,
+not removal from the canonical remote history. Existing deletion history already
+removed by older clients cannot be reconstructed. Older clients that still cull
+tombstones must be upgraded before relying on the extended offline horizon.
+
+The existing local-only `config` record `sync_metadata` may contain:
+
+```typescript
+interface SyncMetadata {
+  last_synced_at: number;
+  github_last_sha?: string;
+  targets?: Record<
+    string,
+    {
+      baseline?: HubStoragePayload;
+      conflicts?: Array<{
+        collection: 'profiles' | 'bookmarks' | 'categories' | 'tasks' | 'notes';
+        id: string;
+        local: ProfileItem | BookmarkItem | CategoryItem | TaskItem | NoteItem;
+        remote: ProfileItem | BookmarkItem | CategoryItem | TaskItem | NoteItem;
+      }>;
+    }
+  >;
+}
+```
+
+Target keys identify owner/repository/branch/path and contain no token. A baseline
+is the last confirmed remote snapshot for that target. Concurrent divergent
+changes relative to this baseline are retained in the local conflict inbox and
+block upload until explicitly resolved. Without a baseline, divergent versions
+of an existing ID also require resolution. Equal timestamps do not silently
+choose a version. This supersedes §5.2's timestamp-only policy for live sync;
+legacy timestamp merger helpers remain only for compatible import/maintenance.
+
+No baseline, conflicts, credentials or metrics may enter HubStoragePayload or
+normal data exports. Conflict exports contain only the chosen conflict records.
+No database store/version or entity/AppConfig field is added.
