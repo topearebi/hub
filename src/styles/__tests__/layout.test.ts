@@ -71,7 +71,7 @@ describe('layout.css responsive tiers (DESIGN.md §3)', () => {
 
 describe('components.css responsive behaviour', () => {
   it('drives the tile grid from --tile-min with a container-query cap (G-10)', () => {
-    expect(COMPONENTS).toContain('minmax(var(--tile-min), 1fr)');
+    expect(COMPONENTS).toContain('minmax(min(100%, var(--tile-min)), 1fr)');
     expect(COMPONENTS).toContain('@container');
     expect(COMPONENTS).toContain('container-type: inline-size');
   });

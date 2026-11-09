@@ -120,3 +120,42 @@ describe('Menu', () => {
     expect(document.querySelector('.context-menu')).toBeNull();
   });
 });
+
+describe('visual viewport menu placement (G-16)', () => {
+  it('repositions above the keyboard, restores trigger focus and cleans listeners', () => {
+    const visual = new EventTarget() as EventTarget & {
+      height: number;
+      width: number;
+      offsetTop: number;
+      offsetLeft: number;
+    };
+    Object.assign(visual, { height: 300, width: 390, offsetTop: 60, offsetLeft: 0 });
+    const original = window.visualViewport;
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: visual });
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+    const menu = new Menu({
+      label: 'Actions',
+      items: [{ label: 'Edit', onSelect: () => undefined }],
+    });
+    try {
+      menu.openAt(200, 700);
+      expect(menu.element.style.getPropertyValue('--menu-y')).toBe('352px');
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+      visual.height = 200;
+      visual.dispatchEvent(new Event('resize'));
+      expect(menu.element.style.getPropertyValue('--menu-y')).toBe('252px');
+      menu.close();
+      expect(document.activeElement).toBe(trigger);
+      expect(trigger.getAttribute('aria-expanded')).toBe('false');
+      visual.height = 100;
+      visual.dispatchEvent(new Event('resize'));
+      expect(menu.element.style.getPropertyValue('--menu-y')).toBe('252px');
+    } finally {
+      menu.destroy();
+      trigger.remove();
+      Object.defineProperty(window, 'visualViewport', { configurable: true, value: original });
+    }
+  });
+});

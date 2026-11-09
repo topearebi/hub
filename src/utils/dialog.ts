@@ -13,6 +13,7 @@
  */
 
 import { el } from './dom';
+import { bindVisualViewport } from './viewport';
 
 /** Selector for natively focusable elements. */
 const FOCUSABLE_SELECTOR = [
@@ -132,6 +133,7 @@ export class Dialog {
   readonly content: HTMLElement;
 
   private opened = false;
+  private releaseViewport: (() => void) | null = null;
   private releaseTrap: (() => void) | null = null;
   private releaseInert: (() => void) | null = null;
   private restoreTarget: HTMLElement | null = null;
@@ -173,6 +175,24 @@ export class Dialog {
       return;
     }
     this.opened = true;
+    const releaseMetrics = bindVisualViewport(this.overlay);
+    const revealField = (): void => {
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        this.content.contains(active) &&
+        active.matches('input, textarea, select')
+      ) {
+        active.scrollIntoView?.({ block: 'nearest' });
+      }
+    };
+    this.content.addEventListener('focusin', revealField);
+    window.visualViewport?.addEventListener('resize', revealField);
+    this.releaseViewport = () => {
+      releaseMetrics();
+      this.content.removeEventListener('focusin', revealField);
+      window.visualViewport?.removeEventListener('resize', revealField);
+    };
 
     if (!this.overlay.isConnected) {
       document.body.appendChild(this.overlay);
@@ -202,6 +222,8 @@ export class Dialog {
       return;
     }
     this.opened = false;
+    this.releaseViewport?.();
+    this.releaseViewport = null;
 
     this.releaseTrap?.();
     this.releaseTrap = null;

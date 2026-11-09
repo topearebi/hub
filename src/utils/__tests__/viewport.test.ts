@@ -62,8 +62,10 @@ describe('bindVisualViewport', () => {
 
     // Keyboard closes: the visual viewport grows back to the layout height.
     visual.height = 800;
+    visual.offsetTop = 20;
     listeners.get('resize')?.();
     expect(root.style.getPropertyValue('--keyboard-inset')).toBe('0px');
+    expect(root.style.getPropertyValue('--vvtop')).toBe('20px');
 
     dispose();
     expect(listeners.has('resize')).toBe(false);

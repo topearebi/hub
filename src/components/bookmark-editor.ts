@@ -17,7 +17,11 @@ import { t } from '../utils/i18n';
 import { hostnameOf } from '../core/fallback';
 import { newId } from '../utils/crypto';
 import { isUrlLike, normalizeUrl } from './omnibar';
-import { applyBookmarkWidgetStyles } from './bookmarks';
+import {
+  applyBookmarkWidgetStyles,
+  populateBookmarkContent,
+  renderBookmarkMirrors,
+} from './bookmarks';
 import type { BookmarkCardSize, BookmarkItem, CategoryItem } from '../types/schemas';
 
 let bookmarkDialogSeq = 0;
@@ -226,10 +230,6 @@ export class BookmarkEditor {
   private readonly textInput: HTMLInputElement;
   private readonly borderInput: HTMLInputElement;
   private readonly previewCard: HTMLElement;
-  private readonly previewTitle: HTMLElement;
-  private readonly previewHotkey: HTMLElement;
-  private readonly previewDesc: HTMLElement;
-  private readonly previewIcon: HTMLElement;
   private readonly statusEl: HTMLElement;
   private readonly deleteButton: HTMLButtonElement;
 
@@ -320,26 +320,18 @@ export class BookmarkEditor {
       'bookmarkEditor.fieldBorderColor',
     );
 
-    this.previewTitle = el('span', {
-      className: 'tile__title',
-      text: t('bookmarkEditor.fieldTitle'),
-    });
-    this.previewHotkey = el('kbd', { className: 'tile__hotkey' });
-    this.previewDesc = el('p', { className: 'tile__description' });
-    this.previewIcon = el('span', { className: 'tile__icon tile__icon--fallback' });
-    this.previewIcon.textContent = '★';
-    const previewOpen = el('div', {
-      className: 'tile__open',
-      children: [this.previewIcon, this.previewTitle, this.previewHotkey, this.previewDesc],
-    });
+    const previewOpen = el('div', { className: 'tile__open' });
     this.previewCard = el('div', {
       className: 'tile tile--preview tile--size-small',
-      attrs: { 'aria-hidden': 'true' },
+      attrs: { 'aria-hidden': 'true', inert: '' },
       children: [previewOpen],
     });
 
     for (const ctrl of [
       this.titleInput,
+      this.urlInput,
+      this.altInput,
+      this.iconInput,
       this.descriptionInput,
       this.bgInput,
       this.textInput,
@@ -419,13 +411,22 @@ export class BookmarkEditor {
       border_color: this.borderInput.value.trim() || undefined,
     });
 
-    this.previewTitle.textContent = this.titleInput.value.trim() || t('bookmarkEditor.fieldTitle');
-    const hk = this.hotkeySelect.value;
-    this.previewHotkey.textContent = hk;
-    this.previewHotkey.hidden = !hk;
-    const desc = this.descriptionInput.value.trim();
-    this.previewDesc.textContent = desc;
-    this.previewDesc.hidden = !desc || size === 'small';
+    const open = this.previewCard.querySelector<HTMLElement>('.tile__open')!;
+    const hotkey = normalizeHotkey(this.hotkeySelect.value);
+    populateBookmarkContent(
+      open,
+      {
+        title: this.titleInput.value.trim() || t('bookmarkEditor.fieldTitle'),
+        url: this.urlInput.value.trim(),
+        icon: this.iconInput.value.trim(),
+        description: this.descriptionInput.value.trim(),
+        ...(hotkey ? { hotkey } : {}),
+      },
+      size,
+    );
+    this.previewCard.querySelector('.tile__mirrors')?.remove();
+    const mirrors = parseAlternateUrls(this.altInput.value);
+    if (mirrors.length) this.previewCard.appendChild(renderBookmarkMirrors(mirrors));
   }
 
   /** Serialise the editable fields for dirty-checking. */
@@ -541,7 +542,7 @@ export class BookmarkEditor {
     });
 
     const actions = el('div', {
-      className: 'settings-actions',
+      className: 'settings-actions modal__actions',
       children: [this.deleteButton, saveButton],
     });
 

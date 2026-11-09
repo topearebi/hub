@@ -1,0 +1,109 @@
+[
+  {
+    "width": 320,
+    "theme": "light",
+    "overflow": false,
+    "targets": true
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "overflow": false,
+    "targets": true
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "overflow": false,
+    "targets": true
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "overflow": false,
+    "targets": true
+  },
+  {
+    "width": 768,
+    "theme": "light",
+    "overflow": false,
+    "targets": true
+  },
+  {
+    "width": 768,
+    "theme": "dark",
+    "overflow": false,
+    "targets": true
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "overflow": false,
+    "targets": true
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "overflow": false,
+    "targets": true
+  },
+  {
+    "width": 1920,
+    "theme": "light",
+    "overflow": false,
+    "targets": true
+  },
+  {
+    "width": 1920,
+    "theme": "dark",
+    "overflow": false,
+    "targets": true
+  },
+  {
+    "menu": {
+      "x": 8,
+      "y": 406,
+      "width": 374,
+      "height": 438,
+      "top": 406,
+      "right": 382,
+      "bottom": 844,
+      "left": 8
+    },
+    "viewport": 844
+  },
+  {
+    "touchDragging": true
+  },
+  {
+    "touchMoveAnnounced": true
+  },
+  {
+    "editorWithinViewport": true,
+    "saveVisible": true
+  },
+  {
+    "landscape": 320,
+    "overflow": false
+  },
+  {
+    "landscape": 390,
+    "overflow": false
+  },
+  {
+    "landscape": 768,
+    "overflow": false
+  },
+  {
+    "landscape": 1280,
+    "overflow": false
+  },
+  {
+    "landscape": 1920,
+    "overflow": false
+  },
+  {
+    "forcedColors": true,
+    "reducedMotion": true
+  }
+]

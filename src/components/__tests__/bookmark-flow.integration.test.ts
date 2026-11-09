@@ -302,12 +302,12 @@ describe('BookmarksView context menu', () => {
 
     // Mirrors rendered on large card
     const mirrorChips = Array.from(
-      largeTile.querySelectorAll<HTMLButtonElement>('.tile__mirror-chip'),
+      largeTile.querySelectorAll<HTMLButtonElement>('.tile__mirror-icon'),
     );
-    expect(mirrorChips).toHaveLength(3); // 1 primary + 2 mirrors
+    expect(mirrorChips).toHaveLength(2); // Primary navigation remains the card surface.
 
     // Click secondary mirror
-    mirrorChips[1]?.click();
+    mirrorChips[0]?.click();
     expect(onOpenAlternate).toHaveBeenCalledWith(largeBookmark, 'https://mirror1.large.test');
 
     // Cycle size button on wide tile cycles to large
@@ -504,7 +504,7 @@ describe('BookmarksView context menu', () => {
       expect(mapDown.get('b2')).toBe(2);
     });
 
-    it('renders drag handles and supports menu-based Move Up/Down/Category', async () => {
+    it('supports whole-card arranging and menu-based Move Up/Down/Category', async () => {
       const b1 = makeBookmark({
         id: 'b1',
         category_id: 'c1',
@@ -550,9 +550,7 @@ describe('BookmarksView context menu', () => {
       expect(tileB1).toBeDefined();
       expect(tileB1.getAttribute('data-category-id')).toBe('c1');
 
-      const dragHandle = q<HTMLButtonElement>(tileB1, '.tile__drag');
-      expect(dragHandle).toBeDefined();
-      expect(dragHandle.getAttribute('aria-label')).toContain('Alpha');
+      expect(tileB1.querySelector('.tile__drag')).toBeNull();
 
       // Test keyboard / more menu Move actions
       const moreBtn = q<HTMLButtonElement>(tileB1, '.tile__more');

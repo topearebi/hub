@@ -122,7 +122,7 @@
   --tab-bar-h: calc(56px + env(safe-area-inset-bottom, 0px));
 
   /* ---- Responsive tiers (DESIGN.md §3) ---- */
-  --tile-min: 96px; /* tier A/B tile grid minimum column width */
+  --tile-min: 128px; /* tier A/B tile grid minimum column width */
   --content-max-width: 720px; /* tier C centred column */
   --content-max-width-wide: 1200px; /* tier E content column */
   --side-rail-w: 56px; /* tier B landscape tab rail */

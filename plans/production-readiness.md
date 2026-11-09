@@ -398,3 +398,33 @@ _None._
 
 - **Sample data policy:** the optional sample set is a clearly-labelled "Sample links" category; removing the category removes the samples in one action. Nothing is seeded silently.
 - **Recently deleted scope for individual items:** implemented — Settings → Data → Recently deleted lists deleted profiles (with item counts) **and** individually deleted bookmarks/tasks/notes inside the 30-day window, each with Restore and Delete now.
+
+### Bookmark card refresh — 2026-11-09 (G-16, G-22, G-23, G-33)
+
+Reference-inspired cards preserve all sizes, custom styling and actions. Explicit
+Arrange mode enables whole-card touch dragging, with empty-category targets,
+auto-expansion, edge scrolling, cancellation and retryable persistence errors.
+Alternate URLs use local accessible avatar controls; preview and saved content
+share rendering. Menus/dialogs share visual-viewport sizing and cleanup.
+
+| Metric                                       | Before refresh (HEAD baseline) | After refresh        |
+| -------------------------------------------- | ------------------------------ | -------------------- |
+| Automated suite                              | 364 tests / 40 files           | 377 tests / 41 files |
+| JS gzip                                      | 51.16 KiB                      | 50.63 KiB            |
+| CSS gzip                                     | 8.83 KiB                       | 9.29 KiB             |
+| Combined gzip                                | 59.99 KiB                      | 59.92 KiB            |
+| Contrast token pairs                         | 104/104                        | 104/104              |
+| Lighthouse PWA / accessibility / performance | Previous release gates above   | 100 / 97 / 99        |
+
+Terser is a **build-only** dependency; it replaces the JS minifier with three
+compression passes. Safari 10 workarounds are disabled consistently with the
+existing ES2022 target. Runtime dependencies and the 60 KiB budget are unchanged.
+The card grid minimum is now the single `--tile-min: 128px` token across tiers,
+clamped to the available width, with DOM-order grid flow for predictable moves.
+
+[Review and evidence](../docs/evidence/bookmark-cards/REVIEW.md). Headless Chromium
+verified coarse-pointer target sizes and no horizontal overflow at all five
+widths, both themes and short landscape layouts, touch-input dragging and move
+announcements, a keyboard-sized editor with visible Save, forced colours and
+reduced motion. Physical touchscreen keyboards, notched devices and assistive
+technology remain manual checks; these are not represented as completed.

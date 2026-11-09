@@ -13,6 +13,7 @@
  */
 
 import { el, on, svg } from './dom';
+import { bindVisualViewport } from './viewport';
 
 export type MenuItemRole = 'menuitem' | 'menuitemradio' | 'menuitemcheckbox';
 
@@ -47,11 +48,20 @@ export function clampToViewport(
   height: number,
   margin = 8,
 ): { x: number; y: number } {
-  const maxX = Math.max(margin, window.innerWidth - width - margin);
-  const maxY = Math.max(margin, window.innerHeight - height - margin);
+  const visual = window.visualViewport;
+  const left = visual?.offsetLeft ?? 0;
+  const top = visual?.offsetTop ?? 0;
+  const maxX = Math.max(
+    left + margin,
+    left + (visual?.width ?? window.innerWidth) - width - margin,
+  );
+  const maxY = Math.max(
+    top + margin,
+    top + (visual?.height ?? window.innerHeight) - height - margin,
+  );
   return {
-    x: Math.min(Math.max(margin, x), maxX),
-    y: Math.min(Math.max(margin, y), maxY),
+    x: Math.min(Math.max(left + margin, x), maxX),
+    y: Math.min(Math.max(top + margin, y), maxY),
   };
 }
 
@@ -181,6 +191,7 @@ export class Menu {
   private readonly keyboard: MenuKeyboard;
   private disposers: Array<() => void> = [];
   private opened = false;
+  private trigger: HTMLElement | null = null;
 
   constructor(private readonly options: MenuOptions) {
     this.element = el('div', {
@@ -243,10 +254,15 @@ export class Menu {
   /** Open the menu at a point, clamped to the viewport. */
   openAt(x: number, y: number): void {
     this.open();
-    const rect = this.element.getBoundingClientRect();
-    const point = clampToViewport(x, y, rect.width, rect.height);
-    this.element.style.setProperty('--menu-x', `${point.x}px`);
-    this.element.style.setProperty('--menu-y', `${point.y}px`);
+    const position = (): void => {
+      const rect = this.element.getBoundingClientRect();
+      const point = clampToViewport(x, y, rect.width, rect.height);
+      this.element.style.setProperty('--menu-x', `${point.x}px`);
+      this.element.style.setProperty('--menu-y', `${point.y}px`);
+    };
+    position();
+    this.disposers.push(on(window, 'resize', position));
+    this.disposers.push(bindVisualViewport(this.element, position));
     this.keyboard.activate('first');
   }
 
@@ -255,6 +271,8 @@ export class Menu {
       return;
     }
     this.opened = true;
+    this.trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this.trigger?.setAttribute('aria-expanded', 'true');
     if (!this.element.isConnected) {
       document.body.appendChild(this.element);
     }
@@ -262,13 +280,12 @@ export class Menu {
     this.element.classList.add('is-open');
 
     this.disposers.push(
-      on(document, 'mousedown', (event: Event) => {
+      on(document, 'pointerdown', (event: Event) => {
         if (!this.element.contains(event.target as Node)) {
           this.close();
         }
       }),
     );
-    this.disposers.push(on(window, 'resize', () => this.close()));
   }
 
   close(): void {
@@ -283,6 +300,9 @@ export class Menu {
     this.disposers.length = 0;
     this.element.classList.remove('is-open');
     this.element.remove();
+    this.trigger?.setAttribute('aria-expanded', 'false');
+    if (this.trigger?.isConnected) this.trigger.focus();
+    this.trigger = null;
     this.options.onClose?.();
   }
 

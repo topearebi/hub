@@ -35,6 +35,11 @@ let pseudoEnabled = false;
  * `tp()`.
  */
 export const MESSAGES: Record<string, string> = {
+  'bookmarks.arrange': 'Arrange bookmarks',
+  'bookmarks.arrangeHelp': 'Drag cards, or use Move in the More menu.',
+  'bookmarks.arrangeDone': 'Done',
+  'bookmarks.moved': 'Bookmark moved',
+  'bookmarks.moveFailed': 'Could not move bookmark.',
   /* ---- Common ---- */
   'common.save': 'Save',
   'common.cancel': 'Cancel',

@@ -177,7 +177,7 @@ Mobile-first: base CSS targets the compact phone; larger tiers add via `min-widt
 
 | Tier                            | Query                                              | Layout                                                                                                      | Navigation                                                                            | Drawers                                                                       |
 | ------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **A. Compact (phone portrait)** | `< 768px`                                          | Single pane; sticky omnibar on top; tile grid 3 columns (`minmax(96px, 1fr)`)                               | Fixed bottom tab bar: Tasks · Bookmarks · Notes (icon + label, open-task count badge) | Drawers are the Tasks/Notes panes themselves                                  |
+| **A. Compact (phone portrait)** | `< 768px`                                          | Single pane; sticky omnibar on top; tile grid 2 columns where space allows (`--tile-min: 128px`)            | Fixed bottom tab bar: Tasks · Bookmarks · Notes (icon + label, open-task count badge) | Drawers are the Tasks/Notes panes themselves                                  |
 | **B. Compact landscape-short**  | `(orientation: landscape) and (max-height: 500px)` | Single pane; omnibar scrolls away; tab bar becomes a 56 px **side rail** (labels hidden, `aria-label` kept) | Side rail                                                                             | As A                                                                          |
 | **C. Medium (tablet)**          | `768–1023px`                                       | Centred column (max 720 px); tile grid 4–5 columns                                                          | Header drawer toggles                                                                 | Overlay drawers with a **scrim** (tap to close, Esc closes); pinning disabled |
 | **D. Expanded (laptop)**        | `1024–1439px`                                      | Centred column; grid fluid (container query)                                                                | Header drawer toggles                                                                 | Pin up to **one** drawer (two-column); two pinned only at ≥ 1280 px           |
@@ -186,7 +186,7 @@ Mobile-first: base CSS targets the compact phone; larger tiers add via `min-widt
 
 Additional rules:
 
-- **Tile grid** uses an intrinsic `repeat(auto-fill, minmax(var(--tile-min), 1fr))` with `--tile-min`: 96 px (A/B), 120 px (C+). A container query on the grid caps columns (no 640 px lock).
+- **Tile grid** uses an intrinsic `repeat(auto-fill, minmax(min(100%, var(--tile-min)), 1fr))` with `--tile-min`: 128 px across tiers, clamped to the available width. A container query on the grid caps columns (no 640 px lock).
 - **Sticky omnibar** has a solid `--bg-app` backing (no content bleed-through) and sits below the safe-area top inset.
 - **Thumb zone:** primary destinations (tab bar) and the add-actions live in the bottom half of the screen on phones. Destructive actions are never placed adjacent to the primary action.
 - **Standalone display:** when `display-mode: standalone` (or iOS `navigator.standalone`) is active, the header's Hub app logo navigates back to Home after in-app navigations and external opens (see §6.1).
@@ -493,3 +493,24 @@ The following remain from v1 and are refined by the sections above: drawers (340
 - [ ] Forced-colors, `prefers-contrast: more`, `prefers-reduced-motion` and 200 % text/zoom reviewed.
 - [ ] Destructive actions follow §9; first run follows §7; copy follows §8.
 - [ ] No third-party network requests; no inline styles or `innerHTML` with user content.
+
+### Bookmark card refresh (G-16, G-22, G-23, G-33)
+
+Cards use circular local icons, centred small/large compositions, a horizontal
+wide composition, readable multiline titles and subtle token-based elevation.
+All sizes show alternate URLs as circular local hostname-initial controls in a
+wrapping footer, with accessible names and visible focus labels. The primary
+card surface opens the bookmark in the same window. Remote favicon services
+are never requested; existing remote icon values fall back to a local avatar.
+The More and resize controls are always visible and reserve space above content.
+
+Arrange bookmarks in the More menu enables transient whole-card dragging, with
+a persistent instruction and Done button; Escape exits. Scrolling and tapping
+remain normal outside Arrange. Action controls are excluded from drag starts;
+Move actions remain available for keyboard and drag-free use. Reordering reports
+success or a retryable error. Recently Used is excluded from arranging.
+
+Panels use the visual viewport height and offsets when available. Bookmark
+menus become scrollable sheets on compact phones; dialogs keep focused fields
+and actions reachable above the on-screen keyboard. See
+[the feature checklist](plans/bookmark-card-refresh.md) for verification scope.

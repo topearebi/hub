@@ -182,3 +182,14 @@ Each row must be reachable by every input method. A reviewer ticks all three col
 ## 9. Definition of accessible
 
 A feature is accessible when it: (a) has no open axe serious/critical issues; (b) passes the §7 parity row(s) it touches; (c) meets §5 contrast, target-size and preference rules; (d) has unit tests for any new focus or ARIA behaviour; and (e) has been manually checked with at least one screen reader and keyboard-only.
+
+## Bookmark card refresh — G-16, G-22, G-23, G-33
+
+The visible More menu exposes Arrange, Move, Edit, Share, Delete and size actions.
+Arrange offers a whole-card touch drag surface, instructions, Done and Escape;
+Move actions provide a complete non-drag alternative. Controls remain separate
+from the primary activation button and use the coarse-pointer hit-area token.
+Alternate icons have hostname-based accessible names and visible focus labels.
+Keyboard focus returns to the menu trigger; move outcomes use accessible toasts.
+Dialogs and menus reflow within the visual viewport, including keyboard-induced
+resize/offset changes, with scrollable content and focus visibility.

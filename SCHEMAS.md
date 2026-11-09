@@ -626,3 +626,10 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   ],
 };
 ```
+
+### Bookmark icon rendering privacy clarification
+
+The historical Google favicon fallback described in §2.3 is superseded by the
+runtime network restriction: absent or third-party icon URLs render a local
+initial avatar. Same-origin, image data and blob icons remain supported. No
+stored field or sync payload changes are introduced by the card refresh.

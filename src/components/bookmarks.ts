@@ -6,16 +6,7 @@
  * context menu listing the primary URL and any mirrors for direct override.
  */
 
-import {
-  btn,
-  clearChildren,
-  el,
-  iconBtn,
-  svg,
-  ICON_CHEVRON,
-  ICON_GRIP,
-  ICON_MORE,
-} from '../utils/dom';
+import { btn, clearChildren, el, iconBtn, svg, ICON_CHEVRON, ICON_MORE } from '../utils/dom';
 import { t, tp } from '../utils/i18n';
 import { Menu } from '../utils/menu';
 import type { MenuItemSpec } from '../utils/menu';
@@ -191,12 +182,111 @@ export interface BookmarksCallbacks {
   onReorderBookmarks?: (bookmarks: readonly BookmarkItem[]) => Promise<void> | void;
 }
 
+type BookmarkContent = Pick<BookmarkItem, 'title' | 'url' | 'icon' | 'description' | 'hotkey'>;
+
+/** Shared renderer keeps the live editor preview identical to saved card content. */
+export function populateBookmarkContent(
+  open: HTMLElement,
+  bookmark: BookmarkContent,
+  size: BookmarkCardSize,
+): void {
+  open.replaceChildren();
+  const body = el('div', {
+    className: 'tile__body',
+    children: [el('span', { className: 'tile__title', text: bookmark.title })],
+  });
+  if (size !== 'small') {
+    const host = hostnameOf(bookmark.url);
+    if (host) body.appendChild(el('span', { className: 'tile__host', text: host }));
+    if (bookmark.description)
+      body.appendChild(el('p', { className: 'tile__description', text: bookmark.description }));
+  }
+  open.append(renderBookmarkIcon(bookmark), body);
+  if (bookmark.hotkey)
+    open.appendChild(el('kbd', { className: 'tile__hotkey', text: bookmark.hotkey }));
+}
+
+/**
+ * Render local/same-origin icons only; missing or remote icons use a local
+ * avatar so browsing cards never triggers third-party network requests.
+ */
+function renderBookmarkIcon(bookmark: BookmarkContent): HTMLElement {
+  const fallback = (): HTMLElement =>
+    el('span', {
+      className: 'tile__icon tile__icon--fallback',
+      text: initialOf(bookmark.title, '?'),
+    });
+  const src = bookmark.icon;
+  if (!src || !/^(data:image\/|blob:)/i.test(src)) {
+    if (!src) return fallback();
+    try {
+      if (new URL(src, window.location.href).origin !== window.location.origin) {
+        return fallback();
+      }
+    } catch {
+      return fallback();
+    }
+  }
+
+  const img = el('img', {
+    className: 'tile__icon',
+    attrs: {
+      src,
+      alt: '',
+      loading: 'lazy',
+      referrerpolicy: 'no-referrer',
+    },
+  });
+  img.addEventListener(
+    'error',
+    () => {
+      img.replaceWith(fallback());
+    },
+    { once: true },
+  );
+  return img;
+}
+
+/** Local hostname avatars for both saved cards and their live preview. */
+export function renderBookmarkMirrors(
+  urls: readonly string[],
+  onSelect?: (url: string) => void,
+): HTMLElement {
+  return el('div', {
+    className: 'tile__mirrors',
+    attrs: { role: 'group', 'aria-label': t('bookmarkEditor.fieldAlt') },
+    children: urls.map((url) => {
+      const host = hostnameOf(url);
+      const label = t('bookmarks.openMirrorDirect', { host });
+      const button = el('button', {
+        className: 'tile__mirror-icon',
+        attrs: { type: 'button', 'aria-label': label, title: label },
+        children: [
+          el('span', { text: initialOf(host, '↗'), attrs: { 'aria-hidden': 'true' } }),
+          el('span', { className: 'tile__mirror-label', text: host }),
+        ],
+      });
+      button.addEventListener('click', () => {
+        onSelect?.(url);
+      });
+      if (!onSelect) button.tabIndex = -1;
+      return button;
+    }),
+  });
+}
+
 export class BookmarksView {
   readonly element: HTMLElement;
 
   private readonly disposers: Array<() => void> = [];
   private readonly tileNodes: HTMLElement[] = [];
   private contextMenu: Menu | null = null;
+  private arranging = false;
+  private dragFrame: number | null = null;
+  private pendingRender = false;
+  private expandCategoryId: string | null = null;
+  private dragY = 0;
+  private dragX = 0;
   private dragState: {
     id: string;
     tile: HTMLElement;
@@ -212,12 +302,38 @@ export class BookmarksView {
     private readonly callbacks: BookmarksCallbacks,
   ) {
     this.element = el('div', { className: 'bookmarks' });
+    const escape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && this.arranging && !this.contextMenu) {
+        event.preventDefault();
+        this.setArranging(false);
+      }
+    };
+    this.element.addEventListener('keydown', escape);
+    this.disposers.push(() => this.element.removeEventListener('keydown', escape));
   }
 
   /** Rebuild the entire view from current store state. */
   render(): void {
+    if (this.dragState) {
+      this.pendingRender = true;
+      return;
+    }
+    this.pendingRender = false;
+    this.cancelDrag();
     this.closeContextMenu();
     clearChildren(this.element);
+    this.element.classList.toggle('bookmarks--arranging', this.arranging);
+    if (this.arranging) {
+      this.element.appendChild(
+        el('div', {
+          className: 'bookmarks__arrange-bar',
+          children: [
+            el('p', { text: t('bookmarks.arrangeHelp'), attrs: { role: 'status' } }),
+            btn(t('bookmarks.arrangeDone'), { onClick: () => this.setArranging(false) }),
+          ],
+        }),
+      );
+    }
     this.tileNodes.length = 0;
 
     const bookmarks = this.store.activeBookmarks;
@@ -235,7 +351,7 @@ export class BookmarksView {
     const knownCategoryIds = new Set(categories.map((c) => c.id));
     for (const category of categories) {
       const items = this.store.getBookmarksByCategory(category.id);
-      if (items.length === 0) {
+      if (items.length === 0 && !this.arranging) {
         continue;
       }
       this.element.appendChild(this.renderSection(category.name, items, false, category));
@@ -253,8 +369,7 @@ export class BookmarksView {
   }
 
   destroy(): void {
-    this.clearAutoExpandTimer();
-    this.clearDropIndicators();
+    this.cancelDrag();
     this.closeContextMenu();
     for (const dispose of this.disposers) {
       dispose();
@@ -365,54 +480,7 @@ export class BookmarksView {
       open.setAttribute('tabindex', '-1');
     }
 
-    const titleEl = el('span', { className: 'tile__title', text: bookmark.title });
-    const icon = this.renderIcon(bookmark);
-    const hotkey = bookmark.hotkey
-      ? el('kbd', { className: 'tile__hotkey', text: bookmark.hotkey })
-      : null;
-
-    if (size === 'wide') {
-      const row = el('div', {
-        className: 'tile__header-row',
-        children: [titleEl, ...(hotkey ? [hotkey] : [])],
-      });
-      const content = el('div', {
-        className: 'tile__body',
-        children: [
-          row,
-          ...(bookmark.description
-            ? [el('p', { className: 'tile__description', text: bookmark.description })]
-            : []),
-          ...(bookmark.alternate_urls?.length
-            ? [
-                el('span', {
-                  className: 'tile__badge tile__badge--mirrors',
-                  text: t('bookmarks.mirrorCount', { count: bookmark.alternate_urls.length }),
-                }),
-              ]
-            : []),
-        ],
-      });
-      open.append(icon, content);
-    } else if (size === 'large') {
-      const host = hostnameOf(bookmark.url);
-      const titleCol = el('div', {
-        className: 'tile__title-col',
-        children: [titleEl, ...(host ? [el('span', { className: 'tile__host', text: host })] : [])],
-      });
-      const header = el('div', {
-        className: 'tile__header',
-        children: [icon, titleCol, ...(hotkey ? [hotkey] : [])],
-      });
-      open.append(
-        header,
-        ...(bookmark.description
-          ? [el('p', { className: 'tile__description', text: bookmark.description })]
-          : []),
-      );
-    } else {
-      open.append(icon, titleEl, ...(hotkey ? [hotkey] : []));
-    }
+    populateBookmarkContent(open, bookmark, size);
 
     // Long-press (touch) opens the menu; a subsequent click is suppressed.
     let longPressed = false;
@@ -425,7 +493,7 @@ export class BookmarksView {
     };
 
     open.addEventListener('click', (event) => {
-      if (longPressed) {
+      if (this.arranging || longPressed) {
         event.preventDefault();
         longPressed = false;
         return;
@@ -437,7 +505,7 @@ export class BookmarksView {
       this.openContextMenu(bookmark, event.clientX, event.clientY);
     });
     open.addEventListener('pointerdown', (event: PointerEvent) => {
-      if (event.pointerType === 'mouse') {
+      if (this.arranging || event.pointerType === 'mouse') {
         return;
       }
       longPressed = false;
@@ -446,6 +514,7 @@ export class BookmarksView {
         this.openContextMenu(bookmark, event.clientX, event.clientY);
       }, LONG_PRESS_MS);
     });
+    open.addEventListener('pointermove', clearPress);
     ['pointerup', 'pointercancel', 'pointerleave'].forEach((e) =>
       open.addEventListener(e, clearPress),
     );
@@ -453,43 +522,20 @@ export class BookmarksView {
       this.handleTileKeydown(event, open, bookmark),
     );
 
-    // Mirrors section for large tiles (dynamic content without nested buttons)
-    let mirrorsContainer: HTMLElement | null = null;
-    if (size === 'large' && bookmark.alternate_urls && bookmark.alternate_urls.length > 0) {
-      mirrorsContainer = el('div', {
-        className: 'tile__mirrors',
-        attrs: { role: 'group', 'aria-label': t('bookmarkEditor.fieldAlt') },
-        children: [
-          btn(t('bookmarks.openPrimary', { host: hostnameOf(bookmark.url) }), {
-            className: 'tile__mirror-chip tile__mirror-chip--primary',
-            onClick: (event) => {
-              event.stopPropagation();
-              this.callbacks.onActivate(bookmark);
-            },
-          }),
-          ...bookmark.alternate_urls.map((mirrorUrl) =>
-            btn(t('bookmarks.openMirrorDirect', { host: hostnameOf(mirrorUrl) }), {
-              className: 'tile__mirror-chip',
-              onClick: (event) => {
-                event.stopPropagation();
-                this.callbacks.onOpenAlternate(bookmark, mirrorUrl);
-              },
-            }),
-          ),
-        ],
+    const mirrorsContainer = bookmark.alternate_urls?.length
+      ? renderBookmarkMirrors(bookmark.alternate_urls, (url) => {
+          if (!this.arranging) this.callbacks.onOpenAlternate(bookmark, url);
+        })
+      : null;
+    if (isRecents)
+      mirrorsContainer?.querySelectorAll('button').forEach((button) => {
+        button.tabIndex = -1;
       });
-    }
 
     const actionsWrapper = el('div', { className: 'tile__actions' });
 
     // Actions on non-recents: drag handle, cycle size
     if (!isRecents) {
-      const dragLabel = t('bookmarks.dragAria', { title: bookmark.title });
-      const dragHandle = iconBtn(ICON_GRIP, dragLabel, undefined, 'icon-button tile__drag', 14);
-      dragHandle.title = dragLabel;
-      this.bindDragHandle(dragHandle, bookmark, tile);
-      actionsWrapper.appendChild(dragHandle);
-
       const sizeKey =
         size === 'small'
           ? 'bookmarks.sizeSmall'
@@ -505,7 +551,7 @@ export class BookmarksView {
           this.callbacks.onResize?.(bookmark, NEXT_CARD_SIZE[size]);
         },
         'icon-button tile__cycle-size',
-        14,
+        18,
       );
       cycleButton.title = cycleLabel;
       actionsWrapper.appendChild(cycleButton);
@@ -517,18 +563,21 @@ export class BookmarksView {
       t('common.actionsFor', { name: bookmark.title }),
       (event) => {
         event.stopPropagation();
+        moreButton.focus();
         const rect = moreButton.getBoundingClientRect();
         this.openContextMenu(bookmark, rect.left, rect.bottom);
       },
       'icon-button tile__more',
-      16,
+      20,
     );
     moreButton.setAttribute('aria-haspopup', 'menu');
+    moreButton.setAttribute('aria-expanded', 'false');
     if (isRecents) {
       moreButton.setAttribute('tabindex', '-1');
     }
     actionsWrapper.appendChild(moreButton);
 
+    if (!isRecents) this.bindDragHandle(tile, bookmark, tile);
     tile.append(open, ...(mirrorsContainer ? [mirrorsContainer] : []), actionsWrapper);
     // Only category tiles participate in the roving-tabindex grid; recents are
     // duplicates and stay out of the Tab order (G-42).
@@ -577,44 +626,6 @@ export class BookmarksView {
     this.tileNodes.forEach((node, i) => node.setAttribute('tabindex', i === 0 ? '0' : '-1'));
   }
 
-  /**
-   * Render the bookmark icon. Per SCHEMAS.md §2.3 the fallback is the favicon
-   * service; on any load error we swap to a fully-local letter avatar so the
-   * app degrades gracefully when offline (AGENTS.md air-gap mandate).
-   */
-  private renderIcon(bookmark: BookmarkItem): HTMLElement {
-    const host = hostnameOf(bookmark.url);
-    const src =
-      bookmark.icon && bookmark.icon.length > 0
-        ? bookmark.icon
-        : `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
-
-    const img = el('img', {
-      className: 'tile__icon',
-      attrs: {
-        src,
-        alt: '',
-        width: '24',
-        height: '24',
-        loading: 'lazy',
-        referrerpolicy: 'no-referrer',
-      },
-    });
-    img.addEventListener(
-      'error',
-      () => {
-        img.replaceWith(this.renderLetterAvatar(bookmark.title));
-      },
-      { once: true },
-    );
-    return img;
-  }
-
-  private renderLetterAvatar(title: string): HTMLElement {
-    const letter = initialOf(title, '?');
-    return el('span', { className: 'tile__icon tile__icon--fallback', text: letter });
-  }
-
   /* ---------------------------------------------------------------- */
   /* Context menu (direct mirror override, PRD §5.2.5)                */
   /* ---------------------------------------------------------------- */
@@ -648,9 +659,14 @@ export class BookmarksView {
     }
 
     if (this.callbacks.onReorderBookmarks) {
+      items.push({
+        label: t('bookmarks.arrange'),
+        separatorBefore: true,
+        onSelect: () => this.setArranging(true),
+      });
       const reorder = (dir: 'up' | 'down') => {
         const u = computeBookmarkMoveWithin(this.store.activeBookmarks, bookmark.id, dir);
-        if (u) void this.callbacks.onReorderBookmarks?.(u);
+        if (u) void this.persistMove(u);
       };
       items.push(
         { label: t('bookmarks.moveUp'), separatorBefore: true, onSelect: () => reorder('up') },
@@ -668,7 +684,7 @@ export class BookmarksView {
                 cat.id,
                 'after',
               );
-              if (u) void this.callbacks.onReorderBookmarks?.(u);
+              if (u) void this.persistMove(u);
             },
           });
         }
@@ -693,7 +709,7 @@ export class BookmarksView {
     // type-ahead and viewport clamping (DESIGN.md §6.8).
     this.contextMenu = new Menu({
       label: t('common.actionsFor', { name: bookmark.title }),
-      className: 'context-menu',
+      className: 'context-menu bookmark-menu',
       itemClassName: 'context-menu__item',
       separatorClassName: 'context-menu__separator',
       items,
@@ -714,9 +730,16 @@ export class BookmarksView {
       if (e.pointerType === 'mouse' && e.button !== 0) {
         return;
       }
+      if (
+        !this.arranging ||
+        (e.target instanceof Element && e.target.closest('.tile__actions, .tile__mirrors'))
+      )
+        return;
       e.preventDefault();
       e.stopPropagation();
       handle.setPointerCapture?.(e.pointerId);
+      this.dragX = e.clientX;
+      this.dragY = e.clientY;
       this.dragState = {
         id: bookmark.id,
         tile,
@@ -740,44 +763,20 @@ export class BookmarksView {
         }
       }
 
-      this.clearDropIndicators();
-      const elUnder = document.elementFromPoint(e.clientX, e.clientY);
-      const targetTile = elUnder?.closest<HTMLElement>('.tile:not(.tile--recent)');
-      if (targetTile && targetTile !== this.dragState.tile) {
-        const rect = targetTile.getBoundingClientRect();
-        const isAfter = e.clientX - rect.left > rect.width / 2;
-        targetTile.classList.add(isAfter ? 'is-drop-after' : 'is-drop-before');
-        return;
-      }
-
-      const targetSection = elUnder?.closest<HTMLElement>('.section');
-      if (targetSection) {
-        targetSection.classList.add('is-drop-target');
-        if (targetSection.classList.contains('section--collapsed')) {
-          const catId = targetSection.dataset.categoryId;
-          if (catId && !this.autoExpandTimer) {
-            this.autoExpandTimer = setTimeout(() => {
-              const cat = this.store.sortedCategories.find((c) => c.id === catId);
-              if (cat && cat.collapsed) {
-                this.callbacks.onToggleCategory?.(cat);
-              }
-              this.autoExpandTimer = null;
-            }, 600);
-          }
-        }
-      }
+      this.dragX = e.clientX;
+      this.dragY = e.clientY;
+      this.startEdgeScroll();
+      this.updateDropTarget();
     });
 
     handle.addEventListener('pointerup', (e: PointerEvent) => {
       const state = this.dragState;
       if (!state || e.pointerId !== state.pointerId) return;
-      this.clearAutoExpandTimer();
-      this.dragState = null;
-      state.tile.classList.remove('is-dragging');
-      if (!state.isDragging) return;
+      const wasDragging = state.isDragging;
+      this.cancelDrag();
+      if (!wasDragging) return;
 
       const elUnder = document.elementFromPoint(e.clientX, e.clientY);
-      this.clearDropIndicators();
       const targetTile = elUnder?.closest<HTMLElement>('.tile:not(.tile--recent)');
       const targetSection = elUnder?.closest<HTMLElement>('.section');
 
@@ -806,17 +805,113 @@ export class BookmarksView {
         );
       }
 
-      if (updated) void this.callbacks.onReorderBookmarks?.(updated);
+      if (this.pendingRender) this.render();
+      if (updated) void this.persistMove(updated);
     });
 
-    handle.addEventListener('pointercancel', () => {
-      this.clearAutoExpandTimer();
-      if (this.dragState) {
-        this.dragState.tile.classList.remove('is-dragging');
-        this.dragState = null;
-      }
-      this.clearDropIndicators();
+    const cancel = (): void => {
+      this.cancelDrag();
+      if (this.pendingRender) this.render();
+    };
+    handle.addEventListener('pointercancel', cancel);
+    handle.addEventListener('lostpointercapture', () => {
+      if (this.dragState) cancel();
     });
+  }
+
+  private setArranging(active: boolean): void {
+    this.cancelDrag();
+    this.arranging = active;
+    this.render();
+    const target = active
+      ? this.element.querySelector<HTMLElement>('.bookmarks__arrange-bar button')
+      : this.tileNodes[0];
+    target?.focus();
+  }
+
+  private async persistMove(items: readonly BookmarkItem[]): Promise<void> {
+    try {
+      await this.callbacks.onReorderBookmarks?.(items);
+      showToast(t('bookmarks.moved'));
+    } catch {
+      showToast(t('bookmarks.moveFailed'), {
+        variant: 'error',
+        action: { label: t('common.retry'), onSelect: () => void this.persistMove(items) },
+      });
+    }
+  }
+
+  private cancelDrag(): void {
+    this.clearAutoExpandTimer();
+    if (this.dragFrame !== null) cancelAnimationFrame(this.dragFrame);
+    this.dragFrame = null;
+    const state = this.dragState;
+    this.dragState = null;
+    if (state) {
+      state.tile.classList.remove('is-dragging');
+      if (state.tile.hasPointerCapture?.(state.pointerId)) {
+        state.tile.releasePointerCapture(state.pointerId);
+      }
+    }
+    this.clearDropIndicators();
+  }
+
+  private startEdgeScroll(): void {
+    if (this.dragFrame !== null) return;
+    const tick = (): void => {
+      this.dragFrame = null;
+      if (!this.dragState?.isDragging) return;
+      const viewport = window.visualViewport;
+      const top = viewport?.offsetTop ?? 0;
+      const bottom = top + (viewport?.height ?? window.innerHeight);
+      const delta = this.dragY < top + 64 ? -12 : this.dragY > bottom - 64 ? 12 : 0;
+      if (delta) {
+        const scroller = document.scrollingElement;
+        scroller?.scrollBy?.({ top: delta });
+        this.updateDropTarget();
+      }
+      this.dragFrame = requestAnimationFrame(tick);
+    };
+    this.dragFrame = requestAnimationFrame(tick);
+  }
+
+  private updateDropTarget(): void {
+    if (!this.dragState) return;
+    this.clearDropIndicators();
+    const under = document.elementFromPoint(this.dragX, this.dragY);
+    const tile = under?.closest<HTMLElement>('.tile:not(.tile--recent)');
+    const section = under?.closest<HTMLElement>('.section');
+    const catId = section?.dataset.categoryId;
+    if (this.expandCategoryId !== catId) this.clearAutoExpandTimer();
+    if (tile && tile !== this.dragState.tile) {
+      const rect = tile.getBoundingClientRect();
+      const after = this.dragX > rect.left + rect.width / 2;
+      tile.classList.add(after ? 'is-drop-after' : 'is-drop-before');
+    } else if (section) {
+      section.classList.add('is-drop-target');
+      if (catId && section.classList.contains('section--collapsed') && !this.autoExpandTimer) {
+        this.expandCategoryId = catId;
+        this.autoExpandTimer = setTimeout(() => {
+          const category = this.store.sortedCategories.find((cat) => cat.id === catId);
+          if (category?.collapsed) {
+            this.callbacks.onToggleCategory?.(category);
+            section.classList.remove('section--collapsed');
+            section.querySelector('.section__header-toggle')?.setAttribute('aria-expanded', 'true');
+            const grid = section.querySelector<HTMLElement>('.tile-grid');
+            if (grid) {
+              grid.hidden = false;
+              grid.classList.remove('is-collapsed');
+              grid.append(
+                ...this.store
+                  .getBookmarksByCategory(catId)
+                  .map((item) => this.renderTile(item, false)),
+              );
+            }
+          }
+          this.autoExpandTimer = null;
+        }, 600);
+      }
+    }
   }
 
   private clearDropIndicators(): void {

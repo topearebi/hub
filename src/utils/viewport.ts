@@ -50,7 +50,10 @@ export function computeViewportMetrics(
  * `--vvh` on `root`. Returns a disposer. No-ops (returning a no-op disposer)
  * when the API is unavailable, so callers need no feature detection.
  */
-export function bindVisualViewport(root: HTMLElement = document.documentElement): () => void {
+export function bindVisualViewport(
+  root: HTMLElement = document.documentElement,
+  onChange?: () => void,
+): () => void {
   const visual = typeof window !== 'undefined' ? window.visualViewport : null;
   if (!visual) {
     return () => undefined;
@@ -60,6 +63,10 @@ export function bindVisualViewport(root: HTMLElement = document.documentElement)
     const metrics = computeViewportMetrics(window.innerHeight, visual);
     root.style.setProperty('--keyboard-inset', `${metrics.keyboardInset}px`);
     root.style.setProperty('--vvh', `${metrics.height}px`);
+    root.style.setProperty('--vvtop', `${metrics.offsetTop}px`);
+    root.style.setProperty('--vvleft', `${visual.offsetLeft ?? 0}px`);
+    root.style.setProperty('--vvw', `${visual.width ?? window.innerWidth}px`);
+    onChange?.();
   };
 
   apply();
