@@ -9,7 +9,7 @@ transforming...
 ✓ 54 modules transformed.
 rendering chunks...
 computing gzip size...
-dist/.vite/manifest.json                  1.10 kB │ gzip:  0.30 kB
+dist/asset-manifest.json                  1.10 kB │ gzip:  0.30 kB
 dist/index.html                           3.36 kB │ gzip:  1.31 kB
 dist/assets/index-CaKr9tg9.css           50.57 kB │ gzip:  9.64 kB
 dist/assets/sync-conflicts-J5EVQXUC.js    3.68 kB │ gzip:  1.62 kB │ map:  14.36 kB
@@ -21,4 +21,4 @@ dist/assets/index-BieT23IL.js           190.66 kB │ gzip: 51.68 kB │ map: 66
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-✓ built in 3.86s
+✓ built in 4.78s

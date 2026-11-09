@@ -41,7 +41,7 @@ if (assets.length === 0) {
   process.exit(1);
 }
 
-const manifest = JSON.parse(readFileSync(join(ROOT, 'dist', '.vite', 'manifest.json'), 'utf8'));
+const manifest = JSON.parse(readFileSync(join(ROOT, 'dist', 'asset-manifest.json'), 'utf8'));
 const initial = new Set();
 const visited = new Set();
 function visit(key) {

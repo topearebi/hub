@@ -66,3 +66,7 @@ relying on the new conflict policy. Previously purged deletion history cannot be
 reconstructed. Conflicts consume local storage and pause the target until resolved;
 closing the inbox preserves them. “End recovery” retains deletion records and does
 not erase Git history. Browser background scheduling remains platform-dependent.
+
+Build bookkeeping: Vite emits `asset-manifest.json` at the site root; the bundle
+gate reads it and the worker precaches it alongside every deferred module. This
+avoids hidden paths and permits direct verification on the deployed origin.
