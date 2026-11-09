@@ -49,6 +49,7 @@ import { applyDocumentLocale, t } from './utils/i18n';
 import { bindVisualViewport } from './utils/viewport';
 import { newId } from './utils/crypto';
 import {
+  watchServiceWorkerUpdates,
   draftFromShare,
   estimateStorage,
   isStoragePersisted,
@@ -1396,15 +1397,8 @@ function registerServiceWorker(): void {
     return;
   }
 
-  // Reload once the newly activated worker takes control.
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) {
-      return;
-    }
-    refreshing = true;
-    window.location.reload();
-  });
+  // First-install claims do not reload; replacing an active worker reloads once.
+  watchServiceWorkerUpdates(navigator.serviceWorker, () => window.location.reload());
 
   window.addEventListener('load', () => {
     navigator.serviceWorker

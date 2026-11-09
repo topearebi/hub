@@ -333,3 +333,24 @@ export async function requestBackgroundSync(tag: string = BACKGROUND_SYNC_TAG): 
     return false;
   }
 }
+
+/**
+ * Reload once when an existing controller is replaced, never on the first
+ * install's clients.claim(). Reloading on that initial claim boots the app
+ * twice and delays first-use interactivity (G-49, G-56).
+ */
+export function watchServiceWorkerUpdates(
+  container: Pick<ServiceWorkerContainer, 'controller' | 'addEventListener'>,
+  reload: () => void,
+): void {
+  let previous = container.controller;
+  let refreshing = false;
+  container.addEventListener('controllerchange', () => {
+    const current = container.controller;
+    const replaced = previous !== null && previous !== current;
+    previous = current;
+    if (!replaced || !current || refreshing) return;
+    refreshing = true;
+    reload();
+  });
+}

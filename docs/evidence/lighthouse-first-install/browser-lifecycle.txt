@@ -1,0 +1,3 @@
+PASS: first install navigates once
+PASS: update after first install reloads exactly once after consent
+PASS: old build upgrades to new assets, preserving IndexedDB and working offline without clearing storage

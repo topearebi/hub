@@ -428,3 +428,23 @@ widths, both themes and short landscape layouts, touch-input dragging and move
 announcements, a keyboard-sized editor with visible Save, forced colours and
 reduced motion. Physical touchscreen keyboards, notched devices and assistive
 technology remain manual checks; these are not represented as completed.
+
+### First-install performance correction — 2026-11-09 (G-49, G-56)
+
+The release workflow reported performance 87 with 450ms blocking time and two
+fresh-install document loads. Initial `clients.claim()` was incorrectly treated
+as an update, causing an immediate second bootstrap. The controller observer now
+ignores initial claims, reloads once when an active controller is replaced, and
+ignores duplicate events or controller loss. User-controlled update activation,
+asset hashing and offline storage are unchanged. PRD §5.9 clarifies this lifecycle.
+
+The suite now passes **380 tests / 41 files**; typecheck, lint, build and the gzip
+gate pass (**59.95 KiB**). Browser checks confirm one initial navigation, one
+accepted-update navigation, and preserved IndexedDB/offline access across an
+old-to-new upgrade without clearing site data. Three local Lighthouse samples
+scored performance **48 / 99 / 99** (median **99**), accessibility **97** and PWA
+**100**, with one document load each. All samples, including the timing outlier,
+are retained in [the evidence](../docs/evidence/lighthouse-first-install/REVIEW.md).
+CI now measures the median of three performance runs against the same **90**
+threshold and detects server readiness from the URL instead of an ANSI-coloured
+label. See [the fix specification](lighthouse-first-install.md).

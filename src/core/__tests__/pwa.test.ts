@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  watchServiceWorkerUpdates,
   draftFromShare,
   estimateStorage,
   extractUrl,
@@ -180,5 +181,45 @@ describe('storage persistence helpers', () => {
     const estimate = vi.fn(async () => ({ usage: 1024, quota: 2048 }));
     vi.stubGlobal('navigator', { storage: { estimate } });
     await expect(estimateStorage()).resolves.toEqual({ usage: 1024, quota: 2048 });
+  });
+});
+
+describe('service worker controller lifecycle (G-49, G-56)', () => {
+  const worker = (): ServiceWorker => ({}) as ServiceWorker;
+  function setup(controller: ServiceWorker | null = null) {
+    const container = Object.assign(new EventTarget(), { controller });
+    const reload = vi.fn();
+    watchServiceWorkerUpdates(container, reload);
+    return {
+      reload,
+      change(next: ServiceWorker | null) {
+        container.controller = next;
+        container.dispatchEvent(new Event('controllerchange'));
+      },
+    };
+  }
+
+  it('does not reload on a first install, but reloads on a later update in that session', () => {
+    const { change, reload } = setup();
+    const first = worker();
+    change(first);
+    expect(reload).not.toHaveBeenCalled();
+    change(worker());
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads an existing installation once when its controller is replaced', () => {
+    const { change, reload } = setup(worker());
+    change(worker());
+    change(worker());
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores duplicate notifications and loss of a controller', () => {
+    const first = worker();
+    const { change, reload } = setup(first);
+    change(first);
+    change(null);
+    expect(reload).not.toHaveBeenCalled();
   });
 });

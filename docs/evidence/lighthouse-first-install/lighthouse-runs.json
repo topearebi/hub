@@ -1,0 +1,23 @@
+[
+  {
+    "performance": 0.48,
+    "accessibility": 0.97,
+    "pwa": 1,
+    "blockingMs": 7430.54225,
+    "documentLoads": 1
+  },
+  {
+    "performance": 0.99,
+    "accessibility": 0.97,
+    "pwa": 1,
+    "blockingMs": 97.5,
+    "documentLoads": 1
+  },
+  {
+    "performance": 0.99,
+    "accessibility": 0.97,
+    "pwa": 1,
+    "blockingMs": 136.26800000000003,
+    "documentLoads": 1
+  }
+]
